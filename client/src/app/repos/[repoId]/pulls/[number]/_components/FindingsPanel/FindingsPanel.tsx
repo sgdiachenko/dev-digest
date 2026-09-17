@@ -5,11 +5,12 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Toggle, EmptyState } from "@devdigest/ui";
-import type { FindingRecord } from "@devdigest/shared";
+import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { KEY_TO_ACTION } from "./constants";
-import { visibleFindings } from "./helpers";
+import { visibleFindings, countBySeverity, hideLowConfidence } from "./helpers";
+import { SeverityFilterPills } from "./SeverityFilterPills";
 import { s } from "./styles";
 
 export function FindingsPanel({
@@ -26,9 +27,20 @@ export function FindingsPanel({
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
+  const [severityFilter, setSeverityFilter] = React.useState<Severity | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  // Pill totals count the same hideLow-filtered set the cards render from
+  // (dismissed still included — they still render as muted cards below), so
+  // a pill's number always equals the number of matching cards on screen,
+  // "hide low confidence" on or off. They stay independent of severityFilter
+  // so the pills themselves never disappear once a filter narrows the list.
+  const countable = React.useMemo(() => hideLowConfidence(findings, hideLow), [findings, hideLow]);
+  const severityCounts = React.useMemo(() => countBySeverity(countable), [countable]);
+  const shown = React.useMemo(
+    () => visibleFindings(findings, hideLow, severityFilter),
+    [findings, hideLow, severityFilter],
+  );
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -48,6 +60,12 @@ export function FindingsPanel({
   return (
     <div>
       <div style={s.toolbar}>
+        <SeverityFilterPills
+          counts={severityCounts}
+          active={severityFilter}
+          onToggle={(sev) => setSeverityFilter((prev) => (prev === sev ? null : sev))}
+        />
+        {Object.values(severityCounts).some((n) => n > 0) && <div style={s.divider} />}
         <div style={s.toggleGroup}>
           {t("panel.hideLowConfidence")}
           <Toggle on={hideLow} onChange={setHideLow} size={16} />
