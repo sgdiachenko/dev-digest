@@ -37,7 +37,10 @@ hook at the API.
 - Data fetching only goes through `src/lib/hooks/*` → `src/lib/api.ts`. No
   component calls `fetch`/the API base directly.
 - `src/vendor/shared` is a hand-copy of the server's Zod contracts, not an
-  installed package — edit both copies when a contract changes.
+  installed package — edit both copies when a contract changes, then run
+  `../scripts/check-shared-sync.sh`. Only `contracts/` is mirrored; the
+  server's `adapters.ts` (adapter ports) is server-only. A DTO this app needs
+  belongs in `contracts/`.
 - i18n strings live in `messages/<locale>/*.json`, not inline — even for
   starter-only English copy.
 
