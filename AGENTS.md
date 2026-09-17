@@ -28,6 +28,11 @@ run on the host, not in a container).
 ./scripts/e2e.sh              # hermetic e2e stack (own ports, own DB)
 ```
 
+```sh
+/pr-self-review               # review all open changes before opening a PR
+.claude/skills/pr-self-review/assets/gate.sh check   # the gate's verdict, standalone
+```
+
 Per-package `dev` / `test` / `typecheck` — see that package's own `AGENTS.md`
 for the exact command (pnpm vs npm differs).
 
@@ -61,9 +66,22 @@ for the exact command (pnpm vs npm differs).
   Edit `AGENTS.md` only. On Windows, clone with `git config core.symlinks true`.
 - `@devdigest/shared` (Zod contracts) is **not a package** — it's hand-copied
   into `server/src/vendor/shared` **and** `client/src/vendor/shared`. Both
-  copies must be edited together when a shared contract changes; nothing
-  enforces this automatically.
+  copies must be edited together when a shared contract changes; run
+  `./scripts/check-shared-sync.sh` (or `--fix`) and let CI
+  (`.github/workflows/shared-contracts.yml`) catch what you forget.
+  Only `contracts/` is mirrored. `adapters.ts` (adapter ports —
+  `GitHubClient`, `GitClient`, `LLMProvider`) is **server-only** and must not
+  be copied to the client: a wire DTO the browser consumes belongs in
+  `contracts/`, not beside the ports.
 - Migrations do **not** run on boot — `pnpm db:migrate` is always manual.
+- `gh pr create` / `gh pr merge` / `gh pr ready` are **blocked** by a
+  `PreToolUse` hook (`.claude/settings.json`) until `/pr-self-review` has
+  written a report for the branch that matches the current working tree and
+  holds no `CRITICAL` finding. The skill routes the other skills in
+  `.claude/skills/` at the diff — a new skill must be added to
+  [routing.md](.claude/skills/pr-self-review/routing.md) or it never runs.
+  Deliberate bypass: `PR_SELF_REVIEW_OVERRIDE=1 <command>`, which is recorded
+  in the report.
 - Secrets (LLM keys, `GITHUB_TOKEN`) live in `~/.devdigest/secrets.json`
   (mode `0600`), not `.env`, not the database.
 - The DB schema already ships every table later course lessons need — the
@@ -78,6 +96,8 @@ for the exact command (pnpm vs npm differs).
 - Lock files (`pnpm-lock.yaml` in `server/`/`client/`, `package-lock.json` in
   `reviewer-core/`/`e2e/`) — never hand-edit; let the package manager
   regenerate them (`pnpm install` / `npm install`) when `package.json` changes.
+- `.claude/pr-self-review/` — git-ignored per-branch self-review reports.
+  Regenerate with `/pr-self-review`; never hand-edit one to unblock a PR.
 
 ## Read When
 
