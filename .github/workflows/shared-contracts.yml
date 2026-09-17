@@ -1,0 +1,43 @@
+# @devdigest/shared drift guard.
+#
+# `@devdigest/shared` is not a package — its Zod contracts are hand-copied into
+# BOTH server/src/vendor/shared and client/src/vendor/shared, and nothing in
+# either toolchain notices when the copies fall out of step. A drift is silent
+# until the wire format disagrees at runtime.
+#
+# This is its own workflow rather than a step in client.yml / server-unit.yml
+# because those are path-filtered per package: editing only the server's copy
+# would never trigger the client job, which is exactly the case that drifts.
+# Checkout + bash only — no Node, no install, runs in seconds.
+name: shared contracts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/src/vendor/shared/**'
+      - 'client/src/vendor/shared/**'
+      - 'scripts/check-shared-sync.sh'
+      - '.github/workflows/shared-contracts.yml'
+  pull_request:
+    paths:
+      - 'server/src/vendor/shared/**'
+      - 'client/src/vendor/shared/**'
+      - 'scripts/check-shared-sync.sh'
+      - '.github/workflows/shared-contracts.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: contracts in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: ./scripts/check-shared-sync.sh

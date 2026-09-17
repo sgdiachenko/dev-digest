@@ -10,6 +10,27 @@ import { FindingsSummary } from './findings.js';
  *  - context (Project Context folder)
  */
 
+// ---- Provider model catalogue ----
+/**
+ * One model as returned by `GET /providers/:provider/models`.
+ *
+ * Lives here rather than in `adapters.ts` because it is a wire DTO the web
+ * client consumes, not an adapter port: `adapters.ts` is server-only.
+ */
+export const ModelInfo = z.object({
+  id: z.string(),
+  provider: Provider,
+  label: z.string().nullish(),
+  created: z.number().int().nullish(),
+  /** Pricing in USD per 1M tokens (when the provider exposes it, e.g. OpenRouter). */
+  pricing: z
+    .object({ promptPerM: z.number(), completionPerM: z.number() })
+    .nullish(),
+  /** Max context window in tokens (when the provider exposes it). */
+  contextLength: z.number().int().nullish(),
+});
+export type ModelInfo = z.infer<typeof ModelInfo>;
+
 // ---- Feature → model selection ----
 /** System LLM features whose model is selectable in Settings (per-workspace). */
 export const FeatureModelId = z.enum([

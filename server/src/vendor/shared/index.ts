@@ -7,8 +7,10 @@
  *  - contracts/knowledge  Conformance, Onboarding, EvalRun/EvalCase, MemoryItem,
  *                         Skill/CommunitySkill, ConventionCandidate, Agent
  *  - contracts/trace      RunTrace, RunEvent, RunLogLine (single-document trace)
- *  - contracts/platform   Settings, ConnTestResult, Repo, PrMeta/PrDetail, SpecFile, …
- *  - adapters             adapter interfaces + ModelInfo
+ *  - contracts/platform   Settings, ConnTestResult, Repo, PrMeta/PrDetail, SpecFile,
+ *                         ModelInfo, …
+ *  - adapters             adapter port interfaces (SERVER ONLY — not mirrored
+ *                         into client/src/vendor/shared)
  *
  * Feature agents (A1–A6) and F2 import everything from here. The barrel is
  * stable — feature agents EXTEND with new files, they do not edit existing ones.
