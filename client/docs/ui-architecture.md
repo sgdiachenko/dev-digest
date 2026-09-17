@@ -1,6 +1,6 @@
 # client — UI architecture
 
-Deeper reference for the route map summarized in [`../CLAUDE.md`](../CLAUDE.md)
+Deeper reference for the route map summarized in [`../AGENTS.md`](../AGENTS.md)
 and diagrammed in [`../README.md`](../README.md#ui-route-map).
 
 ## Data flow
@@ -39,7 +39,7 @@ dispatcher) lives in `src/components/app-shell`, mounted once from
 `src/vendor/ui` (`@devdigest/ui`) and `src/vendor/shared` (`@devdigest/shared`)
 are copied in, not npm-installed — there's no version to bump, only a diff to
 reconcile by hand against the source (the server's copy, for `shared`). See
-root [CLAUDE.md](../../CLAUDE.md) for the sync convention.
+root [AGENTS.md](../../AGENTS.md) for the sync convention.
 
 ## i18n
 

@@ -1,6 +1,6 @@
 # reviewer-core — pipeline
 
-Deeper reference for the pipeline summarized in [`../CLAUDE.md`](../CLAUDE.md)
+Deeper reference for the pipeline summarized in [`../AGENTS.md`](../AGENTS.md)
 and diagrammed in [`../README.md`](../README.md#pipeline).
 
 ## Stages
@@ -10,7 +10,7 @@ and diagrammed in [`../README.md`](../README.md#pipeline).
    the starter). `reviewer-core` never fetches these itself.
 2. **`assemblePrompt()`** (`prompt.ts`) — composes the final prompt from the
    inputs plus whichever optional slots are present (`skills`, `memory`,
-   `specs`, `callers` — see [`../CLAUDE.md`](../CLAUDE.md)'s Non-default
+   `specs`, `callers` — see [`../AGENTS.md`](../AGENTS.md)'s Non-default
    conventions). Slots that aren't passed simply don't appear in the output;
    there's no placeholder text to strip later.
 3. **`wrapUntrusted()` + `INJECTION_GUARD`** — every piece of PR-controlled

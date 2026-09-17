@@ -22,7 +22,7 @@ full page-level contract — not everything specified there is exercised here.
 
 - **The findings-counter hover popover** (PR list Findings column, PR detail
   Timeline) — agent-browser's locator set here is deterministic
-  click/text/role only (see [`../CLAUDE.md`](../CLAUDE.md)); there's no
+  click/text/role only (see [`../AGENTS.md`](../AGENTS.md)); there's no
   hover primitive to drive it. Covered instead by client unit tests
   (`FindingsSummary/helpers.test.ts`, `PRRow.test.tsx`, `RunHistory.test.tsx`).
 - **The Review-runs severity filter pills** (click a pill to narrow the

@@ -21,4 +21,4 @@ write nothing.
 every existing character — every prior entry, in every section — must come
 out identical to how it went in. Never edit or delete a prior entry to
 "fix" it — correct it with a new dated line instead. A finding that should
-hold true *always* belongs in that module's `CLAUDE.md`, not here.
+hold true *always* belongs in that module's `AGENTS.md`, not here.

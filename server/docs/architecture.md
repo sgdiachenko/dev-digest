@@ -1,6 +1,6 @@
 # server — architecture
 
-Deeper reference for the request/DI flow summarized in [`../CLAUDE.md`](../CLAUDE.md)
+Deeper reference for the request/DI flow summarized in [`../AGENTS.md`](../AGENTS.md)
 and diagrammed in [`../README.md`](../README.md#request--di-flow).
 
 ## Request lifecycle
