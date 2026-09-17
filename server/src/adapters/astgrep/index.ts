@@ -22,7 +22,17 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 
 import type { ExtractedReference, ExtractedSymbol } from '../codeindex/extract.js';
-import { MAX_SIGNATURE_CHARS, SUPPORTED_EXT } from '../../modules/repo-intel/constants.js';
+/**
+ * What this parser handles. Owned here rather than in `modules/repo-intel`
+ * because it is a property of the ast-grep adapter itself — an adapter must not
+ * import a feature module (that welds infrastructure to one use case), and the
+ * module re-exports these from `repo-intel/constants.ts` for its own use.
+ */
+/** Files ast-grep can parse. */
+export const SUPPORTED_EXT = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'] as const;
+
+/** Declaration heads are trimmed to this many chars (cache stability). */
+export const MAX_SIGNATURE_CHARS = 120;
 
 // ---------------------------------------------------------------------------
 // Public types — superset of the regex extractor's row shapes.

@@ -1,5 +1,5 @@
-import type { Container } from '../../platform/container.js';
 import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
+import type { RunBus } from '../../platform/sse.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
@@ -25,16 +25,27 @@ export type { ReviewDto, ReviewDtoFinding } from './helpers.js';
  * Also: the finding accept/dismiss actions. The bulky run execution lives in
  * run-executor; this class keeps the public method surface.
  */
-export class ReviewService {
-  private repo: ReviewRepository;
-  private agents: Container['agentsRepo'];
-  private executor: ReviewRunExecutor;
+/**
+ * What this module needs from the agents store — declared HERE, by the
+ * consumer, rather than importing the agents module's repository class.
+ *
+ * Two modules must not reach into each other's internals; the container owns
+ * the single `AgentsRepository` instance and passes it in, and it satisfies
+ * this interface structurally. Reviews stays decoupled from how agents are
+ * stored, and a test can pass an object literal with two methods.
+ */
+export interface AgentsReader {
+  listEnabled(workspaceId: string): Promise<AgentRow[]>;
+  getById(workspaceId: string, id: string): Promise<AgentRow | undefined>;
+}
 
-  constructor(private container: Container) {
-    this.repo = new ReviewRepository(container.db);
-    this.agents = container.agentsRepo;
-    this.executor = new ReviewRunExecutor(container, this.repo, this.agents);
-  }
+export class ReviewService {
+  constructor(
+    private readonly repo: ReviewRepository,
+    private readonly agents: AgentsReader,
+    private readonly runBus: RunBus,
+    private readonly executor: ReviewRunExecutor,
+  ) {}
 
   // ===========================================================================
   // Run a review for one or all enabled agents on a PR.
@@ -84,9 +95,9 @@ export class ReviewService {
    */
   async cancelRun(runId: string): Promise<void> {
     this.publish(runId, 'info', 'Cancellation requested — stopping…');
-    this.container.runBus.cancel(runId);
+    this.runBus.cancel(runId);
     await this.repo.cancelRunIfRunning(runId);
-    this.container.runBus.complete(runId);
+    this.runBus.complete(runId);
   }
 
   /** Reap runs left 'running' by a previous (now-dead) process. Called on boot. */
@@ -138,7 +149,7 @@ export class ReviewService {
   }
 
   private publish(runId: string, kind: RunEventKind, msg: string, data?: unknown) {
-    return this.container.runBus.publish(runId, kind, msg, data);
+    return this.runBus.publish(runId, kind, msg, data);
   }
 
   // ===========================================================================

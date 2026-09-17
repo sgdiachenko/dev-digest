@@ -63,6 +63,12 @@ jobs:
         working-directory: reviewer-core
         run: npm ci
 
+      - run: pnpm lint
+
+      # Onion-ring enforcement (ring map in .dependency-cruiser.cjs). Every
+      # error-level rule is clean, so this fails on the first layer violation.
+      - run: pnpm arch:check
+
       - run: pnpm typecheck
 
   unit:

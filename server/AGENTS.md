@@ -34,8 +34,11 @@ pnpm exec vitest run .it.test                       # integration (real Postgres
   `codeindex`, `depgraph`, `embedder`, `secrets`, `auth`, `tokenizer`); test
   doubles for all of them live in `src/adapters/mocks.ts`
 - `src/db/schema/` — Drizzle schema, one file per domain
-- `src/vendor/shared/` — `@devdigest/shared` Zod contracts (hand-copied, see
-  root [AGENTS.md](../AGENTS.md))
+- `src/vendor/shared/contracts/` — `@devdigest/shared` Zod contracts,
+  hand-mirrored into the client (see root [AGENTS.md](../AGENTS.md)); guard
+  with `../scripts/check-shared-sync.sh`
+- `src/vendor/shared/adapters.ts` — adapter **ports**, server-only; never
+  mirrored to the client. A DTO the web app consumes goes in `contracts/`.
 
 ## Non-default conventions
 
@@ -44,6 +47,11 @@ pnpm exec vitest run .it.test                       # integration (real Postgres
   handler runs. Don't hand-roll `Schema.parse(req.body)`.
 - Services receive every dependency via constructor injection from
   `platform/container.ts`. Never `new` an adapter directly inside a service.
+- Writes that represent ONE fact go in ONE `db.transaction(...)`, inside the
+  repository (e.g. `insertReviewWithFindings`). Repository functions that may
+  run inside a transaction take `DbOrTx`, not `Db`. A review persisted without
+  its findings reads as "found nothing" everywhere in the UI — pinned by
+  `test/reviews-tx.it.test.ts`.
 - Secrets arrive only through the injected `SecretsProvider`
   (`src/adapters/secrets/local.ts` is the one chokepoint that reads
   `process.env`) — never read `process.env` elsewhere for a key.

@@ -3,7 +3,6 @@ import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
-import { isConfigChange } from './helpers.js';
 
 /**
  * A2 — agents data-access. Owns `agents`, `agent_versions`, and the
@@ -13,6 +12,58 @@ import { isConfigChange } from './helpers.js';
 
 import type { AgentRow, AgentVersionRow } from '../../db/rows.js';
 export type { AgentRow, AgentVersionRow };
+
+/**
+ * The config-version rule, kept beside the `update` that applies it.
+ *
+ * It used to live in `helpers.ts`, which imports row types from this file —
+ * so `repository → helpers → repository` was a cycle. It has exactly one
+ * consumer (below), so it belongs here.
+ */
+
+/** Fields whose change bumps the agent's config version (anything but `enabled`). */
+export interface ConfigChangePatch {
+  name?: string;
+  description?: string;
+  provider?: Provider;
+  model?: string;
+  systemPrompt?: string;
+  outputSchema?: unknown;
+  strategy?: ReviewStrategy;
+  ciFailOn?: CiFailOn;
+  repoIntel?: boolean;
+}
+
+/**
+ * True when a patch changes config (vs. just toggling `enabled`) relative to the
+ * existing row — a config change bumps the version and snapshots agent_versions.
+ */
+export function isConfigChange(
+  existing: Pick<
+    AgentRow,
+    | 'name'
+    | 'description'
+    | 'provider'
+    | 'model'
+    | 'systemPrompt'
+    | 'strategy'
+    | 'ciFailOn'
+    | 'repoIntel'
+  >,
+  patch: ConfigChangePatch,
+): boolean {
+  return (
+    (patch.name !== undefined && patch.name !== existing.name) ||
+    (patch.description !== undefined && patch.description !== existing.description) ||
+    (patch.provider !== undefined && patch.provider !== existing.provider) ||
+    (patch.model !== undefined && patch.model !== existing.model) ||
+    (patch.systemPrompt !== undefined && patch.systemPrompt !== existing.systemPrompt) ||
+    (patch.strategy !== undefined && patch.strategy !== existing.strategy) ||
+    (patch.ciFailOn !== undefined && patch.ciFailOn !== existing.ciFailOn) ||
+    (patch.repoIntel !== undefined && patch.repoIntel !== existing.repoIntel) ||
+    patch.outputSchema !== undefined
+  );
+}
 
 export interface InsertAgent {
   workspaceId: string;

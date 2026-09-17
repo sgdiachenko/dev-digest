@@ -1,4 +1,3 @@
-import type { Container } from '../../platform/container.js';
 import type {
   Agent,
   AgentSkillLink,
@@ -8,7 +7,8 @@ import type {
   Provider,
   ReviewStrategy,
 } from '@devdigest/shared';
-import { AgentsRepository } from './repository.js';
+import type { LLMProvider } from '@devdigest/shared';
+import type { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
 
 /**
@@ -48,12 +48,15 @@ export interface UpdateAgentInput {
   enabled?: boolean;
 }
 
-export class AgentsService {
-  private repo: AgentsRepository;
+/** Resolve an LLM adapter for a provider — the only outside capability this
+ *  service needs, injected rather than reached for through the container. */
+export type LlmFactory = (provider: Provider) => Promise<LLMProvider>;
 
-  constructor(private container: Container) {
-    this.repo = new AgentsRepository(container.db);
-  }
+export class AgentsService {
+  constructor(
+    private readonly repo: AgentsRepository,
+    private readonly llm: LlmFactory,
+  ) {}
 
   async list(workspaceId: string): Promise<Agent[]> {
     const rows = await this.repo.list(workspaceId);
@@ -177,7 +180,7 @@ export class AgentsService {
    */
   async listModels(provider: Provider): Promise<ModelInfo[]> {
     try {
-      const llm = await this.container.llm(provider);
+      const llm = await this.llm(provider);
       return await llm.listModels();
     } catch {
       return [];

@@ -8,13 +8,13 @@ import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
-import type { Container } from '../src/platform/container.js';
+import { AgentsRepository } from '../src/modules/agents/repository.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
 
 if (!hasDocker) {
-  // eslint-disable-next-line no-console
+   
   console.warn('[agents-versions] Docker not available — skipping integration tests.');
 }
 
@@ -164,7 +164,13 @@ d('GET /agents/:id/versions', () => {
       systemPrompt: 'x',
     });
 
-    const service = new AgentsService({ db } as unknown as Container);
+    // Real repository + a stub LLM factory. Before the service took explicit
+    // ports this had to be `{ db } as unknown as Container` — a cast that hid
+    // which dependencies the call actually needs. The throwing stub now asserts
+    // this read path never reaches for a provider.
+    const service = new AgentsService(new AgentsRepository(db), () => {
+      throw new Error('listVersions must not call an LLM provider');
+    });
     const [{ id: defaultWs }] = await db
       .select({ id: t.workspaces.id })
       .from(t.workspaces)

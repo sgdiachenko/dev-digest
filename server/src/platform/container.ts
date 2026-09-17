@@ -25,6 +25,8 @@ import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { ReviewService } from '../modules/reviews/service.js';
+import { ReviewRunExecutor } from '../modules/reviews/run-executor.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -100,6 +102,25 @@ export class Container {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
   }
 
+  /**
+   * The review use case, wired from its ports.
+   *
+   * Composition lives here, not in the service: `ReviewService` and
+   * `ReviewRunExecutor` take explicit ports so they can be constructed with
+   * stubs in a test, and so neither imports the container back (which is what
+   * used to make this a cycle).
+   */
+  reviewService(): ReviewService {
+    const executor = new ReviewRunExecutor(
+      this.reviewRepo,
+      this.runBus,
+      (provider) => this.llm(provider),
+      this.repoIntel,
+      this.git,
+    );
+    return new ReviewService(this.reviewRepo, this.agentsRepo, this.runBus, executor);
+  }
+
   get codeIndex(): CodeIndex {
     if (this.overrides.codeIndex) return this.overrides.codeIndex;
     this._codeIndex ??= new RipgrepCodeIndex(this.git);
@@ -113,7 +134,7 @@ export class Container {
    */
   get repoIntel(): RepoIntel {
     if (this.overrides.repoIntel) return this.overrides.repoIntel;
-    this._repoIntel ??= new RepoIntelService(this);
+    this._repoIntel ??= new RepoIntelService(this, this.db);
     return this._repoIntel;
   }
 
