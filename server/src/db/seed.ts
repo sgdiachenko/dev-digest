@@ -525,6 +525,125 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     await agentsRepo.linkSkill(testQualityAgent.id, importedSkillId, 1);
   }
 
+  // ---- L02: Conventions Extractor demo board ----
+  // Read-only seeded candidates for acme/payments-api (no LLM call — the e2e
+  // suite must never trigger a real scan). A mix of statuses + one
+  // origin:'config' row so the board's filters, "seen in N files", and the
+  // config-vs-model badge all have something real to render on first load.
+  const seedConventions: Array<typeof t.conventions.$inferInsert> = [
+    {
+      workspaceId,
+      repoId,
+      category: 'errors',
+      rule: 'Always use async/await instead of .then() chains.',
+      rationale: 'Keeps error handling consistent across the codebase.',
+      evidencePath: 'src/api/users.ts',
+      evidenceLine: 23,
+      evidenceSnippet: 'const user = await db.users.find(id);\nconst posts = await db.posts.findMany({ userId });',
+      confidence: 0.91,
+      status: 'accepted',
+      origin: 'model',
+      supportCount: 14,
+      probe: 'await db\\.',
+    },
+    {
+      workspaceId,
+      repoId,
+      category: 'api',
+      rule: 'All public route handlers return typed Result<T, ApiError>.',
+      rationale: 'Callers pattern-match on ok/err instead of catching.',
+      evidencePath: 'src/api/public/index.ts',
+      evidenceLine: 14,
+      evidenceSnippet: 'function handler(): Result<Item[], ApiError> {\n  return ok(items);\n}',
+      confidence: 0.78,
+      status: 'accepted',
+      origin: 'model',
+      supportCount: 6,
+      probe: 'Result<',
+    },
+    {
+      workspaceId,
+      repoId,
+      category: 'structure',
+      rule: 'Redis access goes through the src/lib/redis.ts singleton.',
+      rationale: 'Never instantiate a second Redis client in a route or service.',
+      evidencePath: 'src/lib/redis.ts',
+      evidenceLine: 1,
+      evidenceSnippet: 'export const redis = new Redis(config.redisUrl);',
+      confidence: 0.85,
+      status: 'accepted',
+      origin: 'model',
+      supportCount: 9,
+      probe: 'new Redis(',
+    },
+    {
+      workspaceId,
+      repoId,
+      category: 'typing',
+      rule: 'TypeScript strict mode is on — new code must not introduce `any` or loosen strictness locally.',
+      evidencePath: 'tsconfig.json',
+      evidenceLine: 3,
+      evidenceSnippet: '"strict": true,',
+      confidence: 1,
+      status: 'pending',
+      origin: 'config',
+    },
+    {
+      workspaceId,
+      repoId,
+      category: 'general',
+      rule: 'Log lines go through the shared logger, never a bare console.log.',
+      evidencePath: 'src/lib/log.ts',
+      evidenceLine: 4,
+      evidenceSnippet: "export const log = pino({ level: 'info' });",
+      confidence: 0.6,
+      status: 'rejected',
+      origin: 'model',
+      supportCount: 2,
+      probe: 'pino(',
+    },
+  ];
+  for (const c of seedConventions) {
+    const [existing] = await db
+      .select()
+      .from(t.conventions)
+      .where(and(eq(t.conventions.repoId, repoId), eq(t.conventions.rule, c.rule)));
+    if (!existing) await db.insert(t.conventions).values(c);
+  }
+
+  const [existingScan] = await db
+    .select()
+    .from(t.conventionScans)
+    .where(eq(t.conventionScans.repoId, repoId));
+  if (!existingScan) {
+    await db
+      .insert(t.conventionScans)
+      .values({
+        workspaceId,
+        repoId,
+        status: 'done',
+        sampledFiles: [
+          'package.json',
+          'tsconfig.json',
+          'src/api/users.ts',
+          'src/api/public/index.ts',
+          'src/lib/redis.ts',
+          'src/lib/log.ts',
+        ],
+        proposed: 4,
+        fromConfig: 1,
+        droppedUngrounded: 1,
+        droppedUnsupported: 0,
+        droppedDuplicate: 0,
+        droppedExistingSkill: 0,
+        droppedCategoryCap: 0,
+        model: 'deepseek/deepseek-v4-flash',
+        costUsd: 0.0012,
+        finishedAt: new Date(),
+      })
+      .returning();
+  }
+
   // Link skills to the three pre-existing agents too, so the Stats tab has
   // "N agents" / findings to show immediately, not just on the two new ones.
   // Those three were inserted via a raw db.insert above (not the repository),

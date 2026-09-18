@@ -195,15 +195,106 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
+export const ConventionCategory = z.enum([
+  'naming',
+  'structure',
+  'errors',
+  'testing',
+  'imports',
+  'typing',
+  'api',
+  'general',
+]);
+export type ConventionCategory = z.infer<typeof ConventionCategory>;
+
+/**
+ * Triage state of a candidate. Three states, not a boolean: a re-scan replaces
+ * only `pending` rows, so `rejected` is what keeps a rule the user dismissed
+ * from reappearing on every scan.
+ */
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+/** Where a candidate came from: proposed by the model (evidence-gated) or
+ *  parsed straight out of a config file (no model call, confidence fixed at 1). */
+export const ConventionOrigin = z.enum(['model', 'config']);
+export type ConventionOrigin = z.infer<typeof ConventionOrigin>;
+
+/**
+ * One extracted house-rule proposal. `evidence_path` / `evidence_line` /
+ * `evidence_snippet` are VERIFIED server-side against the checked-out file
+ * before the row is written — a candidate whose snippet is not in the file is
+ * dropped, never persisted, so everything the UI shows is real code.
+ */
 export const ConventionCandidate = z.object({
   id: z.string(),
+  repo_id: z.string().nullish(),
+  category: ConventionCategory,
   rule: z.string(),
+  rationale: z.string().nullish(),
   evidence_path: z.string(),
+  evidence_line: z.number().int().nullish(),
   evidence_snippet: z.string(),
   confidence: z.number().min(0).max(1),
-  accepted: z.boolean(),
+  status: ConventionStatus,
+  origin: ConventionOrigin,
+  /** Distinct repo-wide files matching the rule's probe (frequency grounding);
+      null until that pass has run, always null for `origin: 'config'` rows. */
+  support_count: z.number().int().nullish(),
+  created_at: z.string().nullish(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/**
+ * A Conventions Extractor scan run. `POST /repos/:id/conventions/extract`
+ * returns `{ status: 'accepted', scan_id, job_id }` immediately; the client
+ * polls `GET /repos/:id/conventions/scan` for this shape until `status`
+ * leaves `'running'`. The `dropped_*` counters explain the gap between what
+ * the model proposed and what survived — a thin result reads as "the gate
+ * worked", not "the feature is broken".
+ */
+export const ConventionScan = z.object({
+  id: z.string(),
+  repo_id: z.string(),
+  status: z.enum(['running', 'done', 'failed']),
+  sampled_files: z.array(z.string()),
+  proposed: z.number().int(),
+  from_config: z.number().int(),
+  dropped_ungrounded: z.number().int(),
+  dropped_unsupported: z.number().int(),
+  dropped_duplicate: z.number().int(),
+  dropped_existing_skill: z.number().int(),
+  dropped_category_cap: z.number().int(),
+  model: z.string().nullish(),
+  cost_usd: z.number().nullish(),
+  error: z.string().nullish(),
+  started_at: z.string(),
+  finished_at: z.string().nullish(),
+});
+export type ConventionScan = z.infer<typeof ConventionScan>;
+
+/** The 202 body of `POST /repos/:id/conventions/extract`. */
+export const ConventionExtractAccepted = z.object({
+  status: z.literal('accepted'),
+  scan_id: z.string(),
+  job_id: z.string().nullish(),
+});
+export type ConventionExtractAccepted = z.infer<typeof ConventionExtractAccepted>;
+
+/**
+ * The skill draft assembled from accepted candidates. Persists NOTHING — the
+ * user edits it in the modal and then POSTs it to `/skills`, the same
+ * preview-then-confirm flow skill import uses.
+ */
+export const ConventionSkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: z.literal('convention'),
+  body: z.string(),
+  evidence_files: z.array(z.string()),
+  convention_ids: z.array(z.string()),
+});
+export type ConventionSkillDraft = z.infer<typeof ConventionSkillDraft>;
 
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a

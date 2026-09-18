@@ -7,6 +7,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type {
+  AgentSkillLink,
   Skill,
   SkillDraft,
   SkillStats,
@@ -49,6 +50,8 @@ export interface CreateSkillInput {
    *  SkillDraft's own source through so trust-per-source carries into the
    *  prompt (see server's ReviewRunExecutor.buildSkillBlocks). */
   source?: Skill["source"];
+  /** Source files the body's rules were extracted from (Conventions Extractor). */
+  evidence_files?: string[];
 }
 
 export function useCreateSkill() {
@@ -147,5 +150,25 @@ export function useImportSkillFile() {
   return useMutation({
     mutationFn: (input: { filename: string; content_b64: string }) =>
       api.post<SkillDraft>("/skills/import", input),
+  });
+}
+
+/**
+ * Link ONE skill to an agent — additive, unlike `useSetAgentSkills` which
+ * replaces the agent's whole linked set (and would silently wipe its other
+ * skills). Used by the Conventions Extractor's Create-skill modal, which
+ * links the freshly created skill without touching anything already linked.
+ */
+export function useLinkAgentSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, skillId }: { agentId: string; skillId: string }) =>
+      api.post<AgentSkillLink[]>(`/agents/${agentId}/skills`, { skill_id: skillId }),
+    onSuccess: (data, { agentId }) => {
+      qc.setQueryData(["agent-skills", agentId], data);
+      qc.invalidateQueries({ queryKey: ["agent", agentId] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      qc.invalidateQueries({ queryKey: skillKeys.list() });
+    },
   });
 }

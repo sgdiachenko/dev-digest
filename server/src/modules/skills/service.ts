@@ -31,6 +31,8 @@ export interface CreateSkillInput {
    * with — the run executor wraps anything but 'manual' in `<untrusted>`.
    */
   source?: SkillSource;
+  /** Source files the body's rules were extracted from (Conventions Extractor). */
+  evidenceFiles?: string[];
 }
 
 export interface UpdateSkillInput {
@@ -80,6 +82,7 @@ export class SkillsService {
       source: input.source ?? 'manual',
       body: input.body,
       enabled: input.enabled,
+      ...(input.evidenceFiles ? { evidenceFiles: input.evidenceFiles } : {}),
     });
     return toSkillDto(row);
   }

@@ -1,0 +1,14 @@
+{
+  "name": "Conventions board renders seeded candidates, evidence and the scan summary",
+  "description": "Loads /conventions and confirms the seeded acme/payments-api board renders: an accepted model-proposed rule, a rejected one (still visible, just deprioritized), a zero-cost config-derived rule, the scan summary counters, and the Create-skill action once accepted candidates exist. Read-only seeded data (no scan click — a real extraction is a paid LLM call and would break determinism). Interactive triage (accept/reject/edit/filter clicks) is covered instead by client unit tests (ConventionCard.test.tsx, helpers.test.ts). Assumes a freshly-seeded DB (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/conventions"], "label": "load the Conventions board" },
+    { "cmd": ["wait", "--url", "/conventions"], "label": "conventions route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "conventions + scan fetch settle" },
+    { "cmd": ["wait", "--text", "Conventions in acme/payments-api"], "label": "heading names the active repo" },
+    { "cmd": ["wait", "--text", "Always use async/await instead of .then() chains."], "label": "a seeded, accepted model-proposed rule renders" },
+    { "cmd": ["wait", "--text", "TypeScript strict mode is on"], "label": "a seeded config-derived rule renders (origin: config)" },
+    { "cmd": ["wait", "--text", "Log lines go through the shared logger"], "label": "the seeded rejected candidate is still visible (D5: not hidden, just deprioritized)" },
+    { "cmd": ["wait", "--text", "Create skill"], "label": "Create-skill action is present once accepted candidates exist" }
+  ]
+}

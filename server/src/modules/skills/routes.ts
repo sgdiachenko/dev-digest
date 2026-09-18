@@ -51,6 +51,9 @@ const CreateSkillBody = z.object({
    *  source (e.g. 'imported_url') so trust-per-source carries through to the
    *  prompt (see ReviewRunExecutor.buildSkillBlocks). */
   source: SkillSource.optional(),
+  /** Source files the body's rules were extracted from — the Conventions
+   *  Extractor's Create-skill modal sends its draft's `evidence_files` here. */
+  evidence_files: z.array(z.string()).optional(),
 });
 
 const UpdateSkillBody = z.object({
@@ -106,6 +109,7 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
         ...(body.description !== undefined ? { description: body.description } : {}),
         ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
         ...(body.source !== undefined ? { source: body.source } : {}),
+        ...(body.evidence_files !== undefined ? { evidenceFiles: body.evidence_files } : {}),
       });
       reply.status(201);
       return skill;

@@ -32,6 +32,8 @@ export interface InsertSkill {
   source: SkillSource;
   body: string;
   enabled?: boolean;
+  /** Source files the body's rules were extracted from (Conventions Extractor). */
+  evidenceFiles?: string[];
 }
 
 export interface UpdateSkill {
@@ -93,6 +95,7 @@ export class SkillsRepository {
             body: values.body,
             enabled: values.enabled ?? true,
             version: INITIAL_SKILL_VERSION,
+            ...(values.evidenceFiles ? { evidenceFiles: values.evidenceFiles } : {}),
           })
           .returning();
         await tx.insert(t.skillVersions).values({
