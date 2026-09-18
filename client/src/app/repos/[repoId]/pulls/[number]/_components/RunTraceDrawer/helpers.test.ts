@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatCost } from "./helpers";
+import { estimateTokens, formatCost } from "./helpers";
 
 describe("formatCost", () => {
   it("renders '—' for unknown cost (null/undefined), never '$0.00'", () => {
@@ -19,5 +19,18 @@ describe("formatCost", () => {
   it("shows 2 decimal places for costs of $1 or more", () => {
     expect(formatCost(3.2)).toBe("$3.20");
     expect(formatCost(12)).toBe("$12.00");
+  });
+});
+
+describe("estimateTokens", () => {
+  it("returns 0 for an absent/empty block, not NaN or a false count", () => {
+    expect(estimateTokens(null)).toBe(0);
+    expect(estimateTokens(undefined)).toBe(0);
+    expect(estimateTokens("")).toBe(0);
+  });
+
+  it("roughly approximates chars/4, rounded up", () => {
+    expect(estimateTokens("a".repeat(400))).toBe(100);
+    expect(estimateTokens("abc")).toBe(1);
   });
 });

@@ -20,7 +20,19 @@ const miniBtnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-export function PromptBlock({ label, text, color }: { label: string; text: string; color: string }) {
+export function PromptBlock({
+  label,
+  text,
+  color,
+  tokens,
+}: {
+  label: string;
+  text: string;
+  color: string;
+  /** Rough per-block token estimate (helpers.estimateTokens) — omitted when
+   *  the block is empty, so an absent optional slot shows no count at all. */
+  tokens?: number;
+}) {
   const t = useTranslations("runs");
   const [open, setOpen] = React.useState(false);
   const [full, setFull] = React.useState(false);
@@ -35,6 +47,11 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
       <div onClick={() => setOpen((o) => !o)} style={s.promptHead}>
         <span style={s.promptDot(color)} />
         <span style={s.promptLabel}>{label}</span>
+        {!!tokens && (
+          <span className="tnum" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {t("trace.prompt.tokensEstimate", { count: tokens })}
+          </span>
+        )}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           <button
             type="button"

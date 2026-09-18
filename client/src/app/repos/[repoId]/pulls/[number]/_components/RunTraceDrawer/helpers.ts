@@ -34,3 +34,15 @@ export function formatCost(usd: number | null | undefined): string {
   const rounded = Number(usd.toPrecision(2));
   return `$${rounded >= 1 ? rounded.toFixed(2) : String(rounded)}`;
 }
+
+/**
+ * Rough per-block token estimate for the prompt-assembly drawer (chars/4 —
+ * the real tokenizer used for cost/`trace.stats.tokens_in` runs server-side
+ * only, via TiktokenTokenizer; this is a client-side approximation for "how
+ * much did this block add", not the billed count). Null/empty → 0, so an
+ * absent optional block (e.g. no skills linked) never shows a token count.
+ */
+export function estimateTokens(text: string | null | undefined): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}

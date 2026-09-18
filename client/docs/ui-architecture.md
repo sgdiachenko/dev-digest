@@ -14,7 +14,9 @@ Hooks are grouped by domain, not by page:
 
 - `hooks/core.ts` — repos, pulls, polling
 - `hooks/reviews.ts` — runs, findings, accept/dismiss
-- `hooks/agents.ts` — agent CRUD
+- `hooks/agents.ts` — agent CRUD + `useAgentSkills`/`useSetAgentSkills` (an
+  agent's linked, ordered skills)
+- `hooks/skills.ts` — skill CRUD, versions/restore, stats, file import (L02)
 - `hooks/repo-intel.ts` — index state, resync
 - `hooks/trace.ts` — SSE run-trace subscription
 

@@ -1,0 +1,28 @@
+{
+  "name": "Skills Lab renders a seeded skill and its four editor tabs",
+  "description": "Loads /skills, confirms a seeded skill (pr-quality-rubric) renders on the rail, opens it, and walks Config → Preview → Stats → Versions. Read-only seeded data (no model call). Assumes a freshly-seeded DB (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/skills"], "label": "load the Skills Lab" },
+    { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skills list fetch settles" },
+    { "cmd": ["wait", "--text", "pr-quality-rubric"], "label": "seeded skill card is visible" },
+    { "cmd": ["find", "text", "pr-quality-rubric", "click"], "label": "open the skill" },
+    { "cmd": ["wait", "--url", "/skills/"], "label": "navigate to the skill editor route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skill detail fetch settles" },
+    { "cmd": ["wait", "--text", "Configuration"], "label": "Config tab (default) renders" },
+
+    { "cmd": ["find", "role", "button", "click", "--name", "Preview"], "label": "switch to the Preview tab" },
+    { "cmd": ["wait", "--url", "tab=preview"], "label": "preview tab is active in the URL" },
+    { "cmd": ["wait", "--text", "Rendered as the reviewing agent receives it."], "label": "Preview tab caption renders" },
+
+    { "cmd": ["find", "role", "button", "click", "--name", "Stats"], "label": "switch to the Stats tab" },
+    { "cmd": ["wait", "--url", "tab=stats"], "label": "stats tab is active in the URL" },
+    { "cmd": ["wait", "--text", "Used by"], "label": "Stats tab metric tiles render" },
+    { "cmd": ["wait", "--text", "Agents using this skill"], "label": "Stats tab agents panel renders" },
+
+    { "cmd": ["find", "role", "button", "click", "--name", "Versions"], "label": "switch to the Versions tab" },
+    { "cmd": ["wait", "--url", "tab=versions"], "label": "versions tab is active in the URL" },
+    { "cmd": ["wait", "--text", "Version history"], "label": "Versions tab heading renders" },
+    { "cmd": ["wait", "--text", "Current"], "label": "the latest version is marked Current" }
+  ]
+}

@@ -1,8 +1,8 @@
-import type { GitClient, LLMProvider, Provider as ProviderId } from '@devdigest/shared';
+import type { GitClient, LLMProvider, Provider as ProviderId, SkillSource } from '@devdigest/shared';
 import type { RunBus } from '../../platform/sse.js';
 import type { RepoIntel } from '../repo-intel/types.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
+import { reviewPullRequest, countBlockers, wrapUntrusted } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
@@ -10,6 +10,23 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+
+/** One skill linked to a review agent, resolved for prompt assembly. */
+export interface PromptSkill {
+  id: string;
+  name: string;
+  body: string;
+  source: SkillSource;
+}
+
+/**
+ * Port the executor needs to resolve an agent's linked skills into prompt-
+ * ready bodies. `SkillsRepository` satisfies this; the executor takes the
+ * interface, not the repository class (`service-takes-ports-not-container`).
+ */
+export interface SkillsReader {
+  forAgent(agentId: string): Promise<PromptSkill[]>;
+}
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -43,13 +60,14 @@ export type RunOutcome = {
  * review. Per-agent failures are isolated.
  */
 export class ReviewRunExecutor {
-  /** Ports, not the container: the run loop needs exactly these four. */
+  /** Ports, not the container: the run loop needs exactly these five. */
   constructor(
     private repo: ReviewRepository,
     private runBus: RunBus,
     private llm: (provider: ProviderId) => Promise<LLMProvider>,
     private repoIntel: RepoIntel,
     private git: GitClient,
+    private skills: SkillsReader,
   ) {}
 
   /**
@@ -189,6 +207,11 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // L02 — the agent's linked, enabled skills, resolved to prompt-ready
+      // bodies (and their ids, for the trace's pull-frequency stat).
+      const linkedSkills = await this.buildSkillBlocks(agent.id, runLog);
+      const skillBlocks = linkedSkills.map((s) => s.block);
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -209,6 +232,10 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // L02 — the agent's linked skills, in `agent_skills.order`. Omitted
+        // when the agent has none linked (or none enabled), same
+        // omit-when-empty contract as callers/repoMap above.
+        ...(skillBlocks.length ? { skills: skillBlocks } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -271,6 +298,10 @@ export class ReviewRunExecutor {
           model: agent.model,
           pr: pull.number,
           source: 'local',
+          // Skill ids actually injected into THIS run's prompt — backs a
+          // skill's pull-frequency stat (a real query over runs recorded
+          // since this field started being written, not an estimate).
+          skills: linkedSkills.map((s) => s.id),
         },
         stats: {
           duration_ms: durationMs,
@@ -324,6 +355,38 @@ export class ReviewRunExecutor {
       this.runBus.complete(runId);
       throw err;
     }
+  }
+
+  /**
+   * Resolve the agent's linked, enabled skills into prompt-ready blocks.
+   *
+   * Trust is per source: a `manual` skill is the workspace's own instruction
+   * (rendered raw, same as the agent's system prompt); anything imported is
+   * wrapped in `<untrusted>` so `INJECTION_GUARD` covers it too — an imported
+   * skill is someone else's instructions in the prompt, so it gets the same
+   * treatment as the diff, not the same trust as a hand-written rubric.
+   * Best-effort: a failure here returns `[]`, leaving the prompt identical to
+   * the no-skills baseline (never breaks the run).
+   */
+  private async buildSkillBlocks(
+    agentId: string,
+    runLog: RunLogger,
+  ): Promise<Array<{ id: string; block: string }>> {
+    let linked: PromptSkill[];
+    try {
+      linked = await this.skills.forAgent(agentId);
+    } catch (err) {
+      runLog.info(`skills: lookup failed — ${(err as Error).message}`);
+      return [];
+    }
+    if (linked.length === 0) return [];
+
+    const resolved = linked.map((s) => ({
+      id: s.id,
+      block: s.source === 'manual' ? s.body : wrapUntrusted(`skill:${s.name}`, s.body),
+    }));
+    runLog.info(`Attached ${resolved.length} skill(s): ${linked.map((s) => s.name).join(', ')}`);
+    return resolved;
   }
 
   /**

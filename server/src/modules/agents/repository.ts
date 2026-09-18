@@ -65,6 +65,19 @@ export function isConfigChange(
   );
 }
 
+/**
+ * True when two ordered skill-id lists differ — either set (added/removed) OR
+ * order (reordered). Order matters here: `agent_skills.order` is the sequence
+ * of `## Skills / rules` blocks in the prompt, so a reorder is a real config
+ * change even when the linked set is unchanged. Kept beside `isConfigChange`
+ * for the same reason that one lives here rather than in helpers.ts — its one
+ * consumer is below, and helpers.ts importing row types back from this file
+ * would make `repository → helpers → repository` a cycle.
+ */
+function skillOrderChanged(before: string[], after: string[]): boolean {
+  return before.length !== after.length || before.some((id, i) => id !== after[i]);
+}
+
 export interface InsertAgent {
   workspaceId: string;
   name: string;
@@ -219,6 +232,19 @@ export class AgentsRepository {
 
   // ---- agent_versions (immutable config snapshots) ------------------------
 
+  /**
+   * Backfill a v1 config snapshot for an agent that was inserted OUTSIDE this
+   * repository (e.g. a raw `db.insert(t.agents)` in a seed script) and so has
+   * no `agent_versions` row yet, despite `agents.version` reading 1. No-op if
+   * a snapshot already exists — never overwrites real version history.
+   */
+  async ensureInitialVersionSnapshot(agentId: string): Promise<void> {
+    const existing = await this.listVersions(agentId);
+    if (existing.length > 0) return;
+    const [row] = await this.db.select().from(t.agents).where(eq(t.agents.id, agentId));
+    if (row) await this.snapshotVersion(row, row.version);
+  }
+
   /** All config snapshots for an agent, newest version first. */
   async listVersions(agentId: string): Promise<AgentVersionRow[]> {
     return this.db
@@ -255,8 +281,14 @@ export class AgentsRepository {
     return links.map((l) => l.skill.id);
   }
 
-  /** Link a skill to an agent at a given order (idempotent: upserts order). */
+  /**
+   * Link a skill to an agent at a given order (idempotent: upserts order).
+   * A real change (new link, or a reorder of an existing one) bumps the
+   * agent's config version and snapshots agent_versions — skill selection is
+   * config, same as editing the system prompt.
+   */
   async linkSkill(agentId: string, skillId: string, order: number): Promise<void> {
+    const before = await this.skillIdsForAgent(agentId);
     await this.db
       .insert(t.agentSkills)
       .values({ agentId, skillId, order })
@@ -264,12 +296,17 @@ export class AgentsRepository {
         target: [t.agentSkills.agentId, t.agentSkills.skillId],
         set: { order },
       });
+    const after = await this.skillIdsForAgent(agentId);
+    if (skillOrderChanged(before, after)) await this.bumpVersionForSkillChange(agentId);
   }
 
   async unlinkSkill(agentId: string, skillId: string): Promise<void> {
+    const before = await this.skillIdsForAgent(agentId);
     await this.db
       .delete(t.agentSkills)
       .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.skillId, skillId)));
+    const after = await this.skillIdsForAgent(agentId);
+    if (skillOrderChanged(before, after)) await this.bumpVersionForSkillChange(agentId);
   }
 
   /**
@@ -278,10 +315,27 @@ export class AgentsRepository {
    * the list are unlinked.
    */
   async setSkills(agentId: string, skillIds: string[]): Promise<void> {
+    const before = await this.skillIdsForAgent(agentId);
     await this.db.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
-    if (skillIds.length === 0) return;
-    await this.db
-      .insert(t.agentSkills)
-      .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+    if (skillIds.length > 0) {
+      await this.db
+        .insert(t.agentSkills)
+        .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+    }
+    if (skillOrderChanged(before, skillIds)) await this.bumpVersionForSkillChange(agentId);
+  }
+
+  /** Bump `agents.version` and snapshot `agent_versions` after a skill-link
+   *  change that `linkSkill`/`unlinkSkill`/`setSkills` detected as real. */
+  private async bumpVersionForSkillChange(agentId: string): Promise<void> {
+    const [existing] = await this.db.select().from(t.agents).where(eq(t.agents.id, agentId));
+    if (!existing) return; // agent deleted mid-request — nothing to version
+    const nextVersion = existing.version + 1;
+    const [row] = await this.db
+      .update(t.agents)
+      .set({ version: nextVersion })
+      .where(eq(t.agents.id, agentId))
+      .returning();
+    if (row) await this.snapshotVersion(row, nextVersion);
   }
 }

@@ -8,7 +8,6 @@ import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
-import { AgentsRepository } from '../src/modules/agents/repository.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -148,6 +147,59 @@ d('GET /agents/:id/versions', () => {
     ).json().id as string;
     const res = await app.inject({ method: 'GET', url: `/agents/${agentId}/versions/abc` });
     expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it('linking, reordering, or unlinking a skill bumps the version — same as any other config edit', async () => {
+    const app = await makeApp();
+    const agentId = (
+      await app.inject({ method: 'POST', url: '/agents', payload: createBody })
+    ).json().id as string;
+
+    const skillA = (
+      await app.inject({ method: 'POST', url: '/skills', payload: { name: 'skill-a-vb', type: 'custom', body: 'x' } })
+    ).json();
+    const skillB = (
+      await app.inject({ method: 'POST', url: '/skills', payload: { name: 'skill-b-vb', type: 'custom', body: 'y' } })
+    ).json();
+
+    // Linking one skill: v1 -> v2.
+    let linked = (
+      await app.inject({
+        method: 'POST',
+        url: `/agents/${agentId}/skills`,
+        payload: { skill_ids: [skillA.id] },
+      })
+    ).json();
+    expect(linked).toEqual([{ agent_id: agentId, skill_id: skillA.id, order: 0 }]);
+    expect((await app.inject({ method: 'GET', url: `/agents/${agentId}` })).json().version).toBe(2);
+
+    // Re-posting the SAME set is a no-op — no version bump.
+    await app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload: { skill_ids: [skillA.id] } });
+    expect((await app.inject({ method: 'GET', url: `/agents/${agentId}` })).json().version).toBe(2);
+
+    // Reordering (same set, different order) is a real change: v2 -> v3.
+    linked = (
+      await app.inject({
+        method: 'POST',
+        url: `/agents/${agentId}/skills`,
+        payload: { skill_ids: [skillB.id, skillA.id] },
+      })
+    ).json();
+    expect(linked.map((l: { skill_id: string }) => l.skill_id)).toEqual([skillB.id, skillA.id]);
+    expect((await app.inject({ method: 'GET', url: `/agents/${agentId}` })).json().version).toBe(3);
+
+    // Unlinking everything: v3 -> v4. The snapshot's config.skills reflects it.
+    await app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload: { skill_ids: [] } });
+    const versions = (
+      await app.inject({ method: 'GET', url: `/agents/${agentId}/versions` })
+    ).json();
+    expect(versions.map((v: { version: number }) => v.version)).toEqual([4, 3, 2, 1]);
+    expect(versions[0].config.skills).toEqual([]);
+    expect(versions[1].config.skills).toEqual([skillB.id, skillA.id]);
+    expect(versions[2].config.skills).toEqual([skillA.id]);
+    expect(versions[3].config.skills).toEqual([]);
+
     await app.close();
   });
 

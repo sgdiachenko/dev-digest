@@ -31,7 +31,8 @@ npm run typecheck
 - `wait --text` / `wait --url` **are** the assertions — they time out and exit
   non-zero if the condition never holds; there's no separate "expect" step.
 - Flows target read-only seeded data only (`acme/payments-api`, PR #482, the
-  two built-in agents) — nothing here triggers a real model call.
+  five built-in agents, the five built-in skills) — nothing here triggers a
+  real model call.
 
 ## Gotchas
 

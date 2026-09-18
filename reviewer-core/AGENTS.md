@@ -34,9 +34,13 @@ npm test            # vitest, hermetic, LLM stubbed — no keys, no network
   **source** via a tsconfig path alias (`@devdigest/reviewer-core` →
   `../reviewer-core/src`) — never a compiled artifact.
 - The engine accepts optional prompt slots (`skills`, `memory`, `specs`,
-  `callers`) that later course lessons feed. The starter server passes only
-  diff + system prompt + repo map; `assemblePrompt` simply omits the rest —
-  don't add server-side logic to "fill" them early.
+  `callers`) that course lessons feed. `skills` is fed as of L02 — the server
+  resolves an agent's linked, enabled skills to RESOLVED bodies (not slugs) and
+  trust-per-source-wraps anything but a `manual` skill *before* calling this
+  package (`ReviewRunExecutor.buildSkillBlocks`); `assemblePrompt` stays
+  agnostic to that distinction, it only joins and places the blocks. `memory`,
+  `specs`, and `callers` remain unfed by the starter server; `assemblePrompt`
+  simply omits them — don't add server-side logic to "fill" those early.
 - Contracts (`Review`, `Finding`, `Verdict`, …) come from `@devdigest/shared`, not defined locally.
 
 ## Gotchas

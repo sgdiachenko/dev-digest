@@ -78,6 +78,11 @@ export const RunTrace = z.object({
     model: z.string(),
     pr: z.number().int().nullish(),
     source: z.enum(['local', 'ci']).default('local'),
+    /** Skill ids injected into THIS run's prompt, in prompt order; null/absent
+        for runs recorded before skills existed. Backs a skill's pull-frequency
+        stat — a real query, not an estimate, but only over runs since this
+        field started being written. */
+    skills: z.array(z.string()).nullish(),
   }),
   stats: RunStats,
   prompt_assembly: PromptAssembly,

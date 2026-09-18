@@ -38,12 +38,39 @@ that card's finding list to one severity (click again to clear) — see
 
 ## `/agents`
 
-Lists built-in (`General`, `Security`) and user-created agents.
+Lists built-in (`General Reviewer`, `Security Reviewer`, `Performance
+Reviewer`, `Test Quality Reviewer`, `API Contract Reviewer`) and user-created
+agents.
 
 ## `/agents/:id`
 
-Editor for one agent: model, system prompt, `repo_intel` toggle. Must persist
-on save and must not silently drop the toggle state.
+Editor for one agent: Config (model, system prompt, `repo_intel` toggle) and
+Skills tabs. Config must persist on save and must not silently drop the toggle
+state. The Skills tab links/unlinks/reorders this agent's skills; every write
+posts the **full** ordered `skill_ids` set (there is no per-link enable —
+"enabled for this agent" is link/unlink), and a real change (added, removed,
+or reordered — not a same-set re-post) must bump the agent's version.
+
+## `/skills`
+
+Lists workspace skills as a searchable rail, each card showing its type,
+source, and Stats-tab counters (agent count, pull %, accept %) from the
+`GET /skills` list response — must not fire one stats request per card. `Add
+Skill` offers **Create from scratch** and **Import from file** (`.md`/`.zip`)
+only; nothing is persisted from an import until the preview is confirmed, and
+an archive's non-markdown entries must be listed as skipped, never executed.
+
+## `/skills/:id`
+
+Same rail, with a skill selected and a four-tab editor: **Config** (name,
+description, type, body, enabled, an optional "what changed?" note — a body
+edit bumps the version), **Preview** (rendered markdown, exactly as the
+reviewing agent receives it — an imported skill's untrusted-wrap notice shows
+here), **Stats** (agent count, pull frequency, accept rate, findings by
+category — every null-data field must render `—`, never a misleading `0%`),
+and **Versions** (body-snapshot history; `Diff` compares a past snapshot
+against the current body, `Restore` appends a new version rather than
+rewinding history — never available on the current version's own row).
 
 ## `/settings/:section`
 

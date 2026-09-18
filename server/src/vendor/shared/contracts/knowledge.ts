@@ -118,6 +118,9 @@ export type SkillType = z.infer<typeof SkillType>;
 export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community']);
 export type SkillSource = z.infer<typeof SkillSource>;
 
+/** Skill name: slug-ish, stable enough to use as a prompt label. */
+export const SKILL_NAME_RE = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/;
+
 export const Skill = z.object({
   id: z.string(),
   name: z.string(),
@@ -130,6 +133,57 @@ export const Skill = z.object({
   evidence_files: z.array(z.string()).nullish(),
 });
 export type Skill = z.infer<typeof Skill>;
+
+/** One immutable body snapshot (mirrors `skill_versions`). */
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  /** Short "what changed" note captured at save time; null for older rows. */
+  note: z.string().nullish(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
+
+/** Parsed-but-not-persisted import result shown in the confirm step
+    (`POST /skills/import`). Archive entries that were deliberately NOT
+    processed (scripts, binaries, …) are listed in `skipped_files` so the
+    import UI can show what was left out — nothing in that list was read. */
+export const SkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  source: SkillSource,
+  skipped_files: z.array(z.string()),
+});
+export type SkillDraft = z.infer<typeof SkillDraft>;
+
+/**
+ * Skill editor "Stats" tab + rail-card counters — every field is derived from
+ * existing tables (agent_skills / findings / reviews / agent_runs / run_traces),
+ * never a separate analytics table. Nullable fields mean "not enough data yet",
+ * rendered as "—", never coerced to 0/0%.
+ */
+export const SkillStats = z.object({
+  agent_count: z.number().int(),
+  /** % of linked agents' runs whose trace recorded this skill id; null when
+      those agents have no runs yet (or all predate trace.config.skills). */
+  pull_pct: z.number().nullable(),
+  /** accepted / (accepted + dismissed) findings attributed to linked agents in
+      the stats window; null when nothing has been triaged yet. */
+  accept_pct: z.number().nullable(),
+  /** Findings from linked agents' runs in the stats window (findings are
+      attributed at agent granularity, not provably caused by this skill). */
+  findings_30d: z.number().int(),
+  by_category: z.array(z.object({ category: z.string(), count: z.number().int() })),
+  agents: z.array(z.object({ id: z.string(), name: z.string() })),
+});
+export type SkillStats = z.infer<typeof SkillStats>;
+
+/** The `GET /skills` row shape — one request for the whole rail, no N+1. */
+export const SkillWithStats = Skill.extend({ stats: SkillStats });
+export type SkillWithStats = z.infer<typeof SkillWithStats>;
 
 export const CommunitySkill = z.object({
   name: z.string(),

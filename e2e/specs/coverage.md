@@ -17,6 +17,7 @@ full page-level contract — not everything specified there is exercised here.
 | `05-pr-diff` | The Files changed tab renders a seeded file in the diff viewer |
 | `06-onboarding` | The add-repository form renders (form only — no submit, no real import) |
 | `07-settings` | Both settings sections (`api-keys`, `models`) render their section titles |
+| `08-skills` | The Skills Lab rail renders a seeded skill; opening it and switching Config → Preview → Stats → Versions all render (read-only) |
 
 ## Explicitly NOT covered
 
@@ -40,7 +41,10 @@ full page-level contract — not everything specified there is exercised here.
 - **Error/failure states** — no flow simulates a failed import, a failed run,
   or an API error response.
 - **Form submission** — `06-onboarding` checks the form renders, not that
-  submitting it imports a repo.
+  submitting it imports a repo. Same for the Skills Lab: `08-skills` never
+  saves a Config edit, imports a `.md`/`.zip` file, restores a version, or
+  links/unlinks a skill on an agent — those are covered by client unit tests
+  (`ConfigTab`/`ImportSkillModal`/`VersionsTab`/agent `SkillsTab` test files).
 - **Auth** — the starter has none to cover.
 
 A gap here is a candidate for a new flow, not a reason to widen an existing

@@ -24,6 +24,7 @@ import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
+import { SkillsRepository } from '../modules/skills/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import { ReviewService } from '../modules/reviews/service.js';
 import { ReviewRunExecutor } from '../modules/reviews/run-executor.js';
@@ -73,6 +74,7 @@ export class Container {
   // runs). Constructed here, in the composition root, so consuming modules use
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
+  private _skillsRepo?: SkillsRepository;
   private _reviewRepo?: ReviewRepository;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
@@ -98,6 +100,10 @@ export class Container {
     return (this._agentsRepo ??= new AgentsRepository(this.db));
   }
 
+  get skillsRepo(): SkillsRepository {
+    return (this._skillsRepo ??= new SkillsRepository(this.db));
+  }
+
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
   }
@@ -117,6 +123,7 @@ export class Container {
       (provider) => this.llm(provider),
       this.repoIntel,
       this.git,
+      this.skillsRepo,
     );
     return new ReviewService(this.reviewRepo, this.agentsRepo, this.runBus, executor);
   }
