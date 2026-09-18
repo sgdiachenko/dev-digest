@@ -9,6 +9,10 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [pr-self-review](pr-self-review/SKILL.md) | Workflow | Routes the skills below at the local diff before a PR exists; a CRITICAL finding blocks `gh pr create`/`merge` |
 | [onion-architecture](onion-architecture/SKILL.md) | Backend | Ring map for `server/`/`reviewer-core/`, inward-only imports, ports, depcruise enforcement |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
+| [breaking-change](breaking-change/SKILL.md) | Backend | Reviews backend changes for backward-incompatible public API behavior (routes, contracts, validation, statuses) |
+| [response-schema](response-schema/SKILL.md) | Backend | Checks response body structure (fields, presence, types, nesting) stays compatible with existing clients |
+| [deprecation-policy](deprecation-policy/SKILL.md) | Backend | Checks public API deprecations, migration paths, removal timelines, and compatibility windows |
+| [semver-discipline](semver-discipline/SKILL.md) | Backend | Checks release versions or release intents against public API changes and the established versioning policy |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |
 | [next-best-practices](next-best-practices/SKILL.md) | Frontend | Next.js App Router, RSC boundaries, data fetching, optimization |
