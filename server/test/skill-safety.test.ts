@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assessSkillSafety } from '../src/modules/skills/safety.js';
-import { isPublicIpv4, validateSkillUrl } from '../src/modules/skills/url-import.js';
+import { isPublicIpv4, resolveSkillDownloadUrl, validateSkillUrl } from '../src/modules/skills/url-import.js';
 
 describe('skill import safety', () => {
   it('blocks instruction overrides and forced review outcomes', () => {
@@ -24,5 +24,12 @@ describe('skill import safety', () => {
       expect(isPublicIpv4(address)).toBe(false);
     }
     expect(isPublicIpv4('8.8.8.8')).toBe(true);
+  });
+
+  it('converts a Google Drive sharing page to its download endpoint', () => {
+    expect(resolveSkillDownloadUrl('https://drive.google.com/file/d/abc-123/view?usp=sharing').toString())
+      .toBe('https://drive.google.com/uc?export=download&id=abc-123');
+    expect(resolveSkillDownloadUrl('https://raw.githubusercontent.com/org/repo/main/SKILL.md').pathname)
+      .toBe('/org/repo/main/SKILL.md');
   });
 });

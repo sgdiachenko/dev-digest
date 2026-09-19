@@ -10,7 +10,6 @@ import type {
 import type { LLMProvider } from '@devdigest/shared';
 import type { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
-import type { SkillsRepository } from '../skills/repository.js';
 import { assessSkillSafety } from '../skills/safety.js';
 import { ValidationError } from '../../platform/errors.js';
 
@@ -55,11 +54,17 @@ export interface UpdateAgentInput {
  *  service needs, injected rather than reached for through the container. */
 export type LlmFactory = (provider: Provider) => Promise<LLMProvider>;
 
+/** Agents only need to read the skill body before adding a link. The concrete
+ * skills repository is supplied by the composition root in routes.ts. */
+export interface LinkableSkillsReader {
+  getById(workspaceId: string, skillId: string): Promise<{ body: string } | undefined>;
+}
+
 export class AgentsService {
   constructor(
     private readonly repo: AgentsRepository,
     private readonly llm: LlmFactory,
-    private readonly skillsRepo: SkillsRepository,
+    private readonly skillsRepo: LinkableSkillsReader,
   ) {}
 
   async list(workspaceId: string): Promise<Agent[]> {

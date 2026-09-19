@@ -6,8 +6,9 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Badge, Button, Modal } from "@devdigest/ui";
+import { Badge, Button, FormField, Modal, TextInput } from "@devdigest/ui";
 import type { SkillDraft } from "@devdigest/shared";
+import { SKILL_NAME_RE } from "@devdigest/shared/contracts/knowledge";
 import { useCreateSkill, useImportSkillFile } from "../../../../../../lib/hooks/skills";
 import { readFileAsBase64 } from "./helpers";
 import { s } from "./styles";
@@ -19,7 +20,10 @@ export function ImportSkillModal({ onClose, onCreate, onUrl }: { onClose: () => 
   const create = useCreateSkill();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [draft, setDraft] = React.useState<SkillDraft | null>(null);
+  const [name, setName] = React.useState("");
+  const [nameEdited, setNameEdited] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const validName = SKILL_NAME_RE.test(name.trim());
 
   const onPick = async (file: File) => {
     setError(null);
@@ -28,6 +32,7 @@ export function ImportSkillModal({ onClose, onCreate, onUrl }: { onClose: () => 
       const content_b64 = await readFileAsBase64(file);
       const result = await importFile.mutateAsync({ filename: file.name, content_b64 });
       setDraft(result);
+      if (!nameEdited) setName(result.name);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("import.parseError"));
     } finally {
@@ -37,11 +42,11 @@ export function ImportSkillModal({ onClose, onCreate, onUrl }: { onClose: () => 
   };
 
   const confirm = async () => {
-    if (!draft) return;
+    if (!draft || !validName) return;
     // Imported skills land disabled until someone reads the body and vets it
     // (the rail's "needs vetting" badge); a manual create is enabled by default.
     const skill = await create.mutateAsync({
-      name: draft.name,
+      name: name.trim(),
       description: draft.description,
       type: draft.type,
       body: draft.body,
@@ -62,7 +67,7 @@ export function ImportSkillModal({ onClose, onCreate, onUrl }: { onClose: () => 
           <Button kind="ghost" onClick={onClose}>
             {t("import.cancel")}
           </Button>
-          <Button kind="primary" icon="Check" onClick={confirm} disabled={!draft || create.isPending}>
+          <Button kind="primary" icon="Check" onClick={confirm} disabled={!draft || !validName || create.isPending}>
             {create.isPending ? t("import.confirming") : t("import.confirm")}
           </Button>
         </div>
@@ -86,6 +91,9 @@ export function ImportSkillModal({ onClose, onCreate, onUrl }: { onClose: () => 
             if (file) void onPick(file);
           }}
         />
+        <FormField label={t("import.nameLabel")} required hint={t("config.nameHint")}>
+          <TextInput aria-label={t("import.nameLabel")} value={name} onChange={(value) => { setName(value); setNameEdited(true); }} placeholder="pr-quality-rubric" mono />
+        </FormField>
         <Button
           kind="secondary"
           icon="Upload"
@@ -103,7 +111,7 @@ export function ImportSkillModal({ onClose, onCreate, onUrl }: { onClose: () => 
               <span style={s.previewTitle}>{t("import.previewTitle")}</span>
               <Badge color="var(--text-secondary)">{t(`listItem.type.${draft.type}`)}</Badge>
               <Badge color="var(--text-muted)" mono>
-                {draft.name}
+                {name || draft.name}
               </Badge>
             </div>
             <p style={s.description}>{draft.description}</p>

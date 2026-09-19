@@ -12,6 +12,7 @@ import { SkillImportError, computeSkillStats, parseImport, toSkillDto, toSkillVe
 import { ValidationError } from '../../platform/errors.js';
 import { assessSkillSafety } from './safety.js';
 import { importSkillFromUrl } from './url-import.js';
+import { RESTORE_NOTE_PREFIX } from './constants.js';
 
 /**
  * Skills service. Business logic for the Skills Lab (list/editor) + the agent
@@ -127,7 +128,7 @@ export class SkillsService {
   async restore(workspaceId: string, skillId: string, version: number): Promise<Skill | undefined> {
     const snapshot = await this.repo.getVersion(skillId, version);
     if (!snapshot) return undefined;
-    return this.update(workspaceId, skillId, { body: snapshot.body, note: `Restored from v${version}` });
+    return this.update(workspaceId, skillId, { body: snapshot.body, note: `${RESTORE_NOTE_PREFIX}${version}` });
   }
 
   /**

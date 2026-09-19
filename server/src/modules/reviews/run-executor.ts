@@ -277,19 +277,6 @@ export class ReviewRunExecutor {
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
 
       // ---- Observability: agent_runs + ONE run_traces document --------------
-      await this.repo.completeAgentRun(runId, {
-        status: 'done',
-        durationMs,
-        tokensIn,
-        tokensOut,
-        costUsd,
-        findingsCount: findingRows.length,
-        grounding,
-        score: outcome.review.score,
-        blockers,
-        error: null,
-      });
-
       const trace: RunTrace = {
         config: {
           agent: agent.name,
@@ -327,6 +314,20 @@ export class ReviewRunExecutor {
       };
       runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
+      // Publish terminal status only after its trace exists. Clients and tests
+      // read the trace as soon as they observe `done`.
+      await this.repo.completeAgentRun(runId, {
+        status: 'done',
+        durationMs,
+        tokensIn,
+        tokensOut,
+        costUsd,
+        findingsCount: findingRows.length,
+        grounding,
+        score: outcome.review.score,
+        blockers,
+        error: null,
+      });
       this.runBus.complete(runId);
 
       return { review, findings: findingRows, grounding, raw: outcome.review };

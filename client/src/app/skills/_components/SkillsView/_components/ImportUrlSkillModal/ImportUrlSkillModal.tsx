@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, FormField, Modal, TextInput } from "@devdigest/ui";
 import type { SkillDraft } from "@devdigest/shared";
+import { SKILL_NAME_RE } from "@devdigest/shared/contracts/knowledge";
 import { useCreateSkill, useImportSkillUrl } from "../../../../../../lib/hooks/skills";
 
 export function ImportUrlSkillModal({ onClose, onCreate, onFile }: { onClose: () => void; onCreate: () => void; onFile: () => void }) {
@@ -14,9 +15,10 @@ export function ImportUrlSkillModal({ onClose, onCreate, onFile }: { onClose: ()
   const create = useCreateSkill();
   const [url, setUrl] = React.useState("");
   const [name, setName] = React.useState("");
+  const [nameEdited, setNameEdited] = React.useState(false);
   const [draft, setDraft] = React.useState<SkillDraft | null>(null);
   const [error, setError] = React.useState("");
-  const validName = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(name.trim());
+  const validName = SKILL_NAME_RE.test(name.trim());
 
   const preview = async () => {
     setError("");
@@ -24,7 +26,7 @@ export function ImportUrlSkillModal({ onClose, onCreate, onFile }: { onClose: ()
     try {
       const result = await importer.mutateAsync(url);
       setDraft(result);
-      setName(result.name);
+      if (!nameEdited) setName(result.name);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
   const save = async () => {
@@ -54,11 +56,13 @@ export function ImportUrlSkillModal({ onClose, onCreate, onFile }: { onClose: ()
       <FormField label={t("urlImport.url")} required>
         <TextInput value={url} onChange={(value) => { setUrl(value); setDraft(null); }} placeholder="https://raw.githubusercontent.com/org/repo/main/SKILL.md" />
       </FormField>
+      <FormField label={t("urlImport.name")} required hint={t("config.nameHint")}>
+        <TextInput aria-label={t("urlImport.name")} value={name} onChange={(value) => { setName(value); setNameEdited(true); }} placeholder="pr-quality-rubric" mono />
+      </FormField>
       <Button kind="secondary" onClick={() => void preview()} disabled={!url.startsWith("https://") || importer.isPending}>
         {importer.isPending ? t("urlImport.fetching") : t("urlImport.fetch")}
       </Button>
       {draft && <>
-        <FormField label={t("urlImport.name")} required><TextInput value={name} onChange={setName} mono /></FormField>
         <div role={draft.safety?.safe === false ? "alert" : "status"} style={{ color: draft.safety?.safe === false ? "var(--crit)" : "var(--warn)" }}>
           {t(draft.safety?.safe === false ? "urlImport.unsafe" : "urlImport.safe")}
           {draft.safety?.reasons.map((reason) => <div key={reason}>• {reason}</div>)}

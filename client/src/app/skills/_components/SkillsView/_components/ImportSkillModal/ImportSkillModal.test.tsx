@@ -91,6 +91,24 @@ describe("ImportSkillModal (smoke)", () => {
     expect(push).toHaveBeenCalledWith("/skills/sk-new?tab=config");
   });
 
+  it("uses the name entered before file selection instead of the parsed name", async () => {
+    importMutateAsync.mockResolvedValue({
+      name: "parsed-name", description: "Body.", type: "custom", body: "Body.",
+      source: "imported_url", skipped_files: [],
+    });
+    createMutateAsync.mockResolvedValue({ id: "sk-new" });
+    renderWithIntl(vi.fn());
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "my-custom-name" } });
+    pickFile();
+    await screen.findByText("my-custom-name");
+    fireEvent.click(screen.getByText("Confirm & save"));
+
+    await waitFor(() => expect(createMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "my-custom-name" }),
+    ));
+  });
+
   it("shows a parse error inline and never calls create", async () => {
     importMutateAsync.mockRejectedValue(new Error("bundle.zip contains no markdown file"));
     renderWithIntl(vi.fn());
