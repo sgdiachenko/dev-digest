@@ -69,6 +69,15 @@ describe("SkillCard (smoke)", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  it("exposes an unambiguous link target for the editor and supports keyboard navigation", () => {
+    const onClick = vi.fn();
+    renderWithIntl(<SkillCard skill={SKILL} onClick={onClick} />);
+    const link = screen.getByRole("link", { name: "Open skill pr-quality-rubric" });
+    fireEvent.click(link);
+    fireEvent.keyDown(link, { key: "Enter" });
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
   it("asks in a modal before deleting a skill", () => {
     renderWithIntl(<SkillCard skill={SKILL} />);
     fireEvent.click(screen.getByRole("button", { name: "Delete skill" }));

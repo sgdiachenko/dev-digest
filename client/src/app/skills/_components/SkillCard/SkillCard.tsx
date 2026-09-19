@@ -45,7 +45,19 @@ export function SkillCard({
         pending={del.isPending}
       />
     )}
-    <div onClick={onClick} style={s.card(!!active, skill.enabled)}>
+    <div
+      role={onClick ? "link" : undefined}
+      aria-label={onClick ? `Open skill ${skill.name}` : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (onClick && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      style={s.card(!!active, skill.enabled)}
+    >
       <div style={s.headerRow}>
         <div style={s.iconBox}>
           <Icon.Sparkles size={15} />

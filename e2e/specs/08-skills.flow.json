@@ -6,7 +6,7 @@
     { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "skills list fetch settles" },
     { "cmd": ["wait", "--text", "pr-quality-rubric"], "label": "seeded skill card is visible" },
-    { "cmd": ["find", "text", "pr-quality-rubric", "click"], "label": "open the skill" },
+    { "cmd": ["find", "role", "link", "click", "--name", "Open skill pr-quality-rubric"], "label": "open the skill" },
     { "cmd": ["wait", "--url", "/skills/"], "label": "navigate to the skill editor route" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "skill detail fetch settles" },
     { "cmd": ["wait", "--text", "Configuration"], "label": "Config tab (default) renders" },
