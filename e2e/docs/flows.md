@@ -1,6 +1,6 @@
 # e2e — flow authoring
 
-Deeper reference for the flow format summarized in [`../CLAUDE.md`](../CLAUDE.md)
+Deeper reference for the flow format summarized in [`../AGENTS.md`](../AGENTS.md)
 and specified in [`../README.md`](../README.md#how-a-flow-works).
 
 ## Anatomy of a flow
@@ -53,7 +53,7 @@ alongside your normal dev stack without touching it:
 
 The isolated Postgres has **no persistent volume** — it's empty every run,
 which is exactly what flows 02/04/05 require (see
-[`../CLAUDE.md`](../CLAUDE.md)'s Gotchas).
+[`../AGENTS.md`](../AGENTS.md)'s Gotchas).
 
 ## Debugging a failing flow
 

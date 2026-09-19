@@ -17,12 +17,14 @@ full page-level contract — not everything specified there is exercised here.
 | `05-pr-diff` | The Files changed tab renders a seeded file in the diff viewer |
 | `06-onboarding` | The add-repository form renders (form only — no submit, no real import) |
 | `07-settings` | Both settings sections (`api-keys`, `models`) render their section titles |
+| `08-skills` | The Skills Lab rail renders a seeded skill; opening it and switching Config → Preview → Stats → Versions all render (read-only) |
+| `09-conventions` | The Conventions board renders a seeded accepted rule, a seeded config-derived rule, and a seeded rejected rule (still visible, not hidden); the Create-skill action appears once accepted candidates exist |
 
 ## Explicitly NOT covered
 
 - **The findings-counter hover popover** (PR list Findings column, PR detail
   Timeline) — agent-browser's locator set here is deterministic
-  click/text/role only (see [`../CLAUDE.md`](../CLAUDE.md)); there's no
+  click/text/role only (see [`../AGENTS.md`](../AGENTS.md)); there's no
   hover primitive to drive it. Covered instead by client unit tests
   (`FindingsSummary/helpers.test.ts`, `PRRow.test.tsx`, `RunHistory.test.tsx`).
 - **The Review-runs severity filter pills** (click a pill to narrow the
@@ -40,7 +42,17 @@ full page-level contract — not everything specified there is exercised here.
 - **Error/failure states** — no flow simulates a failed import, a failed run,
   or an API error response.
 - **Form submission** — `06-onboarding` checks the form renders, not that
-  submitting it imports a repo.
+  submitting it imports a repo. Same for the Skills Lab: `08-skills` never
+  saves a Config edit, imports a `.md`/`.zip` file, restores a version, or
+  links/unlinks a skill on an agent — those are covered by client unit tests
+  (`ConfigTab`/`ImportSkillModal`/`VersionsTab`/agent `SkillsTab` test files).
+- **Conventions triage** — `09-conventions` never clicks Accept/Reject/Edit,
+  a filter chip, or "Create skill" (the "Accept" card button and the
+  "Accepted" filter chip both contain the substring "Accept", so a
+  deterministic text-click there is ambiguous by construction) — and it never
+  triggers a real scan (a paid LLM call). All of that is covered by client
+  unit tests (`ConventionCard.test.tsx`, `CreateSkillModal.test.tsx`,
+  `ConventionsView/helpers.test.ts`).
 - **Auth** — the starter has none to cover.
 
 A gap here is a candidate for a new flow, not a reason to widen an existing

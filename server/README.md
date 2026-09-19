@@ -6,12 +6,14 @@ grounded structured findings). Fastify 5 + Drizzle ORM over Postgres (pgvector).
 Adapters (LLM, GitHub, git, ast-grep, …) sit behind a DI container so they can be
 swapped for mocks in tests.
 
-> This is the **starter** module set. Later course lessons add their own modules
-> (skills, intent/smart-diff, blast, brief/context/onboarding, eval/ci/hooks,
-> memory, plugins, …) — each is a self-contained `modules/<name>/` plugin plus,
-> usually, a slot it starts feeding the reviewer prompt. The DB schema already
-> contains **every** table; the unused ones simply sit empty until a lesson fills
-> them.
+> This is the **starter** module set, now including **skills** (L02): reusable
+> prompt-rule documents (`modules/skills/`), linked to agents via `agent_skills`
+> and fed into the review prompt's `## Skills / rules` slot. Later course lessons
+> add their own modules (intent/smart-diff, blast, brief/context/onboarding,
+> eval/ci/hooks, memory, plugins, …) — each is a self-contained `modules/<name>/`
+> plugin plus, usually, a slot it starts feeding the reviewer prompt. The DB
+> schema already contains **every** table; the unused ones simply sit empty
+> until a lesson fills them.
 
 - **Stack:** Fastify 5 (`@fastify/helmet`, `@fastify/rate-limit`, `@fastify/cors`,
   `fastify-sse-v2` for streaming run traces), Drizzle ORM, `postgres`, pgvector.
@@ -72,7 +74,10 @@ flowchart TB
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
   end
   subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id"]
+    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills"]
+  end
+  subgraph Skills["Skills (L02)"]
+    skills["skills<br/>/skills · /skills/:id · /skills/:id/stats<br/>/skills/:id/versions · /skills/:id/restore · /skills/import"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
@@ -106,7 +111,8 @@ through `SecretsProvider` (`~/.devdigest/secrets.json`, mode `0600`, with
 
 Migrations are **not** applied on boot — run `pnpm db:migrate` (pgvector is
 enabled by migration `0000`). `pnpm db:seed` is idempotent demo data
-(`acme/payments-api`, PR #482, the two built-in agents).
+(`acme/payments-api`, PR #482, five built-in agents and five built-in skills —
+each new agent from L02 ships with at least one skill linked).
 
 ## Review context (non-obvious)
 
@@ -131,6 +137,16 @@ What the reviewer actually sends to the model is assembled in
 - **Grounding is mandatory.** Every finding must cite a line that exists in the
   diff or it is dropped (`groundFindings`), and the score is recomputed from the
   surviving findings — the model's self-reported score is ignored.
+- **Skills are trusted by `source`, not blanket-trusted.** An agent's linked,
+  enabled skills (in `agent_skills.order`) are resolved to bodies by
+  `ReviewRunExecutor.buildSkillBlocks`: `source: 'manual'` (hand-written in the
+  Skills Lab) renders raw, the same footing as the agent's own system prompt;
+  anything else (`imported_url`, …) is `wrapUntrusted('skill:<name>', body)`'d,
+  the same treatment as the diff — an imported skill is someone else's
+  instructions in the prompt. The ids actually used are recorded on
+  `run_traces.trace.config.skills`, which is how a skill's Stats-tab pull
+  frequency is computed (a real query over runs since that field started being
+  written, not an estimate).
 
 ## Testing
 

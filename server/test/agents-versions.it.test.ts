@@ -8,13 +8,13 @@ import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
-import type { Container } from '../src/platform/container.js';
+import { SkillsRepository } from '../src/modules/skills/repository.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
 
 if (!hasDocker) {
-  // eslint-disable-next-line no-console
+   
   console.warn('[agents-versions] Docker not available — skipping integration tests.');
 }
 
@@ -151,6 +151,59 @@ d('GET /agents/:id/versions', () => {
     await app.close();
   });
 
+  it('linking, reordering, or unlinking a skill bumps the version — same as any other config edit', async () => {
+    const app = await makeApp();
+    const agentId = (
+      await app.inject({ method: 'POST', url: '/agents', payload: createBody })
+    ).json().id as string;
+
+    const skillA = (
+      await app.inject({ method: 'POST', url: '/skills', payload: { name: 'skill-a-vb', type: 'custom', body: 'x' } })
+    ).json();
+    const skillB = (
+      await app.inject({ method: 'POST', url: '/skills', payload: { name: 'skill-b-vb', type: 'custom', body: 'y' } })
+    ).json();
+
+    // Linking one skill: v1 -> v2.
+    let linked = (
+      await app.inject({
+        method: 'POST',
+        url: `/agents/${agentId}/skills`,
+        payload: { skill_ids: [skillA.id] },
+      })
+    ).json();
+    expect(linked).toEqual([{ agent_id: agentId, skill_id: skillA.id, order: 0 }]);
+    expect((await app.inject({ method: 'GET', url: `/agents/${agentId}` })).json().version).toBe(2);
+
+    // Re-posting the SAME set is a no-op — no version bump.
+    await app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload: { skill_ids: [skillA.id] } });
+    expect((await app.inject({ method: 'GET', url: `/agents/${agentId}` })).json().version).toBe(2);
+
+    // Reordering (same set, different order) is a real change: v2 -> v3.
+    linked = (
+      await app.inject({
+        method: 'POST',
+        url: `/agents/${agentId}/skills`,
+        payload: { skill_ids: [skillB.id, skillA.id] },
+      })
+    ).json();
+    expect(linked.map((l: { skill_id: string }) => l.skill_id)).toEqual([skillB.id, skillA.id]);
+    expect((await app.inject({ method: 'GET', url: `/agents/${agentId}` })).json().version).toBe(3);
+
+    // Unlinking everything: v3 -> v4. The snapshot's config.skills reflects it.
+    await app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload: { skill_ids: [] } });
+    const versions = (
+      await app.inject({ method: 'GET', url: `/agents/${agentId}/versions` })
+    ).json();
+    expect(versions.map((v: { version: number }) => v.version)).toEqual([4, 3, 2, 1]);
+    expect(versions[0].config.skills).toEqual([]);
+    expect(versions[1].config.skills).toEqual([skillB.id, skillA.id]);
+    expect(versions[2].config.skills).toEqual([skillA.id]);
+    expect(versions[3].config.skills).toEqual([]);
+
+    await app.close();
+  });
+
   it('versions are workspace-scoped: another tenant cannot read them', async () => {
     const { db } = pg.handle;
     // An agent that lives in a DIFFERENT workspace than the request context.
@@ -164,7 +217,13 @@ d('GET /agents/:id/versions', () => {
       systemPrompt: 'x',
     });
 
-    const service = new AgentsService({ db } as unknown as Container);
+    // Real repository + a stub LLM factory. Before the service took explicit
+    // ports this had to be `{ db } as unknown as Container` — a cast that hid
+    // which dependencies the call actually needs. The throwing stub now asserts
+    // this read path never reaches for a provider.
+    const service = new AgentsService(new AgentsRepository(db), () => {
+      throw new Error('listVersions must not call an LLM provider');
+    }, new SkillsRepository(db));
     const [{ id: defaultWs }] = await db
       .select({ id: t.workspaces.id })
       .from(t.workspaces)

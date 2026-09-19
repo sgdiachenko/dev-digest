@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { zipSync, strToU8 } from 'fflate';
 import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
 import { eq, and } from 'drizzle-orm';
@@ -6,7 +7,21 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import {
+  PR_QUALITY_RUBRIC_SKILL,
+  NO_THEN_CHAINS_SKILL,
+  SECRET_LEAKAGE_GATE_SKILL,
+  TEST_COVERAGE_NUDGE_SKILL,
+  WIRE_FORMAT_CONVENTION_SKILL,
+  FLAKY_TEST_SIGNALS_SKILL,
+} from './seed-skills.js';
+import { AgentsRepository } from '../modules/agents/repository.js';
+import { SkillsRepository } from '../modules/skills/repository.js';
+import { parseImport } from '../modules/skills/helpers.js';
+import type { SkillType } from '@devdigest/shared';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -18,11 +33,15 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * with a few findings, and five built-in agents — the original three (General +
+ * Security + Performance) plus L02's Test Quality Reviewer + API Contract
+ * Reviewer — all on the default openrouter/deepseek-v4-flash provider+model.
+ * L02 also seeds five built-in skills and links them to the agents above, so
+ * the control experiment (same agent, with vs. without its skills) works
+ * out of the box.
  *
- * Course lessons populate the other tables (skills, conventions, memory, eval,
- * …) once their features are built — they start empty here.
+ * Course lessons populate the other tables (conventions, memory, eval, …) once
+ * their features are built — they start empty here.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
@@ -175,6 +194,143 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     ]);
   }
 
+  // ---- L02 control-experiment PRs ----
+  // One fixture per new agent, each crafted so the linked skill's SPECIFIC
+  // instruction — not just the agent's own general judgment — is what makes
+  // the finding show up: run the agent once with its skill unlinked (misses
+  // it) and once linked (catches it) to reproduce "without skills / with
+  // skills" for real, on a real model call.
+  let [pr483] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 483)));
+  if (!pr483) {
+    [pr483] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 483,
+        title: 'Add chunkArray helper for paginated webhook delivery',
+        author: 'dan.reyes',
+        branch: 'feat/chunk-array',
+        base: 'main',
+        headSha: 'b2c3d4e5f6a1',
+        additions: 15,
+        deletions: 0,
+        filesCount: 2,
+        status: 'needs_review',
+        body: 'Splits a batch of webhook deliveries into fixed-size chunks before fan-out.',
+      })
+      .returning();
+
+    // Test Quality control experiment: a new function, a test that covers
+    // ONLY the happy path (no test for an empty array, none for a chunk size
+    // larger than the array) — test-coverage-nudge's exact trigger.
+    await db.insert(t.prFiles).values([
+      {
+        prId: pr483!.id,
+        path: 'src/lib/chunk.ts',
+        additions: 7,
+        deletions: 0,
+        patch: [
+          '@@ -0,0 +1,7 @@',
+          '+export function chunkArray<T>(items: T[], size: number): T[][] {',
+          '+  const chunks: T[][] = [];',
+          '+  for (let i = 0; i < items.length; i += size) {',
+          '+    chunks.push(items.slice(i, i + size));',
+          '+  }',
+          '+  return chunks;',
+          '+}',
+        ].join('\n'),
+      },
+      {
+        prId: pr483!.id,
+        path: 'src/lib/chunk.test.ts',
+        additions: 8,
+        deletions: 0,
+        // Happy path only — no test for an empty array or a chunk size
+        // larger than the array (both plausible boundary inputs).
+        patch: [
+          '@@ -0,0 +1,8 @@',
+          "+import { describe, it, expect } from 'vitest';",
+          "+import { chunkArray } from './chunk';",
+          '+',
+          "+describe('chunkArray', () => {",
+          "+  it('splits an array into chunks of the given size', () => {",
+          '+    expect(chunkArray([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);',
+          '+  });',
+          '+});',
+        ].join('\n'),
+      },
+    ]);
+    await db.insert(t.prCommits).values({
+      prId: pr483!.id,
+      sha: 'b2c3d4e5f6a1',
+      message: 'Add chunkArray helper for paginated webhook delivery',
+      author: 'dan.reyes',
+    });
+  }
+
+  let [pr484] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 484)));
+  if (!pr484) {
+    [pr484] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 484,
+        title: 'Surface retry count on the webhook status endpoint',
+        author: 'priya.nair',
+        branch: 'feat/webhook-retry-count',
+        base: 'main',
+        headSha: 'c3d4e5f6a1b2',
+        additions: 1,
+        deletions: 0,
+        filesCount: 1,
+        status: 'needs_review',
+        body: 'Adds retryCount to GET /api/webhooks/:id/status so the dashboard can show delivery attempts.',
+      })
+      .returning();
+
+    // API Contract control experiment: an ADDITIVE field (existing callers
+    // are unaffected), added in camelCase where every other field on this
+    // route is snake_case. API_CONTRACT_REVIEWER_PROMPT explicitly says
+    // "additive, backward-compatible changes are NOT findings — do not flag
+    // … even as a SUGGESTION", so WITHOUT wire-format-convention linked the
+    // agent is instructed to stay silent on it; the skill's own rule
+    // ("A field added to vendor/shared/contracts/* in camelCase … flag it as
+    // a WARNING") overrides that for this one specific violation when linked.
+    await db.insert(t.prFiles).values({
+      prId: pr484!.id,
+      path: 'src/api/public/webhooks.ts',
+      additions: 1,
+      deletions: 0,
+      patch: [
+        '@@ -1,9 +1,10 @@',
+        " app.get('/api/webhooks/:id/status', async (req, reply) => {",
+        '   const record = await db.getWebhookDelivery(req.params.id);',
+        "   if (!record) return reply.code(404).send({ error: 'not found' });",
+        '   return {',
+        '     status: record.status,',
+        '     last_attempt_at: record.lastAttemptAt,',
+        '     next_attempt_at: record.nextAttemptAt,',
+        '+    retryCount: record.retryCount,',
+        '   };',
+        ' });',
+      ].join('\n'),
+    });
+    await db.insert(t.prCommits).values({
+      prId: pr484!.id,
+      sha: 'c3d4e5f6a1b2',
+      message: 'Surface retry count on the webhook status endpoint',
+      author: 'priya.nair',
+    });
+  }
+
   // ---- built-in agents (the three starter presets) ----
   // Prompt bodies live in ./seed-prompts.ts (mirrored in docs/agent-prompts/*.md).
   const seedAgents: Array<typeof t.agents.$inferInsert> = [
@@ -218,6 +374,295 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- L02: built-in skills ----
+  // Bodies live in ./seed-skills.ts (mirrored in docs/agent-prompts/skills/*.md).
+  // Routed through SkillsRepository (not a raw insert) so each gets its v1
+  // `skill_versions` row — the invariant `skills.version` ⇔ a snapshot exists
+  // only holds when creation goes through the repository.
+  const skillsRepo = new SkillsRepository(db);
+  const agentsRepo = new AgentsRepository(db);
+
+  const seedSkills: Array<{ name: string; description: string; type: SkillType; body: string }> = [
+    {
+      name: 'pr-quality-rubric',
+      description: 'Rubric for evaluating overall PR quality across correctness, tests, and scope.',
+      type: 'rubric',
+      body: PR_QUALITY_RUBRIC_SKILL,
+    },
+    {
+      name: 'no-then-chains',
+      description: 'House rule: always use async/await instead of .then() chains.',
+      type: 'convention',
+      body: NO_THEN_CHAINS_SKILL,
+    },
+    {
+      name: 'secret-leakage-gate',
+      description: 'Detects credential-shaped strings (sk_live_, ghp_, JWTs, private keys) left in a diff.',
+      type: 'security',
+      body: SECRET_LEAKAGE_GATE_SKILL,
+    },
+    {
+      name: 'test-coverage-nudge',
+      description: 'Suggests a test when a diff adds a new branch with no coverage.',
+      type: 'custom',
+      body: TEST_COVERAGE_NUDGE_SKILL,
+    },
+    {
+      name: 'wire-format-convention',
+      description: 'House rule: shared contract/DTO fields are snake_case on the wire.',
+      type: 'convention',
+      body: WIRE_FORMAT_CONVENTION_SKILL,
+    },
+  ];
+  const skillIdByName = new Map<string, string>();
+  for (const s of seedSkills) {
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+    if (existing) {
+      skillIdByName.set(s.name, existing.id);
+    } else {
+      const row = await skillsRepo.insert({
+        workspaceId,
+        name: s.name,
+        description: s.description,
+        type: s.type,
+        source: 'manual',
+        body: s.body,
+      });
+      skillIdByName.set(s.name, row.id);
+    }
+  }
+
+  // Give pr-quality-rubric a second version so the Skill Editor's Versions tab
+  // has real history on first run — once only (skip on re-seed once it's past v1).
+  const rubricId = skillIdByName.get('pr-quality-rubric');
+  if (rubricId) {
+    const [rubric] = await db.select().from(t.skills).where(eq(t.skills.id, rubricId));
+    if (rubric && rubric.version === 1) {
+      await skillsRepo.update(workspaceId, rubricId, {
+        body: `${rubric.body}\n## Security\n- Any secrets, tokens, or credentials in the diff?\n`,
+        note: 'Added Security dimension',
+      });
+    }
+  }
+
+  // ---- L02: the two skills-lesson agents (each ships with ≥1 linked skill) ----
+  const seedSkillAgents: Array<{ name: string; description: string; systemPrompt: string; skills: string[] }> = [
+    {
+      name: 'Test Quality Reviewer',
+      description: 'Reviews the tests in a PR: uncovered branches, missing corner cases, over-mocking, flakiness.',
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      skills: ['test-coverage-nudge'],
+    },
+    {
+      name: 'API Contract Reviewer',
+      description: 'Flags breaking changes to a route signature or a shared DTO.',
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      skills: ['wire-format-convention'],
+    },
+  ];
+  for (const a of seedSkillAgents) {
+    let [agentRow] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
+    if (!agentRow) {
+      agentRow = await agentsRepo.insert({
+        workspaceId,
+        name: a.name,
+        description: a.description,
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        systemPrompt: a.systemPrompt,
+        createdBy: userId,
+      });
+    }
+    const skillIds = a.skills.map((n) => skillIdByName.get(n)).filter((id): id is string => id !== undefined);
+    // setSkills is itself idempotent (only bumps agents.version on a REAL
+    // change — see AgentsRepository.setSkills) so re-seeding is safe.
+    await agentsRepo.setSkills(agentRow.id, skillIds);
+  }
+
+  // ---- L02: one skill seeded via the REAL import path, "to walk the whole
+  // path" — a .zip (with a companion file that must be skipped, never read)
+  // run through the exact parser POST /skills/import calls, then inserted
+  // with the DRAFT's OWN source ('imported_url', not 'manual'). Lands
+  // disabled, same as a real import — "needs vetting" until someone reviews
+  // and enables it in the UI. Linked (while disabled) to Test Quality
+  // Reviewer via linkSkill, which is additive — it does not disturb the
+  // ordered test-coverage-nudge link already set above.
+  const [existingImported] = await db
+    .select()
+    .from(t.skills)
+    .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, 'flaky-test-signals')));
+  if (!existingImported) {
+    const bundle = zipSync({
+      'SKILL.md': strToU8(FLAKY_TEST_SIGNALS_SKILL),
+      'scripts/check.sh': strToU8('#!/bin/sh\necho "not part of the skill"'),
+    });
+    const draft = parseImport('flaky-test-signals.zip', bundle);
+    const importedRow = await skillsRepo.insert({
+      workspaceId,
+      name: draft.name,
+      description: draft.description,
+      type: draft.type,
+      source: draft.source,
+      body: draft.body,
+      enabled: false,
+    });
+    skillIdByName.set(draft.name, importedRow.id);
+  }
+  const importedSkillId = skillIdByName.get('flaky-test-signals');
+  const [testQualityAgent] = await db
+    .select()
+    .from(t.agents)
+    .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Test Quality Reviewer')));
+  if (importedSkillId && testQualityAgent) {
+    await agentsRepo.linkSkill(testQualityAgent.id, importedSkillId, 1);
+  }
+
+  // ---- L02: Conventions Extractor demo board ----
+  // Read-only seeded candidates for acme/payments-api (no LLM call — the e2e
+  // suite must never trigger a real scan). A mix of statuses + one
+  // origin:'config' row so the board's filters, "seen in N files", and the
+  // config-vs-model badge all have something real to render on first load.
+  const seedConventions: Array<typeof t.conventions.$inferInsert> = [
+    {
+      workspaceId,
+      repoId,
+      category: 'errors',
+      rule: 'Always use async/await instead of .then() chains.',
+      rationale: 'Keeps error handling consistent across the codebase.',
+      evidencePath: 'src/api/users.ts',
+      evidenceLine: 23,
+      evidenceSnippet: 'const user = await db.users.find(id);\nconst posts = await db.posts.findMany({ userId });',
+      confidence: 0.91,
+      status: 'accepted',
+      origin: 'model',
+      supportCount: 14,
+      probe: 'await db\\.',
+    },
+    {
+      workspaceId,
+      repoId,
+      category: 'api',
+      rule: 'All public route handlers return typed Result<T, ApiError>.',
+      rationale: 'Callers pattern-match on ok/err instead of catching.',
+      evidencePath: 'src/api/public/index.ts',
+      evidenceLine: 14,
+      evidenceSnippet: 'function handler(): Result<Item[], ApiError> {\n  return ok(items);\n}',
+      confidence: 0.78,
+      status: 'accepted',
+      origin: 'model',
+      supportCount: 6,
+      probe: 'Result<',
+    },
+    {
+      workspaceId,
+      repoId,
+      category: 'structure',
+      rule: 'Redis access goes through the src/lib/redis.ts singleton.',
+      rationale: 'Never instantiate a second Redis client in a route or service.',
+      evidencePath: 'src/lib/redis.ts',
+      evidenceLine: 1,
+      evidenceSnippet: 'export const redis = new Redis(config.redisUrl);',
+      confidence: 0.85,
+      status: 'accepted',
+      origin: 'model',
+      supportCount: 9,
+      probe: 'new Redis(',
+    },
+    {
+      workspaceId,
+      repoId,
+      category: 'typing',
+      rule: 'TypeScript strict mode is on — new code must not introduce `any` or loosen strictness locally.',
+      evidencePath: 'tsconfig.json',
+      evidenceLine: 3,
+      evidenceSnippet: '"strict": true,',
+      confidence: 1,
+      status: 'pending',
+      origin: 'config',
+    },
+    {
+      workspaceId,
+      repoId,
+      category: 'general',
+      rule: 'Log lines go through the shared logger, never a bare console.log.',
+      evidencePath: 'src/lib/log.ts',
+      evidenceLine: 4,
+      evidenceSnippet: "export const log = pino({ level: 'info' });",
+      confidence: 0.6,
+      status: 'rejected',
+      origin: 'model',
+      supportCount: 2,
+      probe: 'pino(',
+    },
+  ];
+  for (const c of seedConventions) {
+    const [existing] = await db
+      .select()
+      .from(t.conventions)
+      .where(and(eq(t.conventions.repoId, repoId), eq(t.conventions.rule, c.rule)));
+    if (!existing) await db.insert(t.conventions).values(c);
+  }
+
+  const [existingScan] = await db
+    .select()
+    .from(t.conventionScans)
+    .where(eq(t.conventionScans.repoId, repoId));
+  if (!existingScan) {
+    await db
+      .insert(t.conventionScans)
+      .values({
+        workspaceId,
+        repoId,
+        status: 'done',
+        sampledFiles: [
+          'package.json',
+          'tsconfig.json',
+          'src/api/users.ts',
+          'src/api/public/index.ts',
+          'src/lib/redis.ts',
+          'src/lib/log.ts',
+        ],
+        proposed: 4,
+        fromConfig: 1,
+        droppedUngrounded: 1,
+        droppedUnsupported: 0,
+        droppedDuplicate: 0,
+        droppedExistingSkill: 0,
+        droppedCategoryCap: 0,
+        model: 'deepseek/deepseek-v4-flash',
+        costUsd: 0.0012,
+        finishedAt: new Date(),
+      })
+      .returning();
+  }
+
+  // Link skills to the three pre-existing agents too, so the Stats tab has
+  // "N agents" / findings to show immediately, not just on the two new ones.
+  // Those three were inserted via a raw db.insert above (not the repository),
+  // so backfill their missing v1 agent_versions snapshot first — otherwise the
+  // version bump setSkills performs would jump straight to v2 with no v1 on
+  // record.
+  const preExisting: Array<{ agentName: string; skillNames: string[] }> = [
+    { agentName: 'General Reviewer', skillNames: ['pr-quality-rubric', 'no-then-chains'] },
+    { agentName: 'Security Reviewer', skillNames: ['secret-leakage-gate'] },
+  ];
+  for (const { agentName, skillNames } of preExisting) {
+    const [agentRow] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, agentName)));
+    if (!agentRow) continue;
+    await agentsRepo.ensureInitialVersionSnapshot(agentRow.id);
+    const skillIds = skillNames.map((n) => skillIdByName.get(n)).filter((id): id is string => id !== undefined);
+    await agentsRepo.setSkills(agentRow.id, skillIds);
   }
 
   return { workspaceId, userId };

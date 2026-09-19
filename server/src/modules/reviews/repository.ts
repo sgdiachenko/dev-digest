@@ -59,6 +59,18 @@ export class ReviewRepository {
     return reviewRepo.insertFindings(this.db, reviewId, findings);
   }
 
+  /**
+   * Persist a review and its findings atomically — prefer this over calling
+   * `insertReview` + `insertFindings` in sequence, which can leave a review
+   * with no findings if the second write fails.
+   */
+  insertReviewWithFindings(
+    values: Parameters<ReviewRepository['insertReview']>[0],
+    findings: Finding[],
+  ): Promise<{ review: ReviewRow; findings: FindingRow[] }> {
+    return reviewRepo.insertReviewWithFindings(this.db, values, findings);
+  }
+
   /** Reviews for a PR (newest first), each with its findings. */
   reviewsForPull(prId: string): Promise<{ review: ReviewRow; findings: FindingRow[] }[]> {
     return reviewRepo.reviewsForPull(this.db, prId);

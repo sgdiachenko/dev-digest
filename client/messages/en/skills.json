@@ -3,23 +3,46 @@
     "crumbLab": "Skills Lab",
     "crumbSkills": "Skills",
     "heading": "Skills",
+    "subtitle": "Reusable prompt-rule documents. Link them to any agent, in any order.",
     "addSkill": "Add Skill",
     "searchPlaceholder": "Search skills…",
     "loadError": "Could not load skills.",
     "menu": {
+      "create": "Create from scratch",
       "fromFile": "Import from file",
       "fromUrl": "Import from URL",
       "community": "Search community skills…"
     },
     "empty": {
       "title": "No skills yet",
-      "body": "Import a skill from a file, a URL, or the community catalog.",
-      "cta": "Import from file"
+      "body": "Create a skill from scratch, or import one from a .md or .zip file.",
+      "cta": "Create your first skill"
     },
     "selectPrompt": {
       "title": "Select a skill",
-      "body": "Pick a skill on the left to preview its body."
+      "body": "Pick a skill on the left to view or edit it."
     }
+  },
+  "delete": {
+    "title": "Delete skill",
+    "message": "\"{name}\" will be permanently removed. This cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete",
+    "deleting": "Deleting…"
+  },
+  "create": {
+    "title": "Add skill",
+    "tabCreate": "Create",
+    "tabFile": "From file",
+    "tabUrl": "Import from URL",
+    "name": "Name",
+    "description": "Description",
+    "type": "Type",
+    "body": "Body (Markdown)",
+    "cancel": "Cancel",
+    "submit": "Create skill",
+    "submitting": "Creating…",
+    "duplicateName": "A skill with this name already exists."
   },
   "detail": {
     "crumbSkill": "Skill",
@@ -29,6 +52,106 @@
       "title": "Skill not found",
       "body": "It may have been deleted."
     }
+  },
+  "editor": {
+    "loadErrorTitle": "Couldn’t load this skill",
+    "loadErrorBody": "The skill could not be loaded.",
+    "skillFallback": "Skill",
+    "disabled": "disabled",
+    "tabs": {
+      "config": "Config",
+      "preview": "Preview",
+      "stats": "Stats",
+      "versions": "Versions"
+    }
+  },
+  "config": {
+    "title": "Configuration",
+    "enabled": "Enabled",
+    "name": "Name",
+    "namePlaceholder": "pr-quality-rubric",
+    "nameHint": "Lowercase letters, numbers and hyphens — this is the label the model sees in the prompt.",
+    "description": "Description",
+    "descriptionPlaceholder": "Evaluate the pull request for…",
+    "descriptionHint": "This is the skill's interface, not a summary for humans — write it as a directive to the reviewing agent.",
+    "type": "Type",
+    "typeOptions": {
+      "rubric": "Rubric",
+      "convention": "Convention",
+      "security": "Security",
+      "custom": "Custom"
+    },
+    "body": "Skill body (Markdown)",
+    "bodyHint": "Injected verbatim under \"## Skills / rules\" in the agent's prompt.",
+    "note": "Version message (optional)",
+    "notePlaceholder": "Tightened scope rule…",
+    "noteHint": "What changed in this version? Shown on the Versions tab — only recorded when the body actually changes.",
+    "save": "Save skill",
+    "saving": "Saving…",
+    "saved": "Saved (v{version})",
+    "savedToast": "Skill saved (v{version})",
+    "duplicateName": "A skill named \"{name}\" already exists in this workspace."
+  },
+  "previewTab": {
+    "caption": "Rendered as the reviewing agent receives it.",
+    "untrustedNotice": "This skill came from an imported source — its body is wrapped as untrusted data in the prompt, the same treatment as the diff."
+  },
+  "stats": {
+    "usedBy": "Used by",
+    "agentsCount": "{count} agents",
+    "pullFrequency": "Pull frequency",
+    "acceptRate": "Accept rate",
+    "findings30d": "Findings (30d)",
+    "agentsUsingThisSkill": "Agents using this skill",
+    "findingsByCategory": "Findings by category",
+    "noData": "—",
+    "noAgents": "Not linked to any agent yet.",
+    "noCategories": "No findings in the last 30 days.",
+    "attributionNote": "Findings and pull frequency are counted from runs of agents that have this skill linked — not provably caused by the skill alone."
+  },
+  "versions": {
+    "heading": "Version history",
+    "count": "{count} versions",
+    "caption": "Every save snapshots the body so eval runs stay reproducible against the exact text they scored.",
+    "current": "Current",
+    "diff": "Diff",
+    "restore": "Restore",
+    "restoring": "Restoring…",
+    "restoreConfirm": "Restore v{version}? This appends a new version — it does not delete history.",
+    "diffModalTitle": "v{a} → v{b}",
+    "close": "Close",
+    "loadError": "Could not load version history.",
+    "noNote": "—"
+  },
+  "import": {
+    "title": "Import from file",
+    "subtitle": "Upload a .md or .zip file. Nothing is saved until you confirm.",
+    "chooseFile": "Choose a file…",
+    "accept": ".md, .zip",
+    "parsing": "Parsing…",
+    "parseError": "Could not import this file.",
+    "previewTitle": "Preview",
+    "skippedTitle": "Not processed — never read or executed",
+    "confirm": "Confirm & save",
+    "confirming": "Saving…",
+    "cancel": "Cancel",
+    "nameLabel": "Name",
+    "typeLabel": "Type",
+    "sourceNote": "Imported skills render as untrusted data in the prompt until you've reviewed and vetted them."
+  },
+  "urlImport": {
+    "url": "URL (https:// only)",
+    "name": "Skill name",
+    "fetch": "Preview URL",
+    "fetching": "Fetching…",
+    "save": "Import skill",
+    "saving": "Importing…",
+    "unsafe": "Injection detected — this skill will be imported disabled. Edit its body to remove unsafe instructions before enabling or linking it to an agent.",
+    "safe": "Review the content before enabling this imported skill."
+  },
+  "safety": {
+    "blocked": "Injection detected",
+    "warning": "This skill contains suspicious instructions. It cannot be enabled, linked to an agent, or used in reviews until its body is made safe."
   },
   "drawer": {
     "title": "Add a skill",
@@ -72,6 +195,7 @@
     "import": "Import"
   },
   "listItem": {
+    "noDescription": "No description",
     "needsVetting": "needs vetting",
     "vettingTitle": "Untrusted source — vet before enabling",
     "type": {
