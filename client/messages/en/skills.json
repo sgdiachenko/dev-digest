@@ -23,6 +23,24 @@
       "body": "Pick a skill on the left to view or edit it."
     }
   },
+  "delete": {
+    "title": "Delete skill",
+    "message": "\"{name}\" will be permanently removed. This cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete",
+    "deleting": "Deleting…"
+  },
+  "create": {
+    "title": "Create skill",
+    "name": "Name",
+    "description": "Description",
+    "type": "Type",
+    "body": "Body (Markdown)",
+    "cancel": "Cancel",
+    "submit": "Create skill",
+    "submitting": "Creating…",
+    "duplicateName": "A skill with this name already exists."
+  },
   "detail": {
     "crumbSkill": "Skill",
     "back": "← All skills",

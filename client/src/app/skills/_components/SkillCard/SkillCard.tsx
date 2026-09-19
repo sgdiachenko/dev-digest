@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { Badge, Icon, Toggle } from "@devdigest/ui";
 import type { SkillWithStats } from "@devdigest/shared";
 import { useDeleteSkill } from "../../../../lib/hooks/skills";
+import { ConfirmDeleteModal } from "../../../../components/ConfirmDeleteModal";
 import { TYPE_COLOR } from "./constants";
 import { footerSegments } from "./helpers";
 import { s } from "./styles";
@@ -25,11 +26,25 @@ export function SkillCard({
 }) {
   const t = useTranslations("skills");
   const del = useDeleteSkill();
+  const [confirming, setConfirming] = React.useState(false);
   const segments = footerSegments(skill.stats);
   // Imported skills stay flagged until someone reads the body and re-enables it.
   const needsVetting = skill.source !== "manual" && !skill.enabled;
 
   return (
+    <>
+    {confirming && (
+      <ConfirmDeleteModal
+        title={t("delete.title")}
+        message={t("delete.message", { name: skill.name })}
+        cancelLabel={t("delete.cancel")}
+        deleteLabel={t("delete.confirm")}
+        deletingLabel={t("delete.deleting")}
+        onClose={() => setConfirming(false)}
+        onConfirm={() => del.mutate(skill.id, { onSuccess: () => setConfirming(false) })}
+        pending={del.isPending}
+      />
+    )}
     <div onClick={onClick} style={s.card(!!active, skill.enabled)}>
       <div style={s.headerRow}>
         <div style={s.iconBox}>
@@ -46,7 +61,7 @@ export function SkillCard({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (window.confirm(`Delete skill "${skill.name}"? This cannot be undone.`)) del.mutate(skill.id);
+            setConfirming(true);
           }}
           disabled={del.isPending}
           title="Delete skill"
@@ -67,6 +82,7 @@ export function SkillCard({
       <div style={s.description}>{skill.description || t("listItem.noDescription")}</div>
 
       <div style={s.badgeRow}>
+        <Badge color="var(--text-secondary)" mono>v{skill.version}</Badge>
         <Badge color={TYPE_COLOR[skill.type]}>{t(`listItem.type.${skill.type}`)}</Badge>
         <Badge color="var(--text-muted)">{t(`listItem.source.${skill.source}`)}</Badge>
         {needsVetting && (
@@ -87,5 +103,6 @@ export function SkillCard({
         ))}
       </div>
     </div>
+    </>
   );
 }

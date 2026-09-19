@@ -8,12 +8,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Badge, Button, Dropdown, EmptyState, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
-import { useCreateSkill, useSkill, useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
+import { useSkill, useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { SkillCard } from "../SkillCard";
 import { ImportSkillModal } from "./_components/ImportSkillModal";
+import { CreateSkillModal } from "./_components/CreateSkillModal/CreateSkillModal";
 import { SkillEditor } from "./_components/SkillEditor";
-import { DEFAULT_TAB, NEW_SKILL_BODY, VALID_TABS, type SkillTab } from "./constants";
-import { filterSkills, nextSkillName } from "./helpers";
+import { DEFAULT_TAB, VALID_TABS, type SkillTab } from "./constants";
+import { filterSkills } from "./helpers";
 import { s } from "./styles";
 
 export function SkillsView({ selectedId }: { selectedId?: string }) {
@@ -23,10 +24,10 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
 
   const [query, setQuery] = React.useState("");
   const [importing, setImporting] = React.useState(false);
+  const [creating, setCreating] = React.useState(false);
 
   const { data: skills, isLoading, isError, refetch } = useSkills();
   const { data: skill, isLoading: skillLoading } = useSkill(selectedId);
-  const create = useCreateSkill();
   // Same `skills.enabled` gate the Config tab's toggle flips — one cache
   // entry, so a toggle on the rail and one in Config stay in sync.
   const update = useUpdateSkill();
@@ -41,14 +42,6 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
     router.replace(`/skills/${selectedId}?${sp.toString()}`);
   };
 
-  const createAndOpen = () => {
-    const name = nextSkillName(skills ?? []);
-    create.mutate(
-      { name, description: "", type: "custom", body: NEW_SKILL_BODY, enabled: true },
-      { onSuccess: (created) => router.push(`/skills/${created.id}?tab=config`) },
-    );
-  };
-
   const crumb = [
     { label: t("page.crumbLab") },
     { label: t("page.crumbSkills"), href: "/skills" },
@@ -60,6 +53,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
   return (
     <AppShell crumb={crumb}>
       {importing && <ImportSkillModal onClose={() => setImporting(false)} />}
+      {creating && <CreateSkillModal onClose={() => setCreating(false)} />}
       <div style={s.split}>
         {/* rail */}
         <div style={s.rail}>
@@ -75,7 +69,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
                   </Button>
                 }
                 items={[
-                  { label: t("page.menu.create"), icon: "Edit", onClick: createAndOpen },
+                  { label: t("page.menu.create"), icon: "Edit", onClick: () => setCreating(true) },
                   { label: t("page.menu.fromFile"), icon: "Upload", onClick: () => setImporting(true) },
                 ]}
               />
@@ -106,7 +100,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
                 title={t("page.empty.title")}
                 body={t("page.empty.body")}
                 cta={t("page.empty.cta")}
-                onCta={createAndOpen}
+                onCta={() => setCreating(true)}
               />
             )}
             {filtered.map((sk) => (

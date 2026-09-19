@@ -12,9 +12,9 @@ vi.mock("../../../../../../../lib/hooks/agents", () => ({
 vi.mock("../../../../../../../lib/hooks/skills", () => ({
   useSkills: () => ({
     data: [
-      { id: "s-rubric", name: "pr-quality-rubric", description: "PR quality" },
-      { id: "s-secret", name: "secret-leakage-gate", description: "Secret scanning" },
-      { id: "s-tests", name: "test-coverage-nudge", description: "Test coverage" },
+      { id: "s-rubric", name: "pr-quality-rubric", description: "PR quality", type: "rubric", enabled: true },
+      { id: "s-secret", name: "secret-leakage-gate", description: "Secret scanning", type: "security", enabled: true },
+      { id: "s-tests", name: "test-coverage-nudge", description: "Test coverage", type: "custom", enabled: false },
     ],
     isLoading: false,
     isError: false,
@@ -69,7 +69,7 @@ describe("SkillsTab (agent editor) — smoke", () => {
     expect(setSkillsMutate).toHaveBeenCalledWith({ agentId: "ag1", skillIds: ["s-secret"] });
   });
 
-  it("moving a linked skill down reorders and posts the new full set", () => {
+  it("dragging a linked skill reorders and posts the new full set", () => {
     agentSkillsResult = {
       isLoading: false,
       isError: false,
@@ -80,9 +80,27 @@ describe("SkillsTab (agent editor) — smoke", () => {
     };
     renderWithIntl();
 
-    fireEvent.click(screen.getAllByLabelText("Move down")[0]!);
+    const transfer = { effectAllowed: "move", dropEffect: "move", setData: vi.fn() };
+    fireEvent.dragStart(screen.getByTestId("agent-skill-s-rubric"), { dataTransfer: transfer });
+    fireEvent.dragOver(screen.getByTestId("agent-skill-s-secret"), { dataTransfer: transfer });
+    fireEvent.drop(screen.getByTestId("agent-skill-s-secret"), { dataTransfer: transfer });
 
     expect(setSkillsMutate).toHaveBeenCalledWith({ agentId: "ag1", skillIds: ["s-secret", "s-rubric"] });
+  });
+
+  it("shows type labels and only enables dragging globally enabled, linked skills", () => {
+    agentSkillsResult = {
+      isLoading: false, isError: false,
+      data: [
+        { agent_id: "ag1", skill_id: "s-rubric", order: 0 },
+        { agent_id: "ag1", skill_id: "s-tests", order: 1 },
+      ],
+    };
+    renderWithIntl();
+    expect(screen.getByText("rubric")).toBeInTheDocument();
+    expect(screen.getByText("custom")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-skill-s-rubric")).toHaveAttribute("draggable", "true");
+    expect(screen.getByTestId("agent-skill-s-tests")).toHaveAttribute("draggable", "false");
   });
 
   it("shows the linked/total count", () => {

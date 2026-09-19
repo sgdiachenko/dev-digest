@@ -38,6 +38,7 @@ describe("SkillCard (smoke)", () => {
     expect(screen.getByText("pr-quality-rubric")).toBeInTheDocument();
     expect(screen.getByText("rubric")).toBeInTheDocument();
     expect(screen.getByText("Manual")).toBeInTheDocument();
+    expect(screen.getByText("v1")).toBeInTheDocument();
     expect(screen.getByText("3 agents")).toBeInTheDocument();
     expect(screen.getByText("71% pull")).toBeInTheDocument();
     expect(screen.getByText("74% accept")).toBeInTheDocument();
@@ -66,5 +67,13 @@ describe("SkillCard (smoke)", () => {
     fireEvent.click(screen.getByRole("switch"));
     expect(onToggle).toHaveBeenCalledWith(false);
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("asks in a modal before deleting a skill", () => {
+    renderWithIntl(<SkillCard skill={SKILL} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete skill" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
