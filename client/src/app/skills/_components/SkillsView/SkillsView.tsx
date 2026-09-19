@@ -6,12 +6,13 @@
 import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Badge, Button, Dropdown, EmptyState, ErrorState, Icon, Skeleton } from "@devdigest/ui";
+import { Badge, Button, EmptyState, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
 import { useSkill, useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { SkillCard } from "../SkillCard";
 import { ImportSkillModal } from "./_components/ImportSkillModal";
 import { CreateSkillModal } from "./_components/CreateSkillModal/CreateSkillModal";
+import { ImportUrlSkillModal } from "./_components/ImportUrlSkillModal/ImportUrlSkillModal";
 import { SkillEditor } from "./_components/SkillEditor";
 import { DEFAULT_TAB, VALID_TABS, type SkillTab } from "./constants";
 import { filterSkills } from "./helpers";
@@ -23,8 +24,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
   const search = useSearchParams();
 
   const [query, setQuery] = React.useState("");
-  const [importing, setImporting] = React.useState(false);
-  const [creating, setCreating] = React.useState(false);
+  const [addMode, setAddMode] = React.useState<"create" | "file" | "url" | null>(null);
 
   const { data: skills, isLoading, isError, refetch } = useSkills();
   const { data: skill, isLoading: skillLoading } = useSkill(selectedId);
@@ -52,27 +52,22 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
 
   return (
     <AppShell crumb={crumb}>
-      {importing && <ImportSkillModal onClose={() => setImporting(false)} />}
-      {creating && <CreateSkillModal onClose={() => setCreating(false)} />}
+      {addMode === "file" && (
+        <ImportSkillModal onClose={() => setAddMode(null)} onCreate={() => setAddMode("create")} onUrl={() => setAddMode("url")} />
+      )}
+      {addMode === "create" && (
+        <CreateSkillModal onClose={() => setAddMode(null)} onImport={() => setAddMode("file")} onUrl={() => setAddMode("url")} />
+      )}
+      {addMode === "url" && <ImportUrlSkillModal onClose={() => setAddMode(null)} onCreate={() => setAddMode("create")} onFile={() => setAddMode("file")} />}
       <div style={s.split}>
         {/* rail */}
         <div style={s.rail}>
           <div style={s.railHead}>
             <div style={s.railTitleRow}>
               <h1 style={s.railTitle}>{t("page.heading")}</h1>
-              <Dropdown
-                width={210}
-                align="right"
-                trigger={
-                  <Button kind="primary" size="sm" icon="Plus" iconRight="ChevronDown">
-                    {t("page.addSkill")}
-                  </Button>
-                }
-                items={[
-                  { label: t("page.menu.create"), icon: "Edit", onClick: () => setCreating(true) },
-                  { label: t("page.menu.fromFile"), icon: "Upload", onClick: () => setImporting(true) },
-                ]}
-              />
+              <Button kind="primary" size="sm" icon="Plus" onClick={() => setAddMode("create")}>
+                {t("page.addSkill")}
+              </Button>
             </div>
             <div style={s.search}>
               <Icon.Search size={14} style={s.searchIcon} />
@@ -100,7 +95,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
                 title={t("page.empty.title")}
                 body={t("page.empty.body")}
                 cta={t("page.empty.cta")}
-                onCta={() => setCreating(true)}
+                onCta={() => setAddMode("create")}
               />
             )}
             {filtered.map((sk) => (

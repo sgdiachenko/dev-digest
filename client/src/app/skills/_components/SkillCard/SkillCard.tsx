@@ -55,7 +55,7 @@ export function SkillCard({
         </span>
         {onToggle && (
           <div onClick={(e) => e.stopPropagation()}>
-            <Toggle on={skill.enabled} onChange={onToggle} size={14} />
+            <Toggle on={skill.enabled} onChange={(value) => { if (!value || skill.safety?.safe !== false) onToggle(value); }} size={14} />
           </div>
         )}
         <button
@@ -85,6 +85,7 @@ export function SkillCard({
         <Badge color="var(--text-secondary)" mono>v{skill.version}</Badge>
         <Badge color={TYPE_COLOR[skill.type]}>{t(`listItem.type.${skill.type}`)}</Badge>
         <Badge color="var(--text-muted)">{t(`listItem.source.${skill.source}`)}</Badge>
+        {skill.safety?.safe === false && <Badge color="var(--crit)" icon="AlertTriangle">{t("safety.blocked")}</Badge>}
         {needsVetting && (
           <span title={t("listItem.vettingTitle")}>
             <Badge color="var(--warn)" icon="AlertTriangle" style={{ cursor: "help" }}>

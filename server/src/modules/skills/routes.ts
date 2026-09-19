@@ -75,6 +75,7 @@ const ImportSkillBody = z.object({
   filename: z.string().min(1),
   content_b64: z.string().min(1),
 });
+const ImportSkillUrlBody = z.object({ url: z.string().min(1).max(2048) });
 
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -198,4 +199,8 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
       return service.importFromFile(req.body.filename, req.body.content_b64);
     },
   );
+  app.post('/skills/import-url', { schema: { body: ImportSkillUrlBody, response: { 200: SkillDraft } } }, async (req) => {
+    await getContext(app.container, req);
+    return service.importFromUrl(req.body.url);
+  });
 }

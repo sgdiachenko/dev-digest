@@ -55,7 +55,7 @@ export function SkillsTab({ agentId }: { agentId: string }) {
           {orderedIds.map((id) => {
             const sk = skillById.get(id);
             if (!sk) return null;
-            const draggable = sk.enabled;
+            const draggable = sk.enabled && sk.safety?.safe !== false;
             return (
               <div
                 key={id}
@@ -96,6 +96,7 @@ export function SkillsTab({ agentId }: { agentId: string }) {
                 <div style={s.rowMain}>
                   <span style={s.desc}>{sk.description}</span>
                   <Badge>{t(`skills.type.${sk.type}`)}</Badge>
+                  {sk.safety?.safe === false && <Badge color="var(--crit)">Injection detected</Badge>}
                 </div>
               </div>
             );
@@ -110,12 +111,14 @@ export function SkillsTab({ agentId }: { agentId: string }) {
             <div key={sk.id} style={s.row}>
               <Checkbox
                 checked={false}
+                disabled={sk.safety?.safe === false}
                 onChange={() => commit(toggleId(orderedIds, sk.id, true))}
                 label={<span className="mono">{sk.name}</span>}
               />
               <div style={s.rowMain}>
                 <span style={s.desc}>{sk.description}</span>
                 <Badge>{t(`skills.type.${sk.type}`)}</Badge>
+                {sk.safety?.safe === false && <Badge color="var(--crit)">Injection detected — edit body before linking</Badge>}
               </div>
             </div>
           ))}

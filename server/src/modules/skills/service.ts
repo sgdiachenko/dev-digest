@@ -10,6 +10,8 @@ import type {
 import type { SkillsRepository } from './repository.js';
 import { SkillImportError, computeSkillStats, parseImport, toSkillDto, toSkillVersionDto } from './helpers.js';
 import { ValidationError } from '../../platform/errors.js';
+import { assessSkillSafety } from './safety.js';
+import { importSkillFromUrl } from './url-import.js';
 
 /**
  * Skills service. Business logic for the Skills Lab (list/editor) + the agent
@@ -81,20 +83,24 @@ export class SkillsService {
       type: input.type,
       source: input.source ?? 'manual',
       body: input.body,
-      enabled: input.enabled,
+      enabled: assessSkillSafety(input.body).safe ? input.enabled : false,
       ...(input.evidenceFiles ? { evidenceFiles: input.evidenceFiles } : {}),
     });
     return toSkillDto(row);
   }
 
   async update(workspaceId: string, id: string, patch: UpdateSkillInput): Promise<Skill | undefined> {
+    const existing = await this.repo.getById(workspaceId, id);
+    if (!existing) return undefined;
+    const safe = assessSkillSafety(patch.body ?? existing.body).safe;
+    if (!safe && patch.enabled === true) throw new ValidationError('Unsafe skill cannot be enabled. Edit its body first.');
     const row = await this.repo.update(workspaceId, id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.description !== undefined ? { description: patch.description } : {}),
       ...(patch.type !== undefined ? { type: patch.type } : {}),
       ...(patch.body !== undefined ? { body: patch.body } : {}),
       ...(patch.note !== undefined ? { note: patch.note } : {}),
-      ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+      ...(!safe ? { enabled: false } : patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
     });
     return row ? toSkillDto(row) : undefined;
   }
@@ -119,8 +125,9 @@ export class SkillsService {
 
   /** Restore a past body snapshot — appends a new version, never rewinds. */
   async restore(workspaceId: string, skillId: string, version: number): Promise<Skill | undefined> {
-    const row = await this.repo.restore(workspaceId, skillId, version);
-    return row ? toSkillDto(row) : undefined;
+    const snapshot = await this.repo.getVersion(skillId, version);
+    if (!snapshot) return undefined;
+    return this.update(workspaceId, skillId, { body: snapshot.body, note: `Restored from v${version}` });
   }
 
   /**
@@ -130,10 +137,22 @@ export class SkillsService {
   importFromFile(filename: string, contentB64: string): SkillDraft {
     const bytes = Buffer.from(contentB64, 'base64');
     try {
-      return parseImport(filename, bytes);
+      const draft = parseImport(filename, bytes);
+      return { ...draft, safety: assessSkillSafety(draft.body) };
     } catch (err) {
       if (err instanceof SkillImportError) throw new ValidationError(err.message);
       throw err;
+    }
+  }
+
+  async importFromUrl(url: string): Promise<SkillDraft> {
+    try {
+      const draft = await importSkillFromUrl(url);
+      return { ...draft, safety: assessSkillSafety(draft.body) };
+    } catch (err) {
+      if (err instanceof SkillImportError) throw new ValidationError(err.message);
+      if (err instanceof ValidationError) throw err;
+      throw new ValidationError('Could not fetch skill URL securely');
     }
   }
 }

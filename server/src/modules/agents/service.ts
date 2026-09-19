@@ -10,6 +10,9 @@ import type {
 import type { LLMProvider } from '@devdigest/shared';
 import type { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import type { SkillsRepository } from '../skills/repository.js';
+import { assessSkillSafety } from '../skills/safety.js';
+import { ValidationError } from '../../platform/errors.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -56,6 +59,7 @@ export class AgentsService {
   constructor(
     private readonly repo: AgentsRepository,
     private readonly llm: LlmFactory,
+    private readonly skillsRepo: SkillsRepository,
   ) {}
 
   async list(workspaceId: string): Promise<Agent[]> {
@@ -155,6 +159,7 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    for (const id of skillIds) await this.assertLinkable(workspaceId, id);
     await this.repo.setSkills(agentId, skillIds);
     return this.skillLinks(agentId);
   }
@@ -168,10 +173,19 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertLinkable(workspaceId, skillId);
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
     await this.repo.linkSkill(agentId, skillId, resolvedOrder);
     return this.skillLinks(agentId);
+  }
+
+  private async assertLinkable(workspaceId: string, skillId: string): Promise<void> {
+    const skill = await this.skillsRepo.getById(workspaceId, skillId);
+    if (!skill) throw new ValidationError('Skill does not exist in this workspace');
+    if (!assessSkillSafety(skill.body).safe) {
+      throw new ValidationError('Unsafe skill cannot be added to an agent. Edit its body first.');
+    }
   }
 
   /**

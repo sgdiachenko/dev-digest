@@ -66,9 +66,13 @@ export function ConfigTab({ skill }: { skill: Skill }) {
         <h2 style={s.h2}>{t("config.title")}</h2>
         <label style={s.enabledLabel}>
           {t("config.enabled")}
-          <Toggle on={enabled} onChange={setEnabled} size={16} />
+          <Toggle on={enabled} onChange={(value) => { if (!value || skill.safety?.safe !== false || body !== skill.body) setEnabled(value); }} size={16} />
         </label>
       </div>
+      {skill.safety?.safe === false && <div role="alert" style={{ color: "var(--crit)", border: "1px solid var(--crit)", padding: 12, marginBottom: 16 }}>
+        {t("safety.warning")}
+        {skill.safety.reasons.map((reason) => <div key={reason}>• {reason}</div>)}
+      </div>}
       <FormField label={t("config.name")} required hint={t("config.nameHint")}>
         <TextInput value={name} onChange={setName} placeholder={t("config.namePlaceholder")} mono />
         {nameConflict && (

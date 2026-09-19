@@ -9,7 +9,7 @@ import { useCreateSkill } from "../../../../../../lib/hooks/skills";
 import { ApiError } from "../../../../../../lib/api";
 import { SKILL_TYPES } from "../../constants";
 
-export function CreateSkillModal({ onClose }: { onClose: () => void }) {
+export function CreateSkillModal({ onClose, onImport, onUrl }: { onClose: () => void; onImport?: () => void; onUrl?: () => void }) {
   const t = useTranslations("skills");
   const router = useRouter();
   const create = useCreateSkill();
@@ -42,7 +42,13 @@ export function CreateSkillModal({ onClose }: { onClose: () => void }) {
         </div>
       }
     >
-      <div style={{ display: "grid", gap: 18, padding: 24 }}>
+      <div style={{ padding: 24 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+          <Button kind="primary" size="sm" disabled>{t("create.tabCreate")}</Button>
+          {onImport && <Button kind="ghost" size="sm" onClick={onImport} disabled={create.isPending}>{t("create.tabFile")}</Button>}
+          {onUrl && <Button kind="ghost" size="sm" onClick={onUrl} disabled={create.isPending}>{t("create.tabUrl")}</Button>}
+        </div>
+        <div style={{ display: "grid", gap: 18 }}>
         <FormField label={t("create.name")} required hint={t("config.nameHint")}>
           <TextInput value={name} onChange={setName} mono />
         </FormField>
@@ -60,6 +66,7 @@ export function CreateSkillModal({ onClose }: { onClose: () => void }) {
           {create.error instanceof ApiError && create.error.status === 409
             ? t("create.duplicateName") : create.error.message}
         </div>}
+        </div>
       </div>
     </Modal>
   );

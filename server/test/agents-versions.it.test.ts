@@ -8,6 +8,7 @@ import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
+import { SkillsRepository } from '../src/modules/skills/repository.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -222,7 +223,7 @@ d('GET /agents/:id/versions', () => {
     // this read path never reaches for a provider.
     const service = new AgentsService(new AgentsRepository(db), () => {
       throw new Error('listVersions must not call an LLM provider');
-    });
+    }, new SkillsRepository(db));
     const [{ id: defaultWs }] = await db
       .select({ id: t.workspaces.id })
       .from(t.workspaces)

@@ -31,7 +31,10 @@
     "deleting": "Deleting…"
   },
   "create": {
-    "title": "Create skill",
+    "title": "Add skill",
+    "tabCreate": "Create",
+    "tabFile": "From file",
+    "tabUrl": "Import from URL",
     "name": "Name",
     "description": "Description",
     "type": "Type",
@@ -135,6 +138,20 @@
     "nameLabel": "Name",
     "typeLabel": "Type",
     "sourceNote": "Imported skills render as untrusted data in the prompt until you've reviewed and vetted them."
+  },
+  "urlImport": {
+    "url": "URL (https:// only)",
+    "name": "Skill name",
+    "fetch": "Preview URL",
+    "fetching": "Fetching…",
+    "save": "Import skill",
+    "saving": "Importing…",
+    "unsafe": "Injection detected — this skill will be imported disabled. Edit its body to remove unsafe instructions before enabling or linking it to an agent.",
+    "safe": "Review the content before enabling this imported skill."
+  },
+  "safety": {
+    "blocked": "Injection detected",
+    "warning": "This skill contains suspicious instructions. It cannot be enabled, linked to an agent, or used in reviews until its body is made safe."
   },
   "drawer": {
     "title": "Add a skill",

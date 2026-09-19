@@ -5,6 +5,7 @@ import type { SkillSource, SkillType } from '@devdigest/shared';
 import type { StatsAgentRow, StatsFindingRow, StatsRunRow, SkillStatsRaw } from './helpers.js';
 import { INITIAL_SKILL_VERSION, RESTORE_NOTE_PREFIX, STATS_WINDOW_DAYS } from './constants.js';
 import { ConflictError } from '../../platform/errors.js';
+import { assessSkillSafety } from './safety.js';
 
 /** Postgres unique_violation → a 409 the client can show inline, instead of a 500. */
 function rethrowUniqueViolation(err: unknown, name: string): never {
@@ -198,7 +199,7 @@ export class SkillsRepository {
       .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
       .where(and(eq(t.agentSkills.agentId, agentId), eq(t.skills.enabled, true)))
       .orderBy(asc(t.agentSkills.order));
-    return rows.map((r) => ({
+    return rows.filter((r) => assessSkillSafety(r.skill.body).safe).map((r) => ({
       id: r.skill.id,
       name: r.skill.name,
       body: r.skill.body,

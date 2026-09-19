@@ -12,7 +12,7 @@ import { useCreateSkill, useImportSkillFile } from "../../../../../../lib/hooks/
 import { readFileAsBase64 } from "./helpers";
 import { s } from "./styles";
 
-export function ImportSkillModal({ onClose }: { onClose: () => void }) {
+export function ImportSkillModal({ onClose, onCreate, onUrl }: { onClose: () => void; onCreate?: () => void; onUrl?: () => void }) {
   const t = useTranslations("skills");
   const router = useRouter();
   const importFile = useImportSkillFile();
@@ -54,7 +54,7 @@ export function ImportSkillModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal
-      title={t("import.title")}
+      title={t("create.title")}
       subtitle={t("import.subtitle")}
       onClose={onClose}
       footer={
@@ -69,6 +69,13 @@ export function ImportSkillModal({ onClose }: { onClose: () => void }) {
       }
     >
       <div style={s.body}>
+        {onCreate && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+            <Button kind="ghost" size="sm" onClick={onCreate}>{t("create.tabCreate")}</Button>
+            <Button kind="primary" size="sm" disabled>{t("create.tabFile")}</Button>
+            {onUrl && <Button kind="ghost" size="sm" onClick={onUrl}>{t("create.tabUrl")}</Button>}
+          </div>
+        )}
         <input
           ref={inputRef}
           type="file"

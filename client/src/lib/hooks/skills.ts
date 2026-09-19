@@ -153,6 +153,12 @@ export function useImportSkillFile() {
   });
 }
 
+export function useImportSkillUrl() {
+  return useMutation({
+    mutationFn: (url: string) => api.post<SkillDraft>("/skills/import-url", { url }),
+  });
+}
+
 /**
  * Link ONE skill to an agent — additive, unlike `useSetAgentSkills` which
  * replaces the agent's whole linked set (and would silently wipe its other

@@ -3,6 +3,7 @@ import type { Skill, SkillDraft, SkillSource, SkillStats, SkillType, SkillVersio
 import { SKILL_NAME_RE, SkillType as SkillTypeEnum } from '@devdigest/shared';
 import type { SkillRow, SkillVersionRow } from '../../db/rows.js';
 import { DEFAULT_SKILL_TYPE, MAX_IMPORT_BYTES, MAX_SKILL_BODY_CHARS } from './constants.js';
+import { assessSkillSafety } from './safety.js';
 
 /**
  * Pure helpers for the skills module — DB row ⇄ DTO mapping, the import
@@ -25,6 +26,7 @@ export function toSkillDto(row: SkillRow): Skill {
     enabled: row.enabled,
     version: row.version,
     evidence_files: row.evidenceFiles ?? null,
+    safety: assessSkillSafety(row.body),
   };
 }
 

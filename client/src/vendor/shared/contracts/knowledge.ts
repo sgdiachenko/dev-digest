@@ -117,6 +117,8 @@ export type SkillType = z.infer<typeof SkillType>;
 
 export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community']);
 export type SkillSource = z.infer<typeof SkillSource>;
+export const SkillSafety = z.object({ safe: z.boolean(), reasons: z.array(z.string()) });
+export type SkillSafety = z.infer<typeof SkillSafety>;
 
 /** Skill name: slug-ish, stable enough to use as a prompt label. */
 export const SKILL_NAME_RE = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/;
@@ -131,6 +133,7 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  safety: SkillSafety.optional(),
 });
 export type Skill = z.infer<typeof Skill>;
 
@@ -156,6 +159,7 @@ export const SkillDraft = z.object({
   body: z.string(),
   source: SkillSource,
   skipped_files: z.array(z.string()),
+  safety: SkillSafety.optional(),
 });
 export type SkillDraft = z.infer<typeof SkillDraft>;
 

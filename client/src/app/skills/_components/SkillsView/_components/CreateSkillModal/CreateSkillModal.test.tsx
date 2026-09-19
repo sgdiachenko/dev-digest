@@ -15,6 +15,18 @@ import { CreateSkillModal } from "./CreateSkillModal";
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("CreateSkillModal", () => {
+  it("opens directly on the Create tab and can switch to file import", () => {
+    const onImport = vi.fn();
+    render(
+      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+        <CreateSkillModal onClose={vi.fn()} onImport={onImport} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText("Add skill")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "From file" }));
+    expect(onImport).toHaveBeenCalledOnce();
+    expect(createSkill).not.toHaveBeenCalled();
+  });
   it("does not persist until a valid form is submitted, then opens the new skill", async () => {
     createSkill.mockResolvedValue({ id: "sk-new" });
     const close = vi.fn();
