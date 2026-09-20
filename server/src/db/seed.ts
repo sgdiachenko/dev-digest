@@ -16,6 +16,10 @@ import {
   SECRET_LEAKAGE_GATE_SKILL,
   TEST_COVERAGE_NUDGE_SKILL,
   WIRE_FORMAT_CONVENTION_SKILL,
+  BREAKING_CHANGE_SKILL,
+  RESPONSE_SCHEMA_SKILL,
+  DEPRECATION_POLICY_SKILL,
+  SEMVER_DISCIPLINE_SKILL,
   FLAKY_TEST_SIGNALS_SKILL,
 } from './seed-skills.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
@@ -36,7 +40,7 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  * with a few findings, and five built-in agents — the original three (General +
  * Security + Performance) plus L02's Test Quality Reviewer + API Contract
  * Reviewer — all on the default openrouter/deepseek-v4-flash provider+model.
- * L02 also seeds five built-in skills and links them to the agents above, so
+ * L02 also seeds nine built-in skills and links them to the agents above, so
  * the control experiment (same agent, with vs. without its skills) works
  * out of the box.
  *
@@ -304,6 +308,9 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     // agent is instructed to stay silent on it; the skill's own rule
     // ("A field added to vendor/shared/contracts/* in camelCase … flag it as
     // a WARNING") overrides that for this one specific violation when linked.
+    // Unlink wire-format-convention specifically to run the "without" side —
+    // the agent's four other skills all treat an added field as additive, so
+    // they leave this fixture alone either way.
     await db.insert(t.prFiles).values({
       prId: pr484!.id,
       path: 'src/api/public/webhooks.ts',
@@ -415,6 +422,34 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       type: 'convention',
       body: WIRE_FORMAT_CONVENTION_SKILL,
     },
+    // The four API-contract skills. Prompt-sized distillations of this repo's
+    // own `.claude/skills/{breaking-change,response-schema,deprecation-policy,
+    // semver-discipline}/SKILL.md` — those files instruct Claude Code, never a
+    // run of the in-app API Contract Reviewer, which reads only these rows.
+    {
+      name: 'breaking-change',
+      description: 'Checklist for whether a route or DTO change breaks an already deployed caller.',
+      type: 'rubric',
+      body: BREAKING_CHANGE_SKILL,
+    },
+    {
+      name: 'response-schema',
+      description: 'Field-by-field compatibility of a response body with what old clients parse.',
+      type: 'rubric',
+      body: RESPONSE_SCHEMA_SKILL,
+    },
+    {
+      name: 'deprecation-policy',
+      description: 'Requires a marker, replacement, migration path, timeline, and window before a contract goes away.',
+      type: 'custom',
+      body: DEPRECATION_POLICY_SKILL,
+    },
+    {
+      name: 'semver-discipline',
+      description: 'Checks the release version matches the scale of the public contract change.',
+      type: 'custom',
+      body: SEMVER_DISCIPLINE_SKILL,
+    },
   ];
   const skillIdByName = new Map<string, string>();
   for (const s of seedSkills) {
@@ -462,7 +497,15 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       name: 'API Contract Reviewer',
       description: 'Flags breaking changes to a route signature or a shared DTO.',
       systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
-      skills: ['wire-format-convention'],
+      // Ordered: the narrow house rule first (it is what the control
+      // experiment on PR #484 turns on), then the four contract checklists.
+      skills: [
+        'wire-format-convention',
+        'breaking-change',
+        'response-schema',
+        'deprecation-policy',
+        'semver-discipline',
+      ],
     },
   ];
   for (const a of seedSkillAgents) {

@@ -25,6 +25,16 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Shared | Reads/appends session findings to the touched module's INSIGHTS.md |
 
+> These skills instruct **Claude Code** (and Cursor) while you work in this
+> repo. They are not what the app's own reviewer agents use: a review run
+> reads the `skills` table, seeded from
+> [`server/src/db/seed-skills.ts`](../../server/src/db/seed-skills.ts) and
+> mirrored in [`docs/agent-prompts/skills/`](../../docs/agent-prompts/skills/).
+> `breaking-change`, `response-schema`, `deprecation-policy`, and
+> `semver-discipline` exist in both places — a condensed copy of each is seeded
+> and linked to the API Contract Reviewer agent, so a change worth having in the
+> in-app review has to be made there too.
+
 ## What Are Skills?
 
 Skills are modular packages that extend the AI agent with specialized knowledge and workflows. Unlike rules (always applied) or agents (invoked for specific tasks), skills are loaded on-demand when the agent determines they're relevant.
