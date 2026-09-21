@@ -1,4 +1,3 @@
-import type { Container } from '../../platform/container.js';
 import type {
   Agent,
   AgentSkillLink,
@@ -8,8 +7,11 @@ import type {
   Provider,
   ReviewStrategy,
 } from '@devdigest/shared';
-import { AgentsRepository } from './repository.js';
+import type { LLMProvider } from '@devdigest/shared';
+import type { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import { assessSkillSafety } from '../skills/safety.js';
+import { ValidationError } from '../../platform/errors.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -48,12 +50,22 @@ export interface UpdateAgentInput {
   enabled?: boolean;
 }
 
-export class AgentsService {
-  private repo: AgentsRepository;
+/** Resolve an LLM adapter for a provider — the only outside capability this
+ *  service needs, injected rather than reached for through the container. */
+export type LlmFactory = (provider: Provider) => Promise<LLMProvider>;
 
-  constructor(private container: Container) {
-    this.repo = new AgentsRepository(container.db);
-  }
+/** Agents only need to read the skill body before adding a link. The concrete
+ * skills repository is supplied by the composition root in routes.ts. */
+export interface LinkableSkillsReader {
+  getById(workspaceId: string, skillId: string): Promise<{ body: string } | undefined>;
+}
+
+export class AgentsService {
+  constructor(
+    private readonly repo: AgentsRepository,
+    private readonly llm: LlmFactory,
+    private readonly skillsRepo: LinkableSkillsReader,
+  ) {}
 
   async list(workspaceId: string): Promise<Agent[]> {
     const rows = await this.repo.list(workspaceId);
@@ -152,6 +164,7 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    for (const id of skillIds) await this.assertLinkable(workspaceId, id);
     await this.repo.setSkills(agentId, skillIds);
     return this.skillLinks(agentId);
   }
@@ -165,10 +178,19 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertLinkable(workspaceId, skillId);
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
     await this.repo.linkSkill(agentId, skillId, resolvedOrder);
     return this.skillLinks(agentId);
+  }
+
+  private async assertLinkable(workspaceId: string, skillId: string): Promise<void> {
+    const skill = await this.skillsRepo.getById(workspaceId, skillId);
+    if (!skill) throw new ValidationError('Skill does not exist in this workspace');
+    if (!assessSkillSafety(skill.body).safe) {
+      throw new ValidationError('Unsafe skill cannot be added to an agent. Edit its body first.');
+    }
   }
 
   /**
@@ -177,7 +199,7 @@ export class AgentsService {
    */
   async listModels(provider: Provider): Promise<ModelInfo[]> {
     try {
-      const llm = await this.container.llm(provider);
+      const llm = await this.llm(provider);
       return await llm.listModels();
     } catch {
       return [];

@@ -6,17 +6,34 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 | Skill | Scope | Description |
 |-------|-------|-------------|
+| [pr-self-review](pr-self-review/SKILL.md) | Workflow | Routes the skills below at the local diff before a PR exists; a CRITICAL finding blocks `gh pr create`/`merge` |
+| [onion-architecture](onion-architecture/SKILL.md) | Backend | Ring map for `server/`/`reviewer-core/`, inward-only imports, ports, depcruise enforcement |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
+| [breaking-change](breaking-change/SKILL.md) | Backend | Reviews backend changes for backward-incompatible public API behavior (routes, contracts, validation, statuses) |
+| [response-schema](response-schema/SKILL.md) | Backend | Checks response body structure (fields, presence, types, nesting) stays compatible with existing clients |
+| [deprecation-policy](deprecation-policy/SKILL.md) | Backend | Checks public API deprecations, migration paths, removal timelines, and compatibility windows |
+| [semver-discipline](semver-discipline/SKILL.md) | Backend | Checks release versions or release intents against public API changes and the established versioning policy |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |
 | [next-best-practices](next-best-practices/SKILL.md) | Frontend | Next.js App Router, RSC boundaries, data fetching, optimization |
 | [react-best-practices](react-best-practices/SKILL.md) | Frontend | React anti-patterns, state management, hooks rules |
+| [frontend-architecture](frontend-architecture/SKILL.md) | Frontend | File placement, dependency direction, feature boundaries, public APIs |
 | [react-testing-library](react-testing-library/SKILL.md) | Frontend | General-purpose React Testing Library guide with Vitest |
 | [zod](zod/SKILL.md) | Full-stack | Zod schema validation, parsing, error handling, type inference |
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Shared | Reads/appends session findings to the touched module's INSIGHTS.md |
+
+> These skills instruct **Claude Code** (and Cursor) while you work in this
+> repo. They are not what the app's own reviewer agents use: a review run
+> reads the `skills` table, seeded from
+> [`server/src/db/seed-skills.ts`](../../server/src/db/seed-skills.ts) and
+> mirrored in [`docs/agent-prompts/skills/`](../../docs/agent-prompts/skills/).
+> `breaking-change`, `response-schema`, `deprecation-policy`, and
+> `semver-discipline` exist in both places — a condensed copy of each is seeded
+> and linked to the API Contract Reviewer agent, so a change worth having in the
+> in-app review has to be made there too.
 
 ## What Are Skills?
 
@@ -38,3 +55,12 @@ Each skill has:
 - `SKILL.md` — Main skill file with rules and conventions (required)
 - `examples.md` — Code examples showing good/bad patterns (recommended)
 - `references.md` — Sources and rationale (optional)
+
+A skill that must *enforce* something also needs a script plus a hook in
+`.claude/settings.json` — a skill body alone cannot stop a tool call.
+[pr-self-review](pr-self-review/SKILL.md) is the worked example.
+
+New skill? Add it to the catalog above **and** to
+[pr-self-review/routing.md](pr-self-review/routing.md), or it will never run
+during a self-review. That skill's coverage invariant reports the omission,
+but only after the fact.

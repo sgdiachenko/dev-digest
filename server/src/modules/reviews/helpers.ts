@@ -2,7 +2,7 @@
  * Pure helpers for the review service (side-effect free; operate purely on
  * their arguments — no DB / network / `this`).
  */
-import type { Finding, FindingsSummary, SeverityCounts } from '@devdigest/shared';
+import type { Finding, FindingsSummary, SeverityCounts, Verdict } from '@devdigest/shared';
 import type { FindingRow, PullRow, ReviewRow } from './repository.js';
 
 // reduceReviews + sliceDiff live in @devdigest/reviewer-core (pure engine logic
@@ -22,7 +22,10 @@ export interface ReviewDto {
   run_id: string | null;
   agent_name?: string | null;
   kind: 'summary' | 'review';
-  verdict: string | null;
+  /** Narrowed to the published `Verdict` enum, not the raw `text` column —
+   *  this DTO is what `GET /pulls/:id/reviews` serializes, and its response
+   *  schema (`ReviewRecord`) only admits these three values. */
+  verdict: Verdict | null;
   summary: string | null;
   score: number | null;
   model: string | null;
@@ -67,7 +70,7 @@ export function reviewToDto(
     run_id: review.runId,
     agent_name: agentName ?? null,
     kind: review.kind as 'summary' | 'review',
-    verdict: review.verdict,
+    verdict: review.verdict as Verdict | null,
     summary: review.summary,
     score: review.score,
     model: review.model,

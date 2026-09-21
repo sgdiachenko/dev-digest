@@ -22,6 +22,11 @@
  * while still guaranteeing every consumer can fall back without throwing.
  */
 
+import type { CodeIndex, GitClient } from '@devdigest/shared';
+import type { DepGraph } from '../../adapters/depgraph/index.js';
+import type { Tokenizer } from '../../adapters/tokenizer/index.js';
+import type { JobHandler } from '../../platform/jobs.js';
+
 export type IndexStatus = 'full' | 'partial' | 'degraded' | 'failed';
 
 export type DegradedReason =
@@ -169,4 +174,27 @@ export interface RepoIntel {
     opts?: { exclude?: string[] },
   ): Promise<string[]>;
   getCriticalPaths(repoId: string): Promise<string[][]>;
+}
+
+/**
+ * Exactly what repo-intel needs from the outside world.
+ *
+ * Declared here, by the consumer, instead of taking the DI container: the
+ * container satisfies this structurally, so wiring is unchanged, but this
+ * module no longer imports the composition root — which is what made
+ * `service → container → service` a cycle.
+ */
+export interface RepoIntelDeps {
+  readonly config: { readonly repoIntelEnabled: boolean };
+  readonly git: GitClient;
+  readonly codeIndex: CodeIndex;
+  readonly jobs: JobRegistrar;
+  readonly depgraph: DepGraph;
+  readonly tokenizer: Tokenizer;
+}
+
+/** The slice of the JobRunner repo-intel uses (register handlers + enqueue). */
+export interface JobRegistrar {
+  register(kind: string, handler: JobHandler): void;
+  enqueue(workspaceId: string, kind: string, payload: unknown): Promise<{ id: string }>;
 }

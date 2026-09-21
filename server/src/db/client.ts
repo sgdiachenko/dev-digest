@@ -4,6 +4,15 @@ import { schema } from './schema.js';
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
+/**
+ * A `Db` or an open transaction handle.
+ *
+ * Repository functions take this instead of `Db` so the same function works
+ * standalone and inside `db.transaction(tx => …)`. Derived from the transaction
+ * callback's own parameter, so it tracks drizzle's type rather than restating it.
+ */
+export type DbOrTx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
+
 export interface DbHandle {
   db: Db;
   sql: postgres.Sql;

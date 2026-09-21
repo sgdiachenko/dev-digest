@@ -69,8 +69,11 @@ export default function PRDetailPage() {
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
+  // Derives from `reviews` directly rather than the `runs` alias: `runs` is a
+  // fresh array identity on every render when `reviews` is undefined, so listing
+  // it as the dependency would defeat the memo.
   const allFindings: FindingRecord[] = React.useMemo(
-    () => runs.flatMap((r) => r.findings),
+    () => (reviews ?? []).flatMap((r) => r.findings),
     [reviews],
   );
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");

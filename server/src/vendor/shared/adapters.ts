@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type {
+  ModelInfo,
   PrMeta,
   PrDetail,
   IssueMeta,
@@ -13,20 +14,6 @@ import type {
  */
 
 // ---------- LLM ----------
-export const ModelInfo = z.object({
-  id: z.string(),
-  provider: z.enum(['openai', 'anthropic', 'openrouter']),
-  label: z.string().nullish(),
-  created: z.number().int().nullish(),
-  /** Pricing in USD per 1M tokens (when the provider exposes it, e.g. OpenRouter). */
-  pricing: z
-    .object({ promptPerM: z.number(), completionPerM: z.number() })
-    .nullish(),
-  /** Max context window in tokens (when the provider exposes it). */
-  contextLength: z.number().int().nullish(),
-});
-export type ModelInfo = z.infer<typeof ModelInfo>;
-
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;

@@ -1,6 +1,6 @@
 # client — UI architecture
 
-Deeper reference for the route map summarized in [`../CLAUDE.md`](../CLAUDE.md)
+Deeper reference for the route map summarized in [`../AGENTS.md`](../AGENTS.md)
 and diagrammed in [`../README.md`](../README.md#ui-route-map).
 
 ## Data flow
@@ -14,7 +14,9 @@ Hooks are grouped by domain, not by page:
 
 - `hooks/core.ts` — repos, pulls, polling
 - `hooks/reviews.ts` — runs, findings, accept/dismiss
-- `hooks/agents.ts` — agent CRUD
+- `hooks/agents.ts` — agent CRUD + `useAgentSkills`/`useSetAgentSkills` (an
+  agent's linked, ordered skills)
+- `hooks/skills.ts` — skill CRUD, versions/restore, stats, file import (L02)
 - `hooks/repo-intel.ts` — index state, resync
 - `hooks/trace.ts` — SSE run-trace subscription
 
@@ -39,7 +41,7 @@ dispatcher) lives in `src/components/app-shell`, mounted once from
 `src/vendor/ui` (`@devdigest/ui`) and `src/vendor/shared` (`@devdigest/shared`)
 are copied in, not npm-installed — there's no version to bump, only a diff to
 reconcile by hand against the source (the server's copy, for `shared`). See
-root [CLAUDE.md](../../CLAUDE.md) for the sync convention.
+root [AGENTS.md](../../AGENTS.md) for the sync convention.
 
 ## i18n
 

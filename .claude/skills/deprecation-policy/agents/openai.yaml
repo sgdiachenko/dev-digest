@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deprecation Policy"
+  short_description: "Review safe API deprecation and removal paths"
+  default_prompt: "Use $deprecation-policy to review this backend API change for a safe consumer migration path."

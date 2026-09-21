@@ -120,11 +120,14 @@ export function RunHistory({
   onDelete?: (runId: string) => void;
 }) {
   const t = useTranslations("prReview");
-  if (runs.length === 0 && commits.length === 0) return null;
 
   // One review per run_id (a run can be linked to at most one review) — used
   // to show the severity breakdown without a new request; grouping is a plain
   // COUNT/filter over findings already loaded by usePrReviews.
+  //
+  // Must run BEFORE the empty-state early return: hooks have to be called in
+  // the same order on every render, and this component legitimately goes from
+  // empty (no runs yet) to non-empty (first run starts) while mounted.
   const summaryByRunId = React.useMemo(() => {
     const map = new Map<string, FindingsSummaryView>();
     for (const review of reviews ?? []) {
@@ -132,6 +135,8 @@ export function RunHistory({
     }
     return map;
   }, [reviews]);
+
+  if (runs.length === 0 && commits.length === 0) return null;
 
   const items: TimelineItem[] = [
     ...runs.map((run) => ({ kind: "run" as const, ts: tsOf(run.ran_at), run })),

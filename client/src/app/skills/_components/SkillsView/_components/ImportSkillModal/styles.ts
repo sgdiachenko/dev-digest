@@ -1,0 +1,52 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  footer: { display: "flex", justifyContent: "flex-end", gap: 10 } satisfies CSSProperties,
+  body: { padding: 24, display: "flex", flexDirection: "column", gap: 16 } satisfies CSSProperties,
+  error: {
+    color: "var(--crit)",
+    background: "var(--crit-bg)",
+    borderRadius: 7,
+    padding: "10px 12px",
+    fontSize: 13,
+  } satisfies CSSProperties,
+  preview: {
+    border: "1px solid var(--border)",
+    borderRadius: 9,
+    padding: 16,
+    background: "var(--bg-elevated)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  } satisfies CSSProperties,
+  previewHead: { display: "flex", alignItems: "center", gap: 8 } satisfies CSSProperties,
+  previewTitle: { fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginRight: 4 } satisfies CSSProperties,
+  description: { fontSize: 13, color: "var(--text-secondary)", margin: 0 } satisfies CSSProperties,
+  bodyPreview: {
+    fontSize: 12.5,
+    lineHeight: 1.5,
+    whiteSpace: "pre-wrap",
+    maxHeight: 220,
+    overflow: "auto",
+    margin: 0,
+    padding: 12,
+    borderRadius: 7,
+    background: "var(--bg-hover)",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  skipped: {
+    borderTop: "1px solid var(--border)",
+    paddingTop: 10,
+  } satisfies CSSProperties,
+  skippedTitle: { fontSize: 12, fontWeight: 600, color: "var(--warn)", marginBottom: 6 } satisfies CSSProperties,
+  skippedList: {
+    margin: 0,
+    paddingLeft: 18,
+    fontSize: 12.5,
+    color: "var(--text-muted)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  } satisfies CSSProperties,
+  note: { fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 } satisfies CSSProperties,
+} as const;

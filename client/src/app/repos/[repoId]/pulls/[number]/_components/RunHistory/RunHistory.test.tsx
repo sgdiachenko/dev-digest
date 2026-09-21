@@ -194,3 +194,38 @@ describe("RunHistory — findings counter", () => {
     expect(within(dialog).queryAllByRole("button")).toHaveLength(0);
   });
 });
+
+describe("RunHistory — hook order across the empty→non-empty transition", () => {
+  /**
+   * Regression guard for a Rules-of-Hooks violation: the `summaryByRunId`
+   * useMemo used to sit AFTER the `runs.length === 0 && commits.length === 0`
+   * early return. An empty render therefore ran 1 hook and a populated render
+   * ran 2, so the first run appearing on a mounted timeline threw
+   * "Rendered more hooks than during the previous render."
+   *
+   * This is the real sequence on the PR-detail page: the timeline renders
+   * empty, the user starts a review, and the run arrives while mounted.
+   */
+  it("survives the first run arriving on an already-mounted empty timeline", () => {
+    const { rerender } = render(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <RunHistory runs={[]} onOpenTrace={() => {}} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.queryByText("running")).not.toBeInTheDocument();
+
+    expect(() =>
+      rerender(
+        <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+          <RunHistory
+            runs={[run({ status: "running", score: null, blockers: null })]}
+            reviews={[review({ run_id: "run-1" })]}
+            onOpenTrace={() => {}}
+          />
+        </NextIntlClientProvider>,
+      ),
+    ).not.toThrow();
+
+    expect(screen.getByText("running")).toBeInTheDocument();
+  });
+});
