@@ -77,7 +77,11 @@ package / feature / screen / endpoint), or a way to tell that it is done.
    Note every INSIGHTS entry that changes the plan. If your prompt points to
    a `docs/plans/<feature>.context.md` instead of pasting a full researcher
    report inline, Read that file first — it's the same evidence, just kept
-   out of the prompt.
+   out of the prompt. If your prompt instead (or additionally) points to a
+   `docs/plans/<feature>.options.md` (a `brainstorm` report) and names the
+   `O#` the user picked, Read that file and plan **only** the picked option —
+   do not re-evaluate the choice between options — and fold the rejected
+   options into one summary line under *Context*.
 2. **Locate.** Glob / Grep for the code involved and for existing functions,
    hooks, repositories, contracts and test helpers to reuse. Read the
    relevant ranges — don't plan from file names.

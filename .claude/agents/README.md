@@ -12,6 +12,7 @@ map of the set — read the agent file for the actual rules.
 
 ```
 user ─► researcher (when evidence is needed)
+     ─► brainstorm (optional: ≥2 plausible approaches) ─► Options Comparison ─► user picks O#
      ─► planner ─► Development Plan ─► user approves
      ─► implementer ─► code + Implementation Report
      ─► test-writer (optional: coverage gaps / regression tests) ─► Test Report
@@ -21,13 +22,18 @@ user ─► researcher (when evidence is needed)
      ─► /pr-self-review ─► gh pr create
 ```
 
-`plan-verifier` runs after `test-writer` so new tests count as evidence in the
-traceability matrix; `doc-writer` runs before `/pr-self-review` so any docs it
-writes are inside the gated fingerprint. `architecture-reviewer` and
-`security-reviewer` are both read-only and independent of each other, so the
-main session can run them in parallel; the security phase-2 false-positive
-filter (see `docs/plans/agent-token-optimization.md`) runs only when
-`security-reviewer` actually returns `CRITICAL`/`WARNING` findings.
+`brainstorm` is optional, the same way `test-writer` and `doc-writer` are: the
+main session runs it only when a task has ≥2 plausible implementation
+approaches, and skips it — straight to `planner` — when one approach is
+already obvious. `planner` then plans **only** the option the user picked, not
+a re-evaluation of the comparison. `plan-verifier` runs after `test-writer` so
+new tests count as evidence in the traceability matrix; `doc-writer` runs
+before `/pr-self-review` so any docs it writes are inside the gated
+fingerprint. `architecture-reviewer` and `security-reviewer` are both
+read-only and independent of each other, so the main session can run them in
+parallel; the security phase-2 false-positive filter (see
+`docs/plans/agent-token-optimization.md`) runs only when `security-reviewer`
+actually returns `CRITICAL`/`WARNING` findings.
 
 The main session orchestrates: no agent here can spawn another (`Agent` is
 not in any tool list), and a subagent cannot ask the user questions — each
@@ -65,6 +71,14 @@ drive the flow above. Confirmed on a measured feature; see
   `docs/plans/<feature>.context.md` and passes `planner` that path plus a
   one-line pointer, instead of the whole report text, when the report is
   long (§2.3.1/§2.1 of the optimization doc).
+- **`brainstorm`'s report follows the same context-pack pattern.** It is
+  read-only too, so the main session saves its returned report to
+  `docs/plans/<feature>.options.md` and passes `planner` that path plus the
+  `O#` the user picked — `planner` then plans only that option. Skip
+  `brainstorm` entirely when the approach is already obvious (a bug fix, a
+  small change, a task with one clear implementation) — it is priced like
+  `planner` (`opus`, full read of the repo) and only pays for itself when
+  there really are competing approaches to weigh.
 - **For a plan step that measures or times a DOM node** (sticky headers,
   portals, anything reading `ref.current`/`getBoundingClientRect` across a
   conditional render), open the app in a browser and check the *live*
@@ -80,6 +94,7 @@ drive the flow above. Confirmed on a measured feature; see
 | Agent | Responsibility | Model | Tools / permissions | Input | Output |
 |---|---|---|---|---|---|
 | [researcher](researcher.md) | Answers a concrete question with evidence from the repo (code, docs, git history) and/or external sources | `sonnet` | Read, Grep, Glob, read-only Bash, WebSearch, WebFetch. No Write/Edit/Skill | A concrete question + scope (repo / external / both) | *Repo research* or *External research* report: TL;DR, conclusions with confidence, evidence (`path:line` / URLs), sources, **Not found / gaps** |
+| [brainstorm](brainstorm.md) | Optional, between researcher and planner: states decision drivers, then compares 2-3 plausible implementation options plus a "do nothing" baseline against them. Never picks for the user | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Task description (goal, scope, done criterion) + optional `docs/plans/<feature>.context.md` | **Options Comparison**: problem & scope, decision drivers, baseline, options (axis, per-driver verdict, strongest objection, effort, reversibility), comparison matrix, recommendation, why not the others, decision needed, risks, gaps — or *Clarifying questions* |
 | [planner](planner.md) | Turns a feature/bug request into a structured Development Plan that respects modules, INSIGHTS, skills and architecture constraints. Does not review | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Task description (goal, scope, done criterion); optionally a researcher report | **Development Plan**: goal & scope, context, affected modules, constraints (with sources), steps `S1..Sn` (files, skills, reuse, done-when, depends-on), test plan, risks, review handoff, gaps — or *Clarifying questions* |
 | [implementer](implementer.md) | Executes an approved plan in `server/`, `client/`, `reviewer-core/`, `e2e/`; writes tests; runs the touched packages' CI checks. No review, commits or PRs | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | The approved Development Plan, passed in full in the prompt | Code changes (+ at most one `INSIGHTS.md` line) and an **Implementation Report**: status, per-step result, files changed, skills applied, checks with exit codes, deviations, reviewer handoff — or *blocked* |
 | [test-writer](test-writer.md) | Adds or extends automated tests for a given target — a plan/report or a named feature/bug — across `server/`, `client/`, `reviewer-core/`, `e2e/`. Confirms each test fails for the right reason. Edits test files only, never product code | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | A plan + Implementation Report, or files/feature + behaviour to cover + packages | **Test Report**: status, tests added/changed, right-reason evidence per test, checks with exit codes, not-run (`.it`/e2e), skills applied, convention overrides, INSIGHTS updated, open issues — or *blocked* |
@@ -114,7 +129,7 @@ Which skill applies to which file is decided by
 [`routing.md`](../skills/pr-self-review/routing.md), the same table
 `/pr-self-review` uses.
 
-### Role-scoped skills (test-writer, architecture-reviewer, security-reviewer, plan-verifier, doc-writer)
+### Role-scoped skills (brainstorm, test-writer, architecture-reviewer, security-reviewer, plan-verifier, doc-writer)
 
 Only `planner` and `implementer` must stay identical (C15 in the plan that
 introduced these four agents). Each of the other agents preloads a smaller,
@@ -122,6 +137,9 @@ role-scoped list; every skill on a list is justified here.
 
 | Agent | Skill | Why it's preloaded |
 |---|---|---|
+| brainstorm | `engineering-insights` | reads `INSIGHTS.md` as context for its decision drivers (read-only — same as `plan-verifier`/`architecture-reviewer`) |
+| brainstorm | `onion-architecture` | the most common axis between options in `server/`/`reviewer-core/` is "extend an existing ring/port" vs. "add a new module" |
+| brainstorm | `frontend-architecture` | the most common axis between options in `client/` is where a piece lands and which direction it depends |
 | test-writer | `react-testing-library` | client component/hook test patterns |
 | test-writer | `fastify-best-practices` | `app.inject`-based server test patterns |
 | test-writer | `onion-architecture` | knows which ring a test double belongs to, to flag a missing port instead of adding one |
@@ -156,7 +174,10 @@ skill "just in case", it Reads `.claude/skills/<name>/SKILL.md` on demand,
 driven by each Constraint's own `C#: <rule> — source: <skill>` field — see
 "Skill loading rule" in [plan-verifier.md](plan-verifier.md). This keeps its
 preloaded cost low while still grounding every judgment in the skill the plan
-actually cited.
+actually cited. `brainstorm` reads other skills on demand the same way: when
+an option's difference is better judged by a skill outside its own preloaded
+three, it looks up the lane in `routing.md` for the files that option would
+touch and Reads that skill's `SKILL.md` before scoring the option against it.
 
 ### Permission notes
 
@@ -178,6 +199,24 @@ actually cited.
   the check commands they run are prompt-allowed, not tool-restricted.
 
 ## Sources the rules are based on
+
+### brainstorm
+
+| Rule | Source |
+|---|---|
+| Decision drivers formulated before options; "Considered Options" + "Pros and Cons of the Options" | [MADR](https://adr.github.io/madr/), [ADR templates](https://adr.github.io/adr-templates/) |
+| Rejected alternatives justified + the impact of "doing nothing" | [Rust RFC template](https://github.com/rust-lang/rfcs/blob/master/0000-template.md), [RFC process](https://rust-lang.github.io/rfcs/0002-rfc-process.html) |
+| Alternatives scored against the same goals; a "do nothing" baseline is mandatory | [Design docs at Google](https://www.industrialempathy.com/posts/design-docs-at-google/) (Malte Ubl, not an official google.com page) |
+| No weights or numeric scores: `met` / `partial` / `unmet` verdicts | [Decision-matrix method](https://en.wikipedia.org/wiki/Decision-matrix_method) (documents Pugh's arbitrariness weakness) |
+| Each option gets a pre-assigned axis; N ≤ 3 (diversity collapse) | [arXiv 2604.18005](https://arxiv.org/html/2604.18005v2), [arXiv 2602.20408](https://arxiv.org/html/2602.20408); [Anthropic multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (vague instructions produce duplicates) |
+| Short Tree-of-Thoughts-style thoughts per option before detail; Self-Consistency not used | [Tree of Thoughts](https://arxiv.org/abs/2305.10601); [Self-Consistency](https://arxiv.org/abs/2203.11171) (collapses to one answer) |
+| Generation separated from evaluation; critique in one call | [Building Effective AI Agents](https://www.anthropic.com/engineering/building-effective-agents) (Evaluator-Optimizer) |
+| Critique argued from distinct lenses, not homogeneous debate | [Du et al., ICML 2024](https://arxiv.org/abs/2305.14325), [arXiv 2502.08788](https://arxiv.org/pdf/2502.08788) |
+| Step is optional, priced like `planner`/`test-writer`/`doc-writer` | [Anthropic multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system); in-repo: `docs/plans/agent-token-optimization.md` §2.5 |
+| `model: opus`, because generating genuinely distinct options needs real judgment | in-repo: `docs/plans/agent-token-optimization.md` §2.2 |
+| Read-only, no web; `permissionMode: plan`; *Clarifying questions* instead of `AskUserQuestion` | [Create custom subagents](https://code.claude.com/docs/en/sub-agents); pattern from `planner.md`, `researcher.md` |
+| Report handed to `planner` via `docs/plans/<feature>.options.md` | in-repo: Orchestration practices above (context-pack pattern) |
+| Skills outside the preload read on demand | in-repo: `plan-verifier.md` "Skill loading rule" |
 
 ### planner
 
@@ -276,7 +315,7 @@ actually cited.
   diff <(sed -n '/^skills:/,/^---/p' .claude/agents/planner.md) \
        <(sed -n '/^skills:/,/^---/p' .claude/agents/implementer.md)
   ```
-- New skill → also decide whether it belongs in `test-writer` /
+- New skill → also decide whether it belongs in `brainstorm` / `test-writer` /
   `architecture-reviewer` / `security-reviewer` / `plan-verifier` /
   `doc-writer`'s role-scoped list,
   and update its rationale row in the table above.
