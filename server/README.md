@@ -73,6 +73,9 @@ flowchart TB
   subgraph Review["Review & runs"]
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
   end
+  subgraph IntentLayer["Intent Layer"]
+    intent["intent<br/>GET/POST /pulls/:id/intent"]
+  end
   subgraph Agents["Agents"]
     agents["agents<br/>/agents · /agents/:id · /agents/:id/skills"]
   end
@@ -103,6 +106,7 @@ flowchart TB
 | `REPO_INTEL_ENABLED` | `true` | repo skeleton + callers in the prompt; `false` → ripgrep-only |
 | `DEVDIGEST_CLONE_DIR` | `./clones` | imported-repo checkouts (git-ignored) |
 | `LOG_LEVEL` | `info` (`silent` in test) | pino level |
+| `PROMPT_LOG` | `summary` | prompt-assembly telemetry: `off` \| `summary` \| `verbose`. `verbose` (per-item sizes + content fingerprints) is downgraded to `summary` when `NODE_ENV=production`. Never logs prompt content |
 | `NODE_ENV` | `development` | `test` → silent logs + global rate-limit disabled |
 
 Secrets (API keys, `GITHUB_TOKEN`) are **not** part of `AppConfig` — they go
@@ -147,6 +151,120 @@ What the reviewer actually sends to the model is assembled in
   `run_traces.trace.config.skills`, which is how a skill's Stats-tab pull
   frequency is computed (a real query over runs since that field started being
   written, not an estimate).
+
+## Intent Layer
+
+`modules/intent/` derives a PR's intent (what it does and why) with a cheap,
+per-workspace-selectable model (the `review_intent` feature model, default
+`openrouter`/`deepseek/deepseek-v4-flash` — `vendor/shared/contracts/platform.ts:74-79`)
+before the review, and persists it to `pr_intent`.
+
+- `GET /pulls/:id/intent` — the cached `PrIntentRecord`, or `200 null` if never
+  derived; `404` only means the PR itself doesn't exist. Never calls the
+  LLM/GitHub/git (`modules/intent/routes.ts:21-28`, `service.ts:166-172`).
+- `POST /pulls/:id/intent` — always re-derives (ignores the cache), synchronous
+  (≤30s, `EXTRACT_TIMEOUT_MS` — `modules/intent/constants.ts:49`), and persists
+  even if the caller disconnects since the derive isn't tied to the request
+  lifecycle (`service.ts:192-196`). Rate-limited 10/min
+  (`modules/intent/constants.ts:58`).
+- The review run (`ReviewRunExecutor.executeRuns`) derives intent as shared
+  pre-work, alongside loading the diff — best-effort: any failure (missing
+  PR/repo, GitHub/git/LLM error, empty model output) is caught and degrades to
+  "no intent" rather than aborting the run
+  (`modules/reviews/run-executor.ts:159-169`). Every queued agent shares the
+  same derived intent.
+- Sources considered, in priority order: linked spec docs/issues > PR
+  title/description > commit messages/changed paths; cross-repo issue
+  shorthand (`owner/repo#N`) and Jira-style keys (`ABC-12`) are recorded as
+  `external_ref` and never fetched (`modules/intent/helpers.ts:162-178`,
+  `constants.ts`'s `MAX_EXTERNAL_REFS`). Confidence (`high`/`medium`/`low`) is
+  computed deterministically from which sources were actually read — never
+  from the model; the model can only *lower* it
+  (`modules/intent/helpers.ts:285-315`), and a final `low` confidence forces
+  `out_of_scope = []` (`applyLowConfidenceScopeGuard`).
+- A spec doc is read via `GitClient.showFileAt(repo, ref, path, maxBytes)`
+  (`git show <ref>:<path>`), guarded by `adapters/git/show-file-at-guard.ts`:
+  `ref` must look like a real (7–40 char hex) sha, `path` must be relative and
+  traversal-free. The blob's size is checked with `git cat-file -s` **before**
+  the read; an oversized blob throws `BlobTooLargeError` → recorded as source
+  note `too_large`, never partially read (`show-file-at-guard.ts:29-43`,
+  `adapters/git/simple-git.ts:134-148`).
+- Every author/repo-controlled string reaches the cheap model only inside
+  `wrapUntrusted(...)` (`modules/intent/prompt.ts:37-39`); `wrapUntrusted`
+  itself now sanitizes its `label` argument to `[A-Za-z0-9 _.:/#-]` so an
+  interpolated `spec:<path>`/`issue:#<n>` label can't break out of the
+  `<untrusted source="…">` tag (`reviewer-core/src/prompt.ts:41-52`).
+- `pr_intent.cost_usd` **accumulates** across re-derivations
+  (`coalesce(old, 0) + coalesce(new, 0)` in the `ON CONFLICT` upsert —
+  `modules/intent/repository.ts:141-192`) and counts toward the PR's lifetime
+  cost alongside agent-run costs (`modules/pulls/repository.ts`'s
+  `listIntentCosts`, folded in by `modules/pulls/service.ts`'s `decorate`).
+  `tokens_in`/`tokens_out` stay per-derivation (the latest call's numbers) —
+  diagnostic, not a lifetime total.
+- `IntentService` is memoized in `platform/container.ts` (`intentService()`)
+  and single-flight per `workspace:prId`: concurrent calls for the same PR
+  share one in-flight derivation. A forced call (`POST`) that arrives while a
+  non-forced derivation is in flight waits for it to finish first, then starts
+  its own forced (cache-ignoring) run — so two model calls for the same PR
+  never run at once (`modules/intent/service.ts:135-221`).
+- `resolveFeatureModel`/`getFeatureModelOverride`
+  (`modules/settings/feature-models.ts`) take a local `HasDb` interface, not
+  `Container` — calling them from inside `container.ts` itself (the
+  composition-root-only wiring the Intent Layer needed) would otherwise create
+  a `feature-models.ts ⇄ container.ts` import cycle that `pnpm arch:check`'s
+  `no-circular` rule rejects. `Container` still satisfies `HasDb`
+  structurally, so existing route-level call sites are unchanged.
+
+### Derivation sequence
+
+```mermaid
+sequenceDiagram
+    actor UI as Client (Overview / POST review)
+    participant Ex as ReviewRunExecutor
+    participant Svc as IntentService
+    participant Repo as IntentRepository
+    participant GH as GitHubClient
+    participant Git as GitClient
+    participant LLM as LLMProvider (review_intent model)
+
+    alt Review run (best-effort, cache-preferring)
+        UI->>Ex: POST /pulls/:id/review
+        Ex->>Svc: deriveForReview(workspaceId, prId, onEvent)
+    else Manual (re-)derive
+        UI->>Svc: POST /pulls/:id/intent (force)
+    end
+
+    activate Svc
+    Svc->>Svc: single-flight check (workspace:prId)
+    Svc->>Repo: getPullContext(workspaceId, prId)
+    Repo-->>Svc: pull, repo, commits, files
+
+    Svc->>Svc: extractReferences(title, body, branch, paths)
+    opt linked issue(s), same-repo only
+        Svc->>GH: getIssue(repo, n)
+    end
+    opt linked/changed spec doc(s)
+        Svc->>Git: showFileAt(repo, headSha, path, maxBytes)
+        Note over Git: cat-file -s check before read;<br/>BlobTooLargeError → note "too_large"
+    end
+    Svc->>Svc: computeBaseConfidence(sources) · computeInputHash(...)
+
+    alt cache hit (not forced && inputHash matches)
+        Svc->>Repo: get(prId)
+        Repo-->>Svc: cached row
+        Svc-->>Ex: cached PromptIntent (cacheHit=true)
+    else miss or forced
+        Svc->>LLM: completeStructured(IntentExtraction), ≤30s
+        LLM-->>Svc: extraction + tokens + cost
+        Svc->>Svc: clampExtraction · downgradeConfidence · scope guard
+        Svc->>Repo: upsert(prId, values) — cost_usd accumulates
+        Svc-->>Ex: fresh PromptIntent (cacheHit=false)
+    end
+    deactivate Svc
+
+    Note over Ex: any error here → Live Log "Intent unavailable —<br/>continuing without it"; review proceeds
+    Ex->>Ex: reviewPullRequest({ ..., intent }) per agent
+```
 
 ## Testing
 

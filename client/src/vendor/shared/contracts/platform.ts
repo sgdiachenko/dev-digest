@@ -74,8 +74,8 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'review_intent',
     label: 'PR Review · Intent',
     description: 'Derives a PR’s intent and scope before review.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-4.1',
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
   {
     id: 'risk_brief',
@@ -193,8 +193,8 @@ export const PrMeta = z.object({
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
   // Total USD cost across every successful (status='done') agent run for this
-  // PR; null/absent when there are no successful runs, or none captured cost
-  // (pre-migration data).
+  // PR plus the Intent Layer's cumulative derivation cost (pr_intent.cost_usd);
+  // null/absent when neither has captured any cost (pre-migration data).
   cost_usd: z.number().nullish(),
   // Severity breakdown + read-only preview of the latest 'review'-kind
   // review's findings (dismissed excluded); null/absent when the PR has no

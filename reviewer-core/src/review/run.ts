@@ -7,7 +7,8 @@ import type {
   UnifiedDiff,
 } from '@devdigest/shared';
 import { Review as ReviewSchema } from '@devdigest/shared';
-import { assemblePrompt } from '../prompt.js';
+import { assemblePrompt, type PromptIntent } from '../prompt.js';
+import { summarizePrompt, type PromptLogLevel } from '../prompt-log.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
@@ -71,6 +72,11 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /**
+   * Derived PR intent/scope (Intent Layer; untrusted, delimiter-wrapped in the
+   * prompt). Empty/undefined intent string → section omitted.
+   */
+  intent?: PromptIntent;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -82,6 +88,18 @@ export interface ReviewInput {
    * review group into one session in the OpenRouter dashboard.
    */
   sessionId?: string;
+  /**
+   * Correlation id stamped on every prompt-assembly event (the server passes
+   * its run id) so a log line can be joined to its run, trace and LLM session.
+   */
+  correlationId?: string;
+  /**
+   * Prompt-assembly telemetry level (see prompt-log.ts). Default `summary`:
+   * one `prompt.assembled` event per LLM call with per-section name, source,
+   * trust, chars and estimated tokens — never content. The HOST decides
+   * whether `verbose` is allowed.
+   */
+  promptLog?: PromptLogLevel;
   /** Progress sink. */
   onEvent?: (e: ReviewEvent) => void;
   /**
@@ -135,6 +153,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    intent: input.intent,
     task: input.task,
   };
 
@@ -171,6 +190,18 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     );
     const a = assemblePrompt({ ...promptParts, diff: chunk.diffText });
     if (mode === 'single-pass') assembly = a.assembly;
+    const promptStats = summarizePrompt(a.sections, input.promptLog ?? 'summary');
+    if (promptStats) {
+      emit('info', `prompt assembled: ${promptStats.sections.length} section(s), ~${promptStats.est_tokens} tokens`, {
+        event: 'prompt.assembled',
+        correlation_id: input.correlationId ?? input.sessionId ?? null,
+        model: input.model,
+        mode,
+        chunk: mode === 'map-reduce' ? chunks.indexOf(chunk) + 1 : 1,
+        chunks: chunks.length,
+        ...promptStats,
+      });
+    }
     const res = await input.llm.completeStructured<Review>({
       model: input.model,
       schema: ReviewSchema,

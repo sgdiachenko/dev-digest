@@ -117,6 +117,14 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
             tokens={estimateTokens(trace.prompt_assembly.callers)}
           />
         )}
+        {trace.prompt_assembly.intent != null && (
+          <PromptBlock
+            label={t("trace.prompt.intent")}
+            text={trace.prompt_assembly.intent}
+            color={PROMPT_COLORS.intent}
+            tokens={estimateTokens(trace.prompt_assembly.intent)}
+          />
+        )}
         <PromptBlock
           label={t("trace.prompt.user")}
           text={trace.prompt_assembly.user}

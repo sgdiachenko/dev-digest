@@ -211,6 +211,21 @@ export interface GitClient {
   blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
   log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
+  /**
+   * `git show <ref>:<path>` — the file's content AT a specific commit, unlike
+   * `readFile` (which reads the current working tree). Used by the Intent
+   * Layer to read a linked/changed spec doc at the PR's head sha without
+   * requiring the working tree to be checked out to that commit.
+   *
+   * `ref` MUST be a (possibly abbreviated) git sha, `path` MUST be a relative,
+   * traversal-free path — implementations guard both before shelling out.
+   *
+   * `maxBytes`, when given, is enforced BEFORE the read (a blob-size check),
+   * not by truncating the result after a potentially huge file was already
+   * read in full — implementations reject with an error identifiable as
+   * "too large" (e.g. `BlobTooLargeError`) rather than silently truncating.
+   */
+  showFileAt(repo: RepoRef, ref: string, path: string, maxBytes?: number): Promise<string>;
   clonePathFor(repo: RepoRef): string;
 }
 

@@ -1,8 +1,14 @@
-import type { GitClient, LLMProvider, Provider as ProviderId, SkillSource } from '@devdigest/shared';
+import type { GitClient, LLMProvider, Provider as ProviderId, RunEventKind, SkillSource } from '@devdigest/shared';
 import type { RunBus } from '../../platform/sse.js';
 import type { RepoIntel } from '../repo-intel/types.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers, wrapUntrusted } from '@devdigest/reviewer-core';
+import {
+  reviewPullRequest,
+  countBlockers,
+  wrapUntrusted,
+  type PromptIntent,
+  type PromptLogLevel,
+} from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
@@ -26,6 +32,27 @@ export interface PromptSkill {
  */
 export interface SkillsReader {
   forAgent(agentId: string): Promise<PromptSkill[]>;
+}
+
+/**
+ * Port the executor needs to (best-effort) derive a PR's intent before review.
+ * `IntentService` satisfies this; the executor takes the interface, not the
+ * service class (service-takes-ports-not-container).
+ *
+ * May THROW (PR/repo missing, GitHub/git/LLM error, empty model output) — it
+ * is the EXECUTOR's `try/catch` around the call (see `executeRuns`) that makes
+ * derivation non-fatal, not this port swallowing errors itself; if it did,
+ * the "Intent unavailable — continuing without it" Live Log line could never
+ * fire. `onEvent`, when given, receives progress/observability detail (source
+ * counts/kinds, resolved/unresolved counts, confidence, model, cache hit/miss,
+ * tokens, cost) — NEVER raw title/body/doc text.
+ */
+export interface IntentDeriver {
+  deriveForReview(
+    workspaceId: string,
+    prId: string,
+    onEvent?: (kind: RunEventKind, msg: string, data?: unknown) => void,
+  ): Promise<PromptIntent>;
 }
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
@@ -60,7 +87,7 @@ export type RunOutcome = {
  * review. Per-agent failures are isolated.
  */
 export class ReviewRunExecutor {
-  /** Ports, not the container: the run loop needs exactly these five. */
+  /** Ports, not the container: the run loop needs exactly these six. */
   constructor(
     private repo: ReviewRepository,
     private runBus: RunBus,
@@ -68,6 +95,9 @@ export class ReviewRunExecutor {
     private repoIntel: RepoIntel,
     private git: GitClient,
     private skills: SkillsReader,
+    private intent: IntentDeriver,
+    /** Prompt-assembly telemetry level (config.promptLog); sizes/sources only. */
+    private promptLog: PromptLogLevel = 'summary',
   ) {}
 
   /**
@@ -128,6 +158,24 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // Intent Layer — shared pre-work, like the diff above. NEVER fails the
+    // run: any error degrades to "no intent" rather than aborting. `onEvent`
+    // bridges the service's own detail (source counts/kinds, confidence,
+    // cache hit/miss, tokens, cost) straight into this run's Live Log +
+    // stdout mirror + persisted trace, the same way `reviewPullRequest`'s own
+    // `onEvent` does in `runOneAgent` below.
+    let intent: PromptIntent | undefined;
+    try {
+      intent = await runLog.step(
+        'Deriving PR intent',
+        () => this.intent.deriveForReview(workspaceId, pull.id, (kind, msg, data) => runLog.event(kind, msg, data)),
+        { kind: 'tool' },
+      );
+    } catch (err) {
+      runLog.info(`Intent unavailable — continuing without it: ${(err as Error).message}`);
+      logger?.warn({ prId: pull.id, err: (err as Error).message }, 'intent: derivation failed');
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -135,7 +183,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog, intent);
         logger?.info(
           {
             runId,
@@ -167,6 +215,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    intent: PromptIntent | undefined,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -232,12 +281,18 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Intent Layer — derived once, shared across every queued agent run.
+        // Omitted when derivation failed/was skipped (never blocks the review).
+        ...(intent ? { intent } : {}),
         // L02 — the agent's linked skills, in `agent_skills.order`. Omitted
         // when the agent has none linked (or none enabled), same
         // omit-when-empty contract as callers/repoMap above.
         ...(skillBlocks.length ? { skills: skillBlocks } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
+        // Joins every `prompt.assembled` event to this run's trace + Live Log.
+        correlationId: runId,
+        promptLog: this.promptLog,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
         checkCancelled: () => {
           if (this.runBus.isCancelled(runId)) throw new RunCancelledError();

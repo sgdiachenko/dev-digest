@@ -4,9 +4,21 @@ import {
   FeatureModelChoice,
   type FeatureModelId,
 } from '@devdigest/shared';
-import type { Container } from '../../platform/container.js';
+import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import { rowsToSettings } from './helpers.js';
+
+/**
+ * Only what this module reads off the container — a `Container` satisfies
+ * this structurally, so every existing call site (`resolveFeatureModel(c, …)`)
+ * keeps working. Narrowed from `Container` itself so `container.ts` can import
+ * `resolveFeatureModel` (composition root calls it, per onion-architecture)
+ * without creating container.ts ⇄ feature-models.ts, which `arch:check`'s
+ * `no-circular` rule rejects.
+ */
+export interface HasDb {
+  db: Db;
+}
 
 /**
  * Per-feature model configuration.
@@ -34,7 +46,7 @@ export function defaultFeatureModel(id: FeatureModelId): FeatureModelChoice {
  * `resolveFeatureModel` instead.
  */
 export async function getFeatureModelOverride(
-  container: Container,
+  container: HasDb,
   workspaceId: string,
   id: FeatureModelId,
 ): Promise<FeatureModelChoice | undefined> {
@@ -49,7 +61,7 @@ export async function getFeatureModelOverride(
 
 /** Resolve `id` to a concrete provider+model: workspace override, else registry default. */
 export async function resolveFeatureModel(
-  container: Container,
+  container: HasDb,
   workspaceId: string,
   id: FeatureModelId,
 ): Promise<FeatureModelChoice> {

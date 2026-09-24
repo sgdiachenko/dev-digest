@@ -28,6 +28,22 @@ Three views over one PR: overview, diff (`Files changed`), findings
 state, not an error). Running a review must be triggerable from here and
 must reflect live progress (SSE), not just a final state after refresh.
 
+The Overview tab's **Intent** card (`_components/IntentCard`) reads
+`GET /pulls/:id/intent` (`usePrIntent`) and must not itself trigger a model
+call. States: loading (skeleton), error (`ErrorState` + retry), never
+derived (`EmptyState` with a Derive CTA), and derived (one-sentence intent
+quote, a confidence badge with a hint copy when `low`, In scope/Out of scope
+lists — each rendering an explicit "none" copy when empty rather than a blank
+list — and a collapsible sources list showing each source's ref, resolved/
+unresolved icon, and optional note). A `stale` row (re-derived against an
+older `head_sha`) additionally shows a stale badge. Derive/Re-derive
+(`useDeriveIntent`, `POST /pulls/:id/intent`) is synchronous from the UI's
+perspective — the button shows a loading state until the model call resolves,
+then the card re-renders from the mutation's response. See
+[`../docs/ui-architecture.md#data-flow`](../docs/ui-architecture.md#data-flow)
+for the hook, and [`../../server/README.md#intent-layer`](../../server/README.md#intent-layer)
+for how the record is derived.
+
 The Agent-runs Timeline shows a per-run severity counter under the reviewer's
 name for any settled run with a matching review — see
 [`findings-counters.md`](findings-counters.md). Within the "Review runs"

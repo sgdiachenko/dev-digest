@@ -13,6 +13,35 @@ export const Intent = z.object({
 });
 export type Intent = z.infer<typeof Intent>;
 
+// ---- Intent Layer (persisted pr_intent — see PrIntentRecord in review-api.ts) ----
+export const IntentConfidence = z.enum(['high', 'medium', 'low']);
+export type IntentConfidence = z.infer<typeof IntentConfidence>;
+
+export const IntentSourceKind = z.enum([
+  'title',
+  'description',
+  'linked_issue',
+  'branch_ticket',
+  'spec_doc',
+  'commit_messages',
+  'changed_paths',
+  'external_ref',
+]);
+export type IntentSourceKind = z.infer<typeof IntentSourceKind>;
+
+export const IntentSource = z.object({
+  kind: IntentSourceKind,
+  /** e.g. "#123", "docs/plan.md@<sha7>", "jira: ABC-12", "branch: feature/123-x". */
+  ref: z.string(),
+  /** Content was actually read into the extraction prompt. */
+  resolved: z.boolean(),
+  /** An explicit reference (body/branch) vs. inferred (a changed doc). */
+  linked: z.boolean(),
+  /** "github_unavailable" | "not_found" | "too_large" | "external_not_fetched". */
+  note: z.string().nullish(),
+});
+export type IntentSource = z.infer<typeof IntentSource>;
+
 // ---- Blast radius ----
 export const ChangedSymbol = z.object({
   name: z.string(),

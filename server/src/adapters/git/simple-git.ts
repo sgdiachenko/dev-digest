@@ -11,6 +11,7 @@ import type {
   GitCommit,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './diff-parser.js';
+import { assertSafeShowFileAtArgs, BlobTooLargeError, parseBlobSize } from './show-file-at-guard.js';
 
 /**
  * Depth fetched by `sync()`. Deeper than the shallow clone (CLONE_DEPTH=1) so the
@@ -128,6 +129,22 @@ export class SimpleGitClient implements GitClient {
 
   async readFile(repo: RepoRef, path: string): Promise<string> {
     return readFile(join(this.clonePathFor(repo), path), 'utf8');
+  }
+
+  async showFileAt(repo: RepoRef, ref: string, path: string, maxBytes?: number): Promise<string> {
+    assertSafeShowFileAtArgs(ref, path);
+    const g = this.git(repo);
+    if (maxBytes != null) {
+      // Check the blob's real size BEFORE reading it — bounds the read
+      // itself, rather than reading a potentially huge file in full and
+      // truncating the result afterward.
+      const sizeRaw = await g.raw(['cat-file', '-s', `${ref}:${path}`]);
+      const size = parseBlobSize(sizeRaw);
+      if (size > maxBytes) throw new BlobTooLargeError(ref, path, size, maxBytes);
+    }
+    // One array element ("ref:path"), passed via simple-git's array-form
+    // `raw()` — never string-interpolated into a shell command.
+    return g.raw(['show', `${ref}:${path}`]);
   }
 }
 
