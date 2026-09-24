@@ -4,7 +4,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon } from "@devdigest/ui";
+import { Icon, SEV } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
 import { parsePatch, type Line } from "../helpers";
@@ -15,9 +15,12 @@ import {
   type CommentThread,
   type DiffCommentApi,
 } from "../comments";
+import { type DiffFindingApi, partitionFindings, topSeverity } from "../findings";
 import { s, chevronFor } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
+import { OutsideDiffFindings } from "../OutsideDiffFindings";
+import type { FindingRecord } from "@devdigest/shared";
 
 /** Threads anchored to a given parsed line (RIGHT=new, LEFT=old). */
 function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): CommentThread[] {
@@ -30,8 +33,23 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+/** Findings anchored to a given parsed line (RIGHT=new side only). */
+function findingsForLine(ln: Line, matched: Map<string, FindingRecord[]>): FindingRecord[] {
+  if (matched.size === 0 || ln.newNo == null) return [];
+  return matched.get(`RIGHT:${ln.newNo}`) ?? [];
+}
+
+export function FileCard({
+  file,
+  commenting,
+  findings: findingApi,
+}: {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  findings?: DiffFindingApi;
+}) {
   const t = useTranslations("shell");
+  const tPr = useTranslations("prReview");
   const [open, setOpen] = React.useState(
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
@@ -48,6 +66,22 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
     return partitionThreads(fileThreads, renderedKeys);
   }, [comments, file.path, lines]);
 
+  // Same split for findings: matched (anchored to a rendered line) vs. outside
+  // the current diff (start_line isn't in this patch).
+  const fileFindings = findingApi?.findings;
+  const { matched: matchedFindings, outside: outsideFindings } = React.useMemo(() => {
+    if (!fileFindings) return { matched: new Map<string, FindingRecord[]>(), outside: [] };
+    const renderedKeys = new Set<string>();
+    for (const ln of lines) for (const k of keysForLine(ln)) renderedKeys.add(k);
+    return partitionFindings(
+      fileFindings.filter((f) => f.file === file.path),
+      renderedKeys,
+    );
+  }, [fileFindings, file.path, lines]);
+
+  const fileFindingsCount = fileFindings ? fileFindings.filter((f) => f.file === file.path).length : 0;
+  const fileTopSeverity = topSeverity(fileFindings?.filter((f) => f.file === file.path) ?? []);
+
   const commentCount = commenting
     ? commenting.comments.filter((c) => c.path === file.path).length
     : 0;
@@ -60,6 +94,13 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
         <span className="mono" style={s.filePath}>
           {file.path}
         </span>
+        {fileFindingsCount > 0 && fileTopSeverity && (
+          <span
+            role="img"
+            aria-label={tPr("smartDiff.fileHasFindings")}
+            style={s.findingDot(SEV[fileTopSeverity].c)}
+          />
+        )}
         <span className="mono tnum" style={s.fileStat}>
           <span style={s.addText}>+{file.additions}</span>{" "}
           <span style={s.delText}>−{file.deletions}</span>
@@ -85,10 +126,21 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
                 path={file.path}
                 threads={threadsForLine(ln, matched)}
                 commenting={commenting}
+                findings={findingsForLine(ln, matchedFindings)}
+                findingApi={findingApi}
               />
             ))
           )}
           {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
+          {findingApi?.showFindings && (
+            <OutsideDiffFindings
+              findings={outsideFindings}
+              pending={findingApi.pending}
+              onAction={findingApi.onAction}
+              repoFullName={findingApi.repoFullName}
+              headSha={findingApi.headSha}
+            />
+          )}
         </div>
       )}
     </div>

@@ -39,7 +39,8 @@
       "body": "Derive this PR's intent from its title, description, linked issue, and any linked/changed spec docs."
     },
     "error": {
-      "title": "Couldn't load the PR's intent"
+      "title": "Couldn't load the PR's intent",
+      "deriveFailed": "Couldn't derive the PR's intent."
     }
   }
 }

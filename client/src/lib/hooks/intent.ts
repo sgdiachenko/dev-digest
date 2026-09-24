@@ -3,6 +3,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { api } from "../api";
 import { notify } from "../toast";
 import type { PrIntentRecord } from "@devdigest/shared";
@@ -21,13 +22,14 @@ export function usePrIntent(prId: string | null | undefined) {
     cache). Synchronous — resolves once the model call completes (≤30s). */
 export function useDeriveIntent(prId: string | null | undefined) {
   const qc = useQueryClient();
+  const t = useTranslations("brief");
   return useMutation({
     mutationFn: () => api.post<PrIntentRecord>(`/pulls/${prId}/intent`),
     onSuccess: (record) => {
       qc.setQueryData(["pr-intent", prId], record);
     },
     onError: (err: Error) => {
-      notify.error(err.message || "Couldn't derive the PR's intent.");
+      notify.error(err.message || t("intent.error.deriveFailed"));
     },
   });
 }

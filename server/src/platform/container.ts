@@ -31,6 +31,8 @@ import { ReviewService } from '../modules/reviews/service.js';
 import { ReviewRunExecutor } from '../modules/reviews/run-executor.js';
 import { IntentRepository } from '../modules/intent/repository.js';
 import { IntentService } from '../modules/intent/service.js';
+import { PullsRepository } from '../modules/pulls/repository.js';
+import { SmartDiffService } from '../modules/smart-diff/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
@@ -83,6 +85,8 @@ export class Container {
   private _reviewRepo?: ReviewRepository;
   private _intentRepo?: IntentRepository;
   private _intentService?: IntentService;
+  private _pullsRepo?: PullsRepository;
+  private _smartDiffService?: SmartDiffService;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -166,6 +170,26 @@ export class Container {
       this.config.promptLog,
     );
     return new ReviewService(this.reviewRepo, this.agentsRepo, this.runBus, executor);
+  }
+
+  /**
+   * F1's pulls repository, promoted here (D2) so a second module (Smart
+   * Diff) can depend on it without importing `modules/pulls/repository.js`
+   * sideways — `pulls/routes.ts` still constructs its own `PullsService`
+   * directly (pre-existing, untouched), this getter only adds a shared,
+   * memoized instance for callers that go through the container.
+   */
+  get pullsRepo(): PullsRepository {
+    return (this._pullsRepo ??= new PullsRepository(this.db));
+  }
+
+  /**
+   * The Smart Diff use case (D2). No repository of its own — `pullsRepo`
+   * already exposes everything `SmartDiffStore` needs and satisfies it
+   * structurally.
+   */
+  smartDiffService(): SmartDiffService {
+    return (this._smartDiffService ??= new SmartDiffService(this.pullsRepo));
   }
 
   get codeIndex(): CodeIndex {

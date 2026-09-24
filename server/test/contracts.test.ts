@@ -109,12 +109,32 @@ describe('AI contracts parse fixtures', () => {
       groups: [
         {
           role: 'core',
-          files: [{ path: 'a.ts', additions: 84, deletions: 0, finding_lines: [28, 52] }],
+          files: [
+            {
+              path: 'a.ts',
+              additions: 84,
+              deletions: 0,
+              finding_ids: ['f1', 'f2'],
+              finding_lines: [28, 52],
+            },
+          ],
+        },
+        {
+          role: 'tests',
+          files: [
+            { path: 'a.test.ts', additions: 40, deletions: 0, finding_ids: [], finding_lines: [] },
+          ],
+        },
+        {
+          role: 'docs',
+          files: [{ path: 'README.md', additions: 3, deletions: 1, finding_ids: [], finding_lines: [] }],
         },
       ],
       split_suggestion: { too_big: false, total_lines: 285, proposed_splits: [] },
     });
     expect(d.groups[0]!.role).toBe('core');
+    expect(d.groups[1]!.role).toBe('tests');
+    expect(d.groups[2]!.role).toBe('docs');
   });
 
   it('Conformance / Onboarding / EvalRun / MemoryItem', () => {

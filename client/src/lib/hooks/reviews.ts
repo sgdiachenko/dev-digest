@@ -62,10 +62,12 @@ export function useDeleteRun(prId: string | null | undefined) {
   return useMutation({
     mutationFn: (runId: string) => api.del<{ ok: boolean }>(`/runs/${runId}`),
     // Deleting a run also deletes the review it produced (server-side), so drop
-    // both the timeline and the Review Runs list from cache.
+    // both the timeline and the Review Runs list from cache. Its findings also
+    // vanish from Smart Diff's dots/counters, so invalidate that too.
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
     },
   });
 }
@@ -82,7 +84,10 @@ export function useDeleteReview(prId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reviewId: string) => api.del<{ ok: boolean }>(`/reviews/${reviewId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["reviews", prId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+    },
   });
 }
 
@@ -131,6 +136,7 @@ export function useRunReview() {
       }),
     onSuccess: (_d, { prId }) => {
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
     },
   });
 }
@@ -155,7 +161,12 @@ export function useFindingAction() {
         reply ? { reply } : undefined,
       ),
     onSuccess: (_d, { prId }) => {
-      if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      if (prId) {
+        qc.invalidateQueries({ queryKey: ["reviews", prId] });
+        // Smart Diff's dots/`● N` counters and inline finding cards read the
+        // same accept/dismiss state — refetch it too.
+        qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+      }
       // The PR list's Findings column reads its own server-computed summary
       // (GET /repos/:id/pulls), which excludes dismissed findings — refetch it
       // so accept/dismiss here doesn't leave the list's counters stale.

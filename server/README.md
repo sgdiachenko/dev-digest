@@ -76,6 +76,9 @@ flowchart TB
   subgraph IntentLayer["Intent Layer"]
     intent["intent<br/>GET/POST /pulls/:id/intent"]
   end
+  subgraph SmartDiff["Smart Diff"]
+    smartDiff["smart-diff<br/>GET /pulls/:id/smart-diff"]
+  end
   subgraph Agents["Agents"]
     agents["agents<br/>/agents · /agents/:id · /agents/:id/skills"]
   end
@@ -264,6 +267,49 @@ sequenceDiagram
 
     Note over Ex: any error here → Live Log "Intent unavailable —<br/>continuing without it"; review proceeds
     Ex->>Ex: reviewPullRequest({ ..., intent }) per agent
+```
+
+## Smart Diff
+
+`modules/smart-diff/` answers one read: `GET /pulls/:id/smart-diff` groups a
+PR's changed files by role (core → tests → wiring → docs → boilerplate) and
+attaches each file's kept findings from its latest review round. It never
+calls an LLM, GitHub, or git — the classifier is pure path matching
+(`classify.ts`, `constants.ts`'s `CLASSIFY_RULES`). Full guarantees:
+[`specs/review-flow.md#smart-diff-read-side`](specs/review-flow.md#smart-diff-read-side).
+
+The service declares its own minimal `SmartDiffStore` port
+(`modules/smart-diff/service.ts:20-26`) instead of importing `pulls`'s
+`PullsRepository` type — `pnpm arch:check`'s `no-sideways-module-imports`
+rule rejects a cross-module import even at the type level. The container's
+memoized `pullsRepo` satisfies that port structurally, with no repository
+file of `smart-diff`'s own (`platform/container.ts:191-192`).
+
+### Read-flow
+
+```mermaid
+flowchart TB
+  UI["Client — DiffTab<br/>(usePrSmartDiff)"] -->|"GET /pulls/:id/smart-diff"| RT["smart-diff/routes.ts"]
+  RT --> SVC["SmartDiffService.getSmartDiff"]
+  SVC -->|"findPull"| PORT[("SmartDiffStore port<br/>= container's pullsRepo")]
+  PORT -->|"not found"| ERR["404 NotFoundError"]
+  SVC -->|"Promise.all"| FILES["listFiles"]
+  SVC -->|"Promise.all"| REVIEWS["listReviewsForPulls"]
+  SVC -->|"Promise.all"| RUNS["listRunsForPulls"]
+  FILES --> PORT
+  REVIEWS --> PORT
+  RUNS --> PORT
+  REVIEWS --> ROUND["reviewIdsForFindings<br/>(latest round only, pulls/helpers.ts)"]
+  RUNS --> ROUND
+  ROUND -->|"round has reviews"| FIND["listFindingsForReviews"]
+  ROUND -->|"no runs yet"| SKIP["skip — findings = []"]
+  FIND --> BUILD["buildSmartDiff (helpers.ts)"]
+  SKIP --> BUILD
+  FILES --> BUILD
+  BUILD -->|"classifyFile(path)<br/>per file"| CLS["classify.ts<br/>CLASSIFY_RULES, first match wins"]
+  CLS --> GROUP["group by role in fixed<br/>display order; drop empty groups"]
+  GROUP -->|"attach finding_ids/lines,<br/>dismissed findings dropped"| RESP["SmartDiff response"]
+  RESP --> UI
 ```
 
 ## Testing

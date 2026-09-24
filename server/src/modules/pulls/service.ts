@@ -1,12 +1,12 @@
 import type { GitHubClient, PrDetail, PrMeta, PrReviewComment } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { Pull, PullsRepository, RepoRow } from './repository.js';
+import { reviewIdsForFindings } from '../_shared/review-rounds.js';
 import {
   costByPr,
   findingsSummaryByPr,
   latestReviewByPr,
   needsDiffStatBackfill,
-  reviewIdsForFindings,
   rowToPrMeta,
 } from './helpers.js';
 

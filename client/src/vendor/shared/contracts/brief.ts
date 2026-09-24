@@ -107,7 +107,7 @@ export const PrHistory = z.object({
 export type PrHistory = z.infer<typeof PrHistory>;
 
 // ---- Smart Diff ----
-export const SmartDiffRole = z.enum(['core', 'wiring', 'boilerplate']);
+export const SmartDiffRole = z.enum(['core', 'tests', 'wiring', 'docs', 'boilerplate']);
 export type SmartDiffRole = z.infer<typeof SmartDiffRole>;
 
 export const SmartDiffFile = z.object({
@@ -115,6 +115,10 @@ export const SmartDiffFile = z.object({
   pseudocode_summary: z.string().nullish(),
   additions: z.number().int(),
   deletions: z.number().int(),
+  /** Ids of the kept (non-dismissed) findings on this file, from the PR's
+   *  latest review round — sorted by `start_line`. */
+  finding_ids: z.array(z.string()),
+  /** Unique `start_line`s of those findings, ascending. */
   finding_lines: z.array(z.number().int()),
 });
 export type SmartDiffFile = z.infer<typeof SmartDiffFile>;

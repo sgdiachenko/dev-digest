@@ -64,6 +64,25 @@ export const s = {
     color: "var(--text-primary)",
     paddingRight: 12,
   } satisfies CSSProperties,
+  /** Uppercase label on the right of a line with findings ("blocker" etc). */
+  findingLabel: (color: string): CSSProperties => ({
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    color,
+    padding: "0 12px 0 4px",
+  }),
+  /** The dot next to a file's path in a group's file list (Smart Diff). */
+  findingDot: (color: string): CSSProperties => ({
+    display: "inline-block",
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    background: color,
+    flexShrink: 0,
+  }),
 } as const;
 
 /** Chevron rotates 90deg when the file card is open. */
@@ -75,10 +94,18 @@ export function chevronFor(open: boolean): CSSProperties {
   };
 }
 
-/** Row background per line kind (add/del tinted, others transparent). */
-export function lineRowFor(kind: Line["kind"]): CSSProperties {
+/** Row background per line kind (add/del tinted, others transparent), plus an
+ *  optional inset left stripe when the line has findings (Smart Diff). */
+export function lineRowFor(kind: Line["kind"], stripeColor?: string | null): CSSProperties {
   const background = kind === "add" ? "var(--code-add)" : kind === "del" ? "var(--code-del)" : "transparent";
-  return { display: "flex", alignItems: "stretch", fontSize: 13, lineHeight: "20px", background };
+  return {
+    display: "flex",
+    alignItems: "stretch",
+    fontSize: 13,
+    lineHeight: "20px",
+    background,
+    boxShadow: stripeColor ? `inset 3px 0 0 0 ${stripeColor}` : undefined,
+  };
 }
 
 /** Gutter sign colour per line kind. */
