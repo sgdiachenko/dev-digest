@@ -31,6 +31,46 @@ one returns a *clarifying questions* / *blocked* block instead of guessing.
 Plan step IDs (`S1..Sn`) are shared by the plan, the report and the review
 handoff, so a reviewer can check the diff against the plan.
 
+### Orchestration practices (main session, not an agent's own rule)
+
+These aren't a subagent's frontmatter — they're how the main session should
+drive the flow above. Confirmed on a measured feature; see
+[docs/plans/agent-token-optimization.md](../../docs/plans/agent-token-optimization.md)
+§5 for the numbers behind each one.
+
+- **Don't reopen `implementer` for a small, local fix.** A handful of gaps
+  from `plan-verifier`/`architecture-reviewer`/`pr-self-review` (a few files,
+  no new architecture) are cheaper fixed directly in the main session — Edit
+  the file, re-run only the affected package's checks — than a new
+  `implementer` call, and far cheaper than resuming one with a large
+  inherited context (§5.2: this is the single biggest cost driver measured
+  so far). Reserve a fresh `implementer` call for a genuinely new or
+  multi-file round of work.
+- **Verify a forked agent actually ran before trusting its report.** A
+  `fork` can return having done nothing — a same-turn acknowledgment with
+  zero tool calls, not a queued background job — while still costing the
+  full price of its inherited context. Check the completion notification's
+  `tool_uses` against the size of the task you gave it; if it's implausibly
+  low (e.g. `0` for a multi-step task), resume the same agent with an
+  explicit instruction to execute now, synchronously, rather than accepting
+  the response (§5.3.1).
+- **A large `researcher` report going into `planner` doesn't have to be
+  pasted in full.** `researcher` stays strictly read-only (no Write/Edit —
+  that guarantee doesn't change), so it cannot write its own findings to a
+  file; instead, the main session saves the returned report to
+  `docs/plans/<feature>.context.md` and passes `planner` that path plus a
+  one-line pointer, instead of the whole report text, when the report is
+  long (§2.3.1/§2.1 of the optimization doc).
+- **For a plan step that measures or times a DOM node** (sticky headers,
+  portals, anything reading `ref.current`/`getBoundingClientRect` across a
+  conditional render), open the app in a browser and check the *live*
+  behavior — scroll, resize, watch `getComputedStyle` — before `doc-writer`
+  runs, not after. `plan-verifier`, `architecture-reviewer` and security
+  review are all static: none of them can catch a React ref/effect-timing
+  bug that only shows up once the component tree actually mounts and
+  re-renders, and one such bug shipped past every one of them in the session
+  that produced §5.3.3.
+
 ## Catalog
 
 | Agent | Responsibility | Model | Tools / permissions | Input | Output |
@@ -39,7 +79,7 @@ handoff, so a reviewer can check the diff against the plan.
 | [planner](planner.md) | Turns a feature/bug request into a structured Development Plan that respects modules, INSIGHTS, skills and architecture constraints. Does not review | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Task description (goal, scope, done criterion); optionally a researcher report | **Development Plan**: goal & scope, context, affected modules, constraints (with sources), steps `S1..Sn` (files, skills, reuse, done-when, depends-on), test plan, risks, review handoff, gaps — or *Clarifying questions* |
 | [implementer](implementer.md) | Executes an approved plan in `server/`, `client/`, `reviewer-core/`, `e2e/`; writes tests; runs the touched packages' CI checks. No review, commits or PRs | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | The approved Development Plan, passed in full in the prompt | Code changes (+ at most one `INSIGHTS.md` line) and an **Implementation Report**: status, per-step result, files changed, skills applied, checks with exit codes, deviations, reviewer handoff — or *blocked* |
 | [test-writer](test-writer.md) | Adds or extends automated tests for a given target — a plan/report or a named feature/bug — across `server/`, `client/`, `reviewer-core/`, `e2e/`. Confirms each test fails for the right reason. Edits test files only, never product code | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | A plan + Implementation Report, or files/feature + behaviour to cover + packages | **Test Report**: status, tests added/changed, right-reason evidence per test, checks with exit codes, not-run (`.it`/e2e), skills applied, convention overrides, INSIGHTS updated, open issues — or *blocked* |
-| [plan-verifier](plan-verifier.md) | Read-only traceability check of finished work against the approved plan and the original requirements — every requirement, `C#`, `S#` done-when and Test-plan item gets a verdict with evidence. Flags unplanned changes. Does not re-judge the plan | `opus` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | The full plan, the Implementation Report, and the original requirements | **Verification Report**: overall verdict + counts, traceability matrix, skill sources read, checks re-run, report discrepancies, unplanned changes, not-verifiable items — or *Clarifying questions* |
+| [plan-verifier](plan-verifier.md) | Read-only traceability check of finished work against the approved plan and the original requirements — every requirement, `C#`, `S#` done-when and Test-plan item gets a verdict with evidence. Flags unplanned changes. Does not re-judge the plan | `sonnet` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | The full plan, the Implementation Report, and the original requirements | **Verification Report**: overall verdict + counts, traceability matrix, skill sources read, checks re-run, report discrepancies, unplanned changes, not-verifiable items — or *Clarifying questions* |
 | [architecture-reviewer](architecture-reviewer.md) | Read-only review of onion-ring direction and ports/DI (`server/`, `reviewer-core/`) and layer direction/placement (`client/`) on the diff. Findings in the `pr-self-review` finding shape | `opus` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally the plan's Review handoff + Implementation Report | **Architecture Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape), verdict, config-vs-skill-doc drift, gaps |
 | [doc-writer](doc-writer.md) | Documents already-implemented, already-verified work as repo Markdown + Mermaid diagrams, routed to the right `docs/`/`specs/`/`README.md`/`AGENTS.md` location, with its indexes updated. Edits Markdown only | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | Source material (plan/report/memo/code) + feature name + packages | **Documentation Report**: files written, diagrams, indexes updated, claims → evidence, link check, open issues — or *Clarifying questions* |
 
@@ -190,6 +230,7 @@ actually cited.
 | Traceability matrix over every requirement/constraint/step | [RTM/29148](https://www.reqview.com/blog/requirements-traceability-matrix/), [Autorubric](https://arxiv.org/html/2603.00077v1) |
 | Never force a met/unmet verdict without evidence; `not-verifiable` is a valid answer | [LLM-judge rubrics](https://www.alphaxiv.org/abs/2606.29920) |
 | Skill loading driven by each Constraint's own `source:` field, not a fixed preload | in-repo: this agent's own design (rev. 2 decision) |
+| `model: sonnet`, not `opus` — checking evidence against a matrix and re-running commands is mechanical, not open-ended judgment | in-repo: [docs/plans/agent-token-optimization.md](../../docs/plans/agent-token-optimization.md) §2.2, confirmed by §5.3.2's measured run (this agent cost ~100k tokens on `opus` before the change) |
 
 ### doc-writer
 

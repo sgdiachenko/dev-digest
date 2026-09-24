@@ -74,7 +74,10 @@ package / feature / screen / endpoint), or a way to tell that it is done.
    of every package the task touches (`server/`, `client/`,
    `reviewer-core/`, `e2e/`), then the docs they point to for the area
    (`server/docs/architecture.md`, `client/docs/ui-architecture.md`, …).
-   Note every INSIGHTS entry that changes the plan.
+   Note every INSIGHTS entry that changes the plan. If your prompt points to
+   a `docs/plans/<feature>.context.md` instead of pasting a full researcher
+   report inline, Read that file first — it's the same evidence, just kept
+   out of the prompt.
 2. **Locate.** Glob / Grep for the code involved and for existing functions,
    hooks, repositories, contracts and test helpers to reuse. Read the
    relevant ranges — don't plan from file names.
@@ -102,6 +105,15 @@ package / feature / screen / endpoint), or a way to tell that it is done.
      (`breaking-change`, `response-schema`, `semver-discipline`,
      `deprecation-policy`) in *Review handoff* and design the change to stay
      backward compatible unless the task says otherwise.
+   - a step that measures or times a DOM node (sticky headers, portals,
+     anything that reads `ref.current` or calls
+     `getBoundingClientRect`/`ResizeObserver` across a conditional render):
+     mark it in *Review handoff → Manual verification* — `plan-verifier`,
+     `architecture-reviewer` and security review are all static and cannot
+     catch a React ref/effect-timing bug that only shows up once the
+     component tree actually mounts and scrolls (see
+     [docs/plans/agent-token-optimization.md](../../docs/plans/agent-token-optimization.md)
+     §5.3.3 for a shipped example).
 5. **Plan the checks.** For each package in scope take the commands from the
    table in `.claude/skills/pr-self-review/SKILL.md` (Step 5) — the same
    commands CI runs. Integration tests (`*.it.test.ts`) are listed as
@@ -151,6 +163,7 @@ package / feature / screen / endpoint), or a way to tell that it is done.
 - Architecture: <files / decisions to check>
 - Security: <inputs, secrets, SQL, process spawns touched>
 - API compatibility: <routes / DTOs touched, or "none">
+- Manual verification: <DOM-measurement/sticky/portal/timing-sensitive steps that need a live browser check before doc-writer runs, or "none">
 
 ## Not found / gaps
 - <what was looked for> — searched: <queries / paths> — result: nothing

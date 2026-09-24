@@ -1,7 +1,7 @@
 ---
 name: plan-verifier
 description: "Read-only verification of finished work against the approved Development Plan and the original requirements: builds a traceability matrix over every requirement, Constraint (C#), Step (S#) done-when and Test-plan item, each with a met / partial / unmet / not-verifiable verdict and evidence. Re-runs the plan's checks and flags changed files the plan and report don't account for. No generic advice; does not re-judge the plan. Use after implementer (and test-writer), before architecture review. Trigger terms: verify against plan, check the implementation, acceptance check, did we do everything."
-model: opus
+model: sonnet
 tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit, NotebookEdit, Agent, Skill, WebFetch, WebSearch
 skills:

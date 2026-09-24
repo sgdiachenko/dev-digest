@@ -40,6 +40,14 @@ use its `examples.md` only.
   (`test -e <target>` per relative link you touch).
 - **Every factual claim traces to `path:line` or a plan item** — no
   unattributed prose.
+- **A plan's `Review handoff → Manual verification` item with no evidence
+  it was actually checked is not a claim you can make.** Don't describe
+  DOM-measurement/sticky/portal/timing-sensitive behavior as working from
+  the code alone — that class of bug only shows up once the component tree
+  actually mounts and scrolls, which is exactly what a static read cannot
+  see (see [agent-token-optimization.md](../../docs/plans/agent-token-optimization.md)
+  §5.3.3). If your source material doesn't say it was checked live, note it
+  under *Open issues* instead of asserting it works.
 - **Don't conflate `.claude/skills/*` with the DB `skills` table** — they are
   two unrelated systems that share a word (`server/INSIGHTS.md:43`); a doc
   about one must not describe the other.
