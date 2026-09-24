@@ -109,12 +109,32 @@ describe('AI contracts parse fixtures', () => {
       groups: [
         {
           role: 'core',
-          files: [{ path: 'a.ts', additions: 84, deletions: 0, finding_lines: [28, 52] }],
+          files: [
+            {
+              path: 'a.ts',
+              additions: 84,
+              deletions: 0,
+              finding_ids: ['f1', 'f2'],
+              finding_lines: [28, 52],
+            },
+          ],
+        },
+        {
+          role: 'tests',
+          files: [
+            { path: 'a.test.ts', additions: 40, deletions: 0, finding_ids: [], finding_lines: [] },
+          ],
+        },
+        {
+          role: 'docs',
+          files: [{ path: 'README.md', additions: 3, deletions: 1, finding_ids: [], finding_lines: [] }],
         },
       ],
       split_suggestion: { too_big: false, total_lines: 285, proposed_splits: [] },
     });
     expect(d.groups[0]!.role).toBe('core');
+    expect(d.groups[1]!.role).toBe('tests');
+    expect(d.groups[2]!.role).toBe('docs');
   });
 
   it('Conformance / Onboarding / EvalRun / MemoryItem', () => {
@@ -166,6 +186,36 @@ describe('AI contracts parse fixtures', () => {
       log: [{ t: '00.00', kind: 'info', msg: 'started' }],
     });
     expect(trace.tool_calls).toHaveLength(1);
+  });
+
+  it('RunTrace.log keeps a line’s optional data payload, back-compat with lines that have none', () => {
+    const trace = RunTrace.parse({
+      config: { agent: 'Security Reviewer', version: 'v7', model: 'gpt-4.1', pr: 482, source: 'local' },
+      stats: { duration_ms: 8200, tokens_in: 14820, tokens_out: 1240, cost_usd: 0.06, findings: 3, grounding: '3/3 passed' },
+      prompt_assembly: { system: 's', user: 'u' },
+      tool_calls: [],
+      raw_output: '{}',
+      memory_pulled: [],
+      specs_read: [],
+      log: [
+        { t: '00.00', kind: 'info', msg: 'started' },
+        {
+          t: '00.31',
+          kind: 'info',
+          msg: 'intent: derived',
+          data: { model: 'm', tokensIn: 10, tokensOut: 2, costUsd: 0.01, sourceCount: 3, cacheHit: false },
+        },
+      ],
+    });
+    expect(trace.log[0].data).toBeUndefined();
+    expect(trace.log[1].data).toEqual({
+      model: 'm',
+      tokensIn: 10,
+      tokensOut: 2,
+      costUsd: 0.01,
+      sourceCount: 3,
+      cacheHit: false,
+    });
   });
 });
 

@@ -29,6 +29,11 @@ import { RepoRepository } from '../modules/repos/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import { ReviewService } from '../modules/reviews/service.js';
 import { ReviewRunExecutor } from '../modules/reviews/run-executor.js';
+import { IntentRepository } from '../modules/intent/repository.js';
+import { IntentService } from '../modules/intent/service.js';
+import { PullsRepository } from '../modules/pulls/repository.js';
+import { SmartDiffService } from '../modules/smart-diff/service.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -78,6 +83,10 @@ export class Container {
   private _skillsRepo?: SkillsRepository;
   private _reposRepo?: RepoRepository;
   private _reviewRepo?: ReviewRepository;
+  private _intentRepo?: IntentRepository;
+  private _intentService?: IntentService;
+  private _pullsRepo?: PullsRepository;
+  private _smartDiffService?: SmartDiffService;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -114,6 +123,33 @@ export class Container {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
   }
 
+  get intentRepo(): IntentRepository {
+    return (this._intentRepo ??= new IntentRepository(this.db));
+  }
+
+  /**
+   * The Intent Layer use case, wired from its ports. `resolveFeatureModel`
+   * (and `new IntentService`/`new IntentRepository`) are only ever called
+   * here, in the composition root — never from `modules/intent/routes.ts`.
+   *
+   * Memoized like the repositories above: `intent/routes.ts` and
+   * `reviewService()` (→ `ReviewRunExecutor`) each call this once at plugin
+   * registration, and BOTH must resolve to the SAME instance — otherwise its
+   * single-flight in-memory map (per-instance) only dedupes calls made
+   * through whichever caller happened to hold that particular instance,
+   * never across a manual POST and a background review-triggered derive.
+   */
+  intentService(): IntentService {
+    return (this._intentService ??= new IntentService(
+      this.intentRepo,
+      () => this.github(),
+      this.git,
+      (provider) => this.llm(provider),
+      (workspaceId) => resolveFeatureModel(this, workspaceId, 'review_intent'),
+      this.config.promptLog,
+    ));
+  }
+
   /**
    * The review use case, wired from its ports.
    *
@@ -130,8 +166,30 @@ export class Container {
       this.repoIntel,
       this.git,
       this.skillsRepo,
+      this.intentService(),
+      this.config.promptLog,
     );
     return new ReviewService(this.reviewRepo, this.agentsRepo, this.runBus, executor);
+  }
+
+  /**
+   * F1's pulls repository, promoted here (D2) so a second module (Smart
+   * Diff) can depend on it without importing `modules/pulls/repository.js`
+   * sideways — `pulls/routes.ts` still constructs its own `PullsService`
+   * directly (pre-existing, untouched), this getter only adds a shared,
+   * memoized instance for callers that go through the container.
+   */
+  get pullsRepo(): PullsRepository {
+    return (this._pullsRepo ??= new PullsRepository(this.db));
+  }
+
+  /**
+   * The Smart Diff use case (D2). No repository of its own — `pullsRepo`
+   * already exposes everything `SmartDiffStore` needs and satisfies it
+   * structurally.
+   */
+  smartDiffService(): SmartDiffService {
+    return (this._smartDiffService ??= new SmartDiffService(this.pullsRepo));
   }
 
   get codeIndex(): CodeIndex {

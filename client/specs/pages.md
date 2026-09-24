@@ -28,6 +28,68 @@ Three views over one PR: overview, diff (`Files changed`), findings
 state, not an error). Running a review must be triggerable from here and
 must reflect live progress (SSE), not just a final state after refresh.
 
+The Overview tab's **Intent** card (`_components/IntentCard`) reads
+`GET /pulls/:id/intent` (`usePrIntent`) and must not itself trigger a model
+call. States: loading (skeleton), error (`ErrorState` + retry), never
+derived (`EmptyState` with a Derive CTA), and derived (one-sentence intent
+quote, a confidence badge with a hint copy when `low`, In scope/Out of scope
+lists — each rendering an explicit "none" copy when empty rather than a blank
+list — and a collapsible sources list showing each source's ref, resolved/
+unresolved icon, and optional note). A `stale` row (re-derived against an
+older `head_sha`) additionally shows a stale badge. Derive/Re-derive
+(`useDeriveIntent`, `POST /pulls/:id/intent`) is synchronous from the UI's
+perspective — the button shows a loading state until the model call resolves,
+then the card re-renders from the mutation's response. See
+[`../docs/ui-architecture.md#data-flow`](../docs/ui-architecture.md#data-flow)
+for the hook, and [`../../server/README.md#intent-layer`](../../server/README.md#intent-layer)
+for how the record is derived.
+
+The `Files changed` tab (`_components/DiffTab`) reads `usePrSmartDiff`
+(`GET /pulls/:id/smart-diff`, `src/lib/hooks/smart-diff.ts`) to group files by
+role — see [`../../server/specs/review-flow.md#smart-diff-read-side`](../../server/specs/review-flow.md#smart-diff-read-side)
+for what the endpoint itself guarantees, and
+[`../../server/README.md#smart-diff`](../../server/README.md#smart-diff) for the
+read-flow diagram.
+
+- **Smart order is the default.** Five possible role groups (core, tests,
+  wiring, docs, boilerplate) render in that fixed order with a sticky,
+  collapsible header (chip, name, description, `● N files with findings`
+  before `N files`); docs and boilerplate start collapsed, every other group
+  starts expanded (`DiffTab/constants.ts`'s `COLLAPSED_BY_DEFAULT`). A
+  **Smart order / Original order** toggle (`role="group"`, `aria-pressed`)
+  switches to the flat, unmodified GitHub file order.
+- **Smart order degrades gracefully.** While `usePrSmartDiff` is loading or
+  returns an error, the tab renders Original order and **both** toggle
+  buttons are disabled (not just the Smart one) — a user can't switch into a
+  grouping that isn't available yet
+  (`DiffTab/_components/DiffOrderToggle`, `DiffTab.tsx`'s `smartAvailable`).
+  A changed-file path the smart-diff response didn't classify (a stale
+  response racing a newer commit) still renders, appended to the `core`
+  group, never silently dropped (`DiffTab/helpers.ts`'s `orderFilesByRole`).
+- **One toggle covers both annotation kinds.** "Show/Hide annotations" gates
+  GitHub inline comment threads and finding cards together — it defaults ON
+  the first time the PR has any findings, off otherwise, so a clean PR shows
+  a clean diff by default (`DiffTab.tsx`'s `showAnnotations` effect). The
+  group header's `● N`, a file's severity dot, and a line's colored
+  stripe+label stay visible regardless of the toggle.
+- **A finding renders exactly where the endpoint says it belongs.** A finding
+  whose `start_line` falls inside the rendered patch gets a severity-colored
+  line stripe, a right-aligned severity label (`blocker`/`warning`/
+  `suggestion`), and a `FindingCard` underneath; one whose line isn't in the
+  current diff (an older round's finding on a line this diff no longer
+  touches) renders instead in a per-file "N finding(s) outside the diff"
+  block at the end of that file (`diff-viewer/findings.ts`'s
+  `partitionFindings`, `FileCard.tsx`, `OutsideDiffFindings`). Accept/Dismiss
+  from either location calls the same `useFindingAction` mutation.
+- **Empty and unreviewed states are distinct from an error.** A PR with no
+  review yet still shows the full role grouping, plus a "Review not run yet"
+  line (`DiffTab.tsx`'s `noReviewYet`) — this is not the same code path as
+  the Smart-Diff-unavailable fallback above.
+- `FindingCard` (`src/components/finding-card/FindingCard/`) is shared
+  between this tab and the Agent-runs `FindingsPanel` below — it moved out of
+  `_components/` for that reason, since `src/components/` cannot import from
+  `src/app/`.
+
 The Agent-runs Timeline shows a per-run severity counter under the reviewer's
 name for any settled run with a matching review — see
 [`findings-counters.md`](findings-counters.md). Within the "Review runs"

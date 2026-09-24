@@ -33,6 +33,7 @@ import type {
   SecretKey,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
+import { assertSafeShowFileAtArgs, BlobTooLargeError } from './git/show-file-at-guard.js';
 
 /**
  * Deterministic MOCK adapters for tests/dev — NO real network. Each mirrors the
@@ -249,6 +250,8 @@ export interface MockGitOptions {
   head?: string;
   /** Head `currentHead()` returns AFTER `sync()` runs — simulates fetch+reset advancing HEAD. */
   syncedHead?: string;
+  /** Content `showFileAt` returns, keyed by `"ref:path"`; unset ⇒ `files[path]`. */
+  showFileAtByRefPath?: Record<string, string>;
 }
 
 export class MockGitClient implements GitClient {
@@ -292,6 +295,15 @@ export class MockGitClient implements GitClient {
   }
   async readFile(_repo: RepoRef, path: string): Promise<string> {
     return this.opts.files?.[path] ?? '';
+  }
+  async showFileAt(_repo: RepoRef, ref: string, path: string, maxBytes?: number): Promise<string> {
+    assertSafeShowFileAtArgs(ref, path);
+    const content = this.opts.showFileAtByRefPath?.[`${ref}:${path}`] ?? this.opts.files?.[path] ?? '';
+    if (maxBytes != null) {
+      const size = Buffer.byteLength(content, 'utf8');
+      if (size > maxBytes) throw new BlobTooLargeError(ref, path, size, maxBytes);
+    }
+    return content;
   }
 }
 

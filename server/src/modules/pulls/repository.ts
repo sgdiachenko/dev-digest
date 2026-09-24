@@ -314,4 +314,17 @@ export class PullsRepository {
       .from(t.agentRuns)
       .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')));
   }
+
+  /**
+   * Intent Layer derivation cost per PR (Q4: added additively into the PR's
+   * lifetime `cost_usd`, alongside `listDoneRunCosts` — same `{ prId, costUsd }`
+   * shape, so the two lists can simply be concatenated before `costByPr`).
+   */
+  async listIntentCosts(prIds: string[]): Promise<{ prId: string | null; costUsd: number | null }[]> {
+    if (prIds.length === 0) return [];
+    return this.db
+      .select({ prId: t.prIntent.prId, costUsd: t.prIntent.costUsd })
+      .from(t.prIntent)
+      .where(inArray(t.prIntent.prId, prIds));
+  }
 }

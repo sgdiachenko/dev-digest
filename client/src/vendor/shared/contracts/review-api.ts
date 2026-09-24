@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Finding, Verdict } from './findings.js';
-import { Intent, SmartDiff } from './brief.js';
+import { Intent, IntentConfidence, IntentSource, SmartDiff } from './brief.js';
 
 /**
  * A2 — Review-Core API surface contracts. These extend the core
@@ -58,8 +58,27 @@ export const ReviewRunResponse = z.object({
 });
 export type ReviewRunResponse = z.infer<typeof ReviewRunResponse>;
 
-/** Intent persisted for a PR (the Intent plus the pr_id it scopes). */
-export const PrIntentRecord = Intent.extend({ pr_id: z.string() });
+/**
+ * Intent Layer — the persisted `pr_intent` row: the derived Intent plus the
+ * provenance/cost/staleness metadata `GET/POST /pulls/:id/intent` return.
+ */
+export const PrIntentRecord = Intent.extend({
+  pr_id: z.string(),
+  confidence: IntentConfidence,
+  sources: z.array(IntentSource),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  /** Cumulative USD across every derivation of this PR's intent (re-derives add up). */
+  cost_usd: z.number().nullable(),
+  /** Tokens of the LATEST derivation only (diagnostic, not cumulative). */
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  head_sha: z.string().nullable(),
+  /** true when head_sha !== the PR's current head_sha (never fed into a review). */
+  stale: z.boolean(),
+  /** ISO timestamp; = the row's updated_at. */
+  derived_at: z.string(),
+});
 export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
 
 /** Smart-diff response for a PR (the SmartDiff). */

@@ -18,6 +18,17 @@ run on the host, not in a container).
 - `reviewer-core/` — pure review engine (diff → LLM → findings), no DB/FS → [reviewer-core/AGENTS.md](reviewer-core/AGENTS.md)
 - `e2e/` — deterministic browser e2e (agent-browser, no LLM) → [e2e/AGENTS.md](e2e/AGENTS.md)
 - `docs/` — cross-cutting reference docs (agent prompts, model choice) that don't belong to one package
+- `.claude/agents/` — Claude Code subagents: `researcher` (read-only
+  evidence), `brainstorm` (read-only comparison of 2–3 implementation
+  options, optional), `planner` (read-only Development Plan), `implementer`
+  (executes the plan, runs the package checks), `test-writer` (adds test
+  coverage, test files only), `plan-verifier` (read-only traceability check),
+  `architecture-reviewer` (read-only onion/layering review),
+  `security-reviewer` (read-only OWASP-based security review), `doc-writer`
+  (Markdown docs + diagrams). Flow: researcher → [brainstorm → user picks
+  option] → planner → user approves → implementer → test-writer →
+  plan-verifier → architecture-reviewer ∥ security-reviewer → doc-writer →
+  `/pr-self-review`
 
 ## Commands
 
@@ -82,6 +93,14 @@ for the exact command (pnpm vs npm differs).
   [routing.md](.claude/skills/pr-self-review/routing.md) or it never runs.
   Deliberate bypass: `PR_SELF_REVIEW_OVERRIDE=1 <command>`, which is recorded
   in the report.
+- A new implementation skill also goes into the `skills:` list of **both**
+  [planner](.claude/agents/planner.md) and
+  [implementer](.claude/agents/implementer.md) — the two lists must stay
+  identical so a plan never assumes practices the implementer doesn't have.
+  `brainstorm`, `test-writer`, `architecture-reviewer`, `security-reviewer`,
+  `plan-verifier` and `doc-writer` carry role-scoped `skills:` lists instead —
+  each one justified in
+  [`.claude/agents/README.md`](.claude/agents/README.md).
 - Secrets (LLM keys, `GITHUB_TOKEN`) live in `~/.devdigest/secrets.json`
   (mode `0600`), not `.env`, not the database.
 - The DB schema already ships every table later course lessons need — the

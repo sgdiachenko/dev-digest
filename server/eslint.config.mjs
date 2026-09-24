@@ -12,7 +12,8 @@ import importPlugin from 'eslint-plugin-import';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'src/db/migrations/**', 'src/vendor/**'],
+    // clones/ = git-ignored working checkouts of indexed repos (not our code).
+    ignores: ['dist/**', 'node_modules/**', 'clones/**', 'src/db/migrations/**', 'src/vendor/**'],
   },
 
   js.configs.recommended,

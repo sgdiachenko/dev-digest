@@ -40,6 +40,38 @@ a feature module means one import + one `app.register`, not touching existing
 modules. On boot, the engine reaps any run left in a `running` state from a
 previous process (crash recovery for SSE-streamed reviews).
 
+## Intent Layer pre-work
+
+`ReviewRunExecutor.executeRuns` derives the PR's intent as shared pre-work,
+right after loading the diff and before the per-agent loop, via the
+`IntentDeriver` port (`deriveForReview`) — `modules/reviews/run-executor.ts:44-50,159-169`.
+The port may throw; it is the executor's own `try/catch` around the call that
+makes derivation non-fatal (an `Intent unavailable — continuing without it`
+Live Log line, plus a `logger.warn`), not the port swallowing the error
+itself — see [`../specs/review-flow.md`](../specs/review-flow.md#intent-derivation-best-effort-non-fatal)
+for the guarantee and [`../README.md#intent-layer`](../README.md#intent-layer)
+for the full derivation sequence + diagram.
+
+`IntentService` is wired in `platform/container.ts`'s `intentService()`, from
+ports (`IntentStore`, a `GitHubClient` factory, `GitClient`, an `LLMProvider`
+factory, a feature-model resolver) — never the container itself
+(`container.ts:138-146`). It is **memoized**, like every other
+container-provided repository/service: `modules/intent/routes.ts` and
+`reviewService()` (→ `ReviewRunExecutor`) each resolve it once, at their own
+plugin's registration, and both must land on the same instance — its
+single-flight in-memory map is per-instance, so an unmemoized factory would
+let a manual `POST` and a background review-triggered derive each hit the
+model instead of sharing one in-flight run.
+
+`resolveFeatureModel`/`getFeatureModelOverride` (`modules/settings/feature-models.ts`)
+take a local `HasDb` interface rather than `Container`, specifically so
+`container.ts` can call them directly (composition-root-only wiring) without
+creating a `feature-models.ts ⇄ container.ts` import cycle that
+`pnpm arch:check`'s `no-circular` rule would reject — `Container` still
+satisfies `HasDb` structurally, so every pre-existing route-level call site
+(`resolveFeatureModel(c, …)`) keeps compiling unchanged
+(`modules/settings/feature-models.ts:19-21`).
+
 ## Secrets
 
 `SecretsProvider` is the only abstraction services see. The **one** place

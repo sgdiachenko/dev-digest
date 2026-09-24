@@ -1,12 +1,12 @@
 import type { GitHubClient, PrDetail, PrMeta, PrReviewComment } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { Pull, PullsRepository, RepoRow } from './repository.js';
+import { reviewIdsForFindings } from '../_shared/review-rounds.js';
 import {
   costByPr,
   findingsSummaryByPr,
   latestReviewByPr,
   needsDiffStatBackfill,
-  reviewIdsForFindings,
   rowToPrMeta,
 } from './helpers.js';
 
@@ -109,17 +109,20 @@ export class PullsService {
   /** Attach score / findings / cost to each row. Pure reads + pure folding. */
   private async decorate(rows: Pull[]): Promise<PrMeta[]> {
     const prIds = rows.map((r) => r.id);
-    const [reviews, runs, costRuns] = await Promise.all([
+    const [reviews, runs, costRuns, intentCosts] = await Promise.all([
       this.repo.listReviewsForPulls(prIds),
       this.repo.listRunsForPulls(prIds),
       this.repo.listDoneRunCosts(prIds),
+      // Q4 — Intent Layer derivation cost counts toward the PR's lifetime
+      // cost too, additively (same {prId, costUsd} shape as costRuns).
+      this.repo.listIntentCosts(prIds),
     ]);
 
     const scoreByPr = latestReviewByPr(reviews);
     const reviewIdsByPr = reviewIdsForFindings(prIds, runs, reviews);
     const findings = await this.repo.listFindingsForReviews([...reviewIdsByPr.values()].flat());
     const summaries = findingsSummaryByPr(reviewIdsByPr, findings);
-    const costs = costByPr(costRuns);
+    const costs = costByPr([...costRuns, ...intentCosts]);
 
     const now = Date.now();
     return rows.map((row) =>

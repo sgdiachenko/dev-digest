@@ -57,6 +57,24 @@ export default function PRDetailPage() {
     if (prId) qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
   };
 
+  // Measures PrDetailHeader's own sticky height so DiffTab's sticky RoleGroup
+  // headers can offset below it (see PrDetailHeader.tsx / DiffTab.tsx).
+  // A callback ref (not useRef+empty-deps effect): PrDetailHeader mounts only
+  // after the isLoading skeleton branch below gives way to the real page, so
+  // an effect that captures the DOM node once on this component's own mount
+  // would always see it as null. Storing the node in state re-runs this
+  // effect exactly when the node actually appears (or disappears).
+  const [headerEl, setHeaderEl] = React.useState<HTMLDivElement | null>(null);
+  const [headerHeight, setHeaderHeight] = React.useState(0);
+  React.useEffect(() => {
+    if (!headerEl) return;
+    const update = () => setHeaderHeight(headerEl.getBoundingClientRect().height);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(headerEl);
+    return () => ro.disconnect();
+  }, [headerEl]);
+
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
   const setParam = (key: string, val: string | null) => {
@@ -126,6 +144,7 @@ export default function PRDetailPage() {
   return (
     <AppShell crumb={crumb}>
       <PrDetailHeader
+        ref={setHeaderEl}
         pr={pr}
         prId={prId}
         tab={tab}
@@ -137,7 +156,7 @@ export default function PRDetailPage() {
       />
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prBody={pr.body} />}
+        {tab === "overview" && <OverviewTab prId={prId} prBody={pr.body} />}
 
         {tab === "findings" && (
           <FindingsTab
@@ -160,6 +179,7 @@ export default function PRDetailPage() {
               invalidateActiveRuns();
               invalidateRunHistory();
               refetchReviews();
+              if (prId) qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
             }}
           />
         )}
@@ -170,6 +190,9 @@ export default function PRDetailPage() {
             filesCount={pr.files_count}
             files={pr.files}
             canComment={pr.status === "open"}
+            repoFullName={repoFullName}
+            headSha={pr.head_sha}
+            headerHeight={headerHeight}
           />
         )}
       </div>

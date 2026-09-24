@@ -52,13 +52,37 @@
   },
   "smartDiff": {
     "coreLabel": "Core",
+    "testsLabel": "Tests",
     "wiringLabel": "Wiring",
+    "docsLabel": "Docs",
     "boilerplateLabel": "Boilerplate",
+    "coreDescription": "The substance of the change — review closely",
+    "testsDescription": "Test coverage for the change",
+    "wiringDescription": "Config, tooling, and CI wiring",
+    "docsDescription": "Documentation and specs",
+    "boilerplateDescription": "Generated files, lockfiles, and snapshots — skim or skip",
     "largeTitle": "This PR is large ({lines} changed lines)",
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
     "filesCount": "{count} files",
     "findingLines": "{count} finding-lines",
-    "groupedByRole": "Smart Diff · grouped by role"
+    "groupedByRole": "Smart Diff · grouped by role",
+    "totals": "{files} files · +{additions} −{deletions}",
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order",
+    "orderGroupLabel": "Diff order",
+    "filesWithFindings": "{count} files with findings",
+    "fileHasFindings": "This file has findings",
+    "lineLabel": {
+      "CRITICAL": "blocker",
+      "WARNING": "warning",
+      "SUGGESTION": "suggestion"
+    },
+    "outsideDiffTitle": "{count} finding(s) outside the diff",
+    "noReviewYet": "Review not run yet",
+    "unavailable": "Smart order isn't available yet",
+    "showAnnotations": "Show annotations",
+    "hideAnnotations": "Hide annotations",
+    "commentPostError": "Couldn't post the comment to GitHub."
   },
   "list": {
     "breadcrumb": "Pull Requests",

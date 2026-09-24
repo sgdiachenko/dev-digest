@@ -15,9 +15,23 @@
 export {
   assemblePrompt,
   wrapUntrusted,
+  renderIntentBlock,
+  MAX_INTENT_CHARS,
   type PromptParts,
   type AssembledPrompt,
+  type PromptIntent,
 } from './prompt.js';
+
+// Safe prompt-assembly telemetry (sizes/sources only, never content).
+export {
+  summarizePrompt,
+  estimateTokens,
+  contentFingerprint,
+  type PromptLogLevel,
+  type PromptLogSummary,
+  type PromptSectionStat,
+  type SectionInput,
+} from './prompt-log.js';
 
 // Citation grounding — the mandatory mechanical gate for diff findings.
 export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';

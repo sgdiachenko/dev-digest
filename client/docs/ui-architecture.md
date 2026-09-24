@@ -19,6 +19,12 @@ Hooks are grouped by domain, not by page:
 - `hooks/skills.ts` — skill CRUD, versions/restore, stats, file import (L02)
 - `hooks/repo-intel.ts` — index state, resync
 - `hooks/trace.ts` — SSE run-trace subscription
+- `hooks/intent.ts` — `usePrIntent(prId)` (query on `GET /pulls/:id/intent`,
+  cached `PrIntentRecord | null`, never triggers the model) and
+  `useDeriveIntent(prId)` (mutation on `POST /pulls/:id/intent`; on success
+  writes the response straight into the `["pr-intent", prId]` query cache, on
+  error surfaces a toast via `notify.error`) — backs the Overview tab's
+  `IntentCard` (see [`../specs/pages.md`](../specs/pages.md#pullsnumber))
 
 TanStack Query owns all server-state caching; there is no separate global
 store (Redux/Zustand). Local-only UI state (open/closed, form drafts) stays

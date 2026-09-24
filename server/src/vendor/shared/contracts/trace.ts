@@ -14,6 +14,9 @@ export const RunLogLine = z.object({
   t: z.string(),
   kind: RunEventKind,
   msg: z.string(),
+  /** The event's structured payload (model, token counts, sources, …), saved
+      for that run; null/absent for lines that never carried one. */
+  data: z.unknown().optional(),
 });
 export type RunLogLine = z.infer<typeof RunLogLine>;
 
@@ -48,6 +51,8 @@ export const PromptAssembly = z.object({
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
+  /** Rendered "## Derived intent" block (Intent Layer); null when absent. */
+  intent: z.string().nullish(),
   user: z.string(),
 });
 export type PromptAssembly = z.infer<typeof PromptAssembly>;

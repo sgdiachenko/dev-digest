@@ -3,7 +3,12 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
+import { SEV } from "@devdigest/ui";
+import type { FindingRecord } from "@devdigest/shared";
+import { FindingCard } from "@/components/finding-card/FindingCard";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
+import { type DiffFindingApi, topSeverity } from "../findings";
 import { type Line } from "../helpers";
 import { s, lineRowFor, lineSignFor } from "../styles";
 import { CommentThreadView } from "../CommentThreadView";
@@ -14,12 +19,18 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  findings,
+  findingApi,
 }: {
   ln: Line;
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  /** Findings anchored to this line (already matched by the parent). */
+  findings?: FindingRecord[];
+  findingApi?: DiffFindingApi;
 }) {
+  const t = useTranslations("prReview");
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
 
@@ -34,6 +45,9 @@ export function CodeLine({
   const sign = ln.kind === "add" ? "+" : ln.kind === "del" ? "−" : "";
   const target = commenting?.canComment ? commentTargetFor(ln) : null;
   const showAdd = hover && !!target && !composing;
+  const lineFindings = findings ?? [];
+  const top = topSeverity(lineFindings);
+  const sevColor = top ? SEV[top].c : null;
 
   return (
     <div
@@ -41,7 +55,7 @@ export function CodeLine({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div style={lineRowFor(ln.kind)}>
+      <div style={lineRowFor(ln.kind, sevColor)}>
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button
@@ -62,6 +76,9 @@ export function CodeLine({
         <span className="mono" style={s.lineText}>
           {ln.text || " "}
         </span>
+        {top && sevColor && (
+          <span style={s.findingLabel(sevColor)}>{t(`smartDiff.lineLabel.${top}`)}</span>
+        )}
       </div>
 
       {commenting &&
@@ -79,6 +96,19 @@ export function CodeLine({
           onClose={() => setComposing(false)}
         />
       )}
+
+      {findingApi?.showFindings &&
+        lineFindings.map((f) => (
+          <div key={f.id} style={cs.thread}>
+            <FindingCard
+              f={f}
+              pending={findingApi.pending}
+              repoFullName={findingApi.repoFullName}
+              headSha={findingApi.headSha}
+              onAction={(action, reply) => findingApi.onAction?.(f.id, action, reply)}
+            />
+          </div>
+        ))}
     </div>
   );
 }

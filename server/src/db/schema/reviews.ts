@@ -45,6 +45,20 @@ export const findings = pgTable('findings', {
   dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
 });
 
+/**
+ * One `pr_intent.sources` entry — the plain jsonb row shape, deliberately NOT
+ * the `IntentSource` Zod contract type: the schema stays decoupled from
+ * `vendor/shared`, and the repository maps row → domain at the boundary (see
+ * onion-architecture skill, "row/domain mapping").
+ */
+export interface IntentSourceRow {
+  kind: string;
+  ref: string;
+  resolved: boolean;
+  linked: boolean;
+  note?: string | null;
+}
+
 export const prIntent = pgTable('pr_intent', {
   prId: uuid('pr_id')
     .primaryKey()
@@ -52,6 +66,21 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  confidence: text('confidence', { enum: ['high', 'medium', 'low'] }).notNull().default('low'),
+  sources: jsonb('sources').$type<IntentSourceRow[]>().notNull().default(sql`'[]'::jsonb`),
+  provider: text('provider'),
+  model: text('model'),
+  costUsd: doublePrecision('cost_usd'),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  /** Hash of (model, title, body, headSha, source digests, PROMPT_VERSION) — a
+   *  cache key; a miss means the inputs changed since the last derivation. */
+  inputHash: text('input_hash'),
+  /** head_sha the derivation ran against — compared to the PR's current
+   *  head_sha to compute `stale` at read time (never persisted as a bool). */
+  headSha: text('head_sha'),
+  createdAt: now(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const prBrief = pgTable('pr_brief', {

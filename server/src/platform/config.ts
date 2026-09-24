@@ -32,6 +32,13 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // `.env` (and .env.example) ship `LOG_LEVEL=` empty; an empty string is not a
   // valid enum member, so coerce '' → undefined to fall through to the default.
+  // Prompt-assembly telemetry: off | summary (default) | verbose. `verbose`
+  // (per-item sizes + content fingerprints) is honoured only outside
+  // production — see resolvePromptLog. Never logs prompt content either way.
+  PROMPT_LOG: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['off', 'summary', 'verbose']).optional(),
+  ),
   LOG_LEVEL: z.preprocess(
     (v) => (v === '' ? undefined : v),
     z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
@@ -59,7 +66,22 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /** Prompt-assembly telemetry level; `verbose` only ever outside production. */
+  promptLog: 'off' | 'summary' | 'verbose';
 };
+
+/**
+ * `verbose` is a local-debugging aid: it adds per-item sizes and content
+ * fingerprints. Production silently degrades it to `summary`, so a stray env
+ * var on a deployed host can never widen what gets logged.
+ */
+export function resolvePromptLog(
+  requested: 'off' | 'summary' | 'verbose' | undefined,
+  nodeEnv: 'development' | 'test' | 'production',
+): 'off' | 'summary' | 'verbose' {
+  const level = requested ?? 'summary';
+  return level === 'verbose' && nodeEnv === 'production' ? 'summary' : level;
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = EnvSchema.parse(env);
@@ -77,5 +99,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    promptLog: resolvePromptLog(parsed.PROMPT_LOG, parsed.NODE_ENV),
   };
 }

@@ -18,16 +18,11 @@ interface PrDetailHeaderProps {
   onRunsStarted: () => void;
 }
 
-export function PrDetailHeader({
-  pr,
-  prId,
-  tab,
-  findingsCount,
-  githubUrl,
-  onSetTab,
-  onRunStart,
-  onRunsStarted,
-}: PrDetailHeaderProps) {
+export const PrDetailHeader = React.forwardRef<HTMLDivElement, PrDetailHeaderProps>(
+  function PrDetailHeader(
+    { pr, prId, tab, findingsCount, githubUrl, onSetTab, onRunStart, onRunsStarted },
+    ref,
+  ) {
   const handleRunStart = useCallback(() => {
     onRunStart();
   }, [onRunStart]);
@@ -44,7 +39,9 @@ export function PrDetailHeader({
         : "var(--warn)";
 
   return (
-    <div style={s.root}>
+    // ref: lets the page measure this sticky header's height and offset
+    // DiffTab's sticky RoleGroup headers below it (see page.tsx/DiffTab).
+    <div ref={ref} style={s.root}>
       <div style={s.titleRow}>
         <div style={s.titleCol}>
           <h1 style={s.h1}>
@@ -120,4 +117,5 @@ export function PrDetailHeader({
       />
     </div>
   );
-}
+  },
+);

@@ -15,5 +15,32 @@
     "blame": "blame",
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
+  },
+  "intent": {
+    "title": "Intent",
+    "confidence": {
+      "high": "high confidence",
+      "medium": "medium confidence",
+      "low": "low confidence"
+    },
+    "lowConfidenceHint": "Inferred from indirect signals (title, branch, commits) — weigh accordingly.",
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "noScope": "Nothing stated.",
+    "sources": "Sources ({count})",
+    "sourceResolved": "read",
+    "sourceUnresolved": "not read",
+    "stale": "Stale — the PR has new commits since this was derived",
+    "derive": "Derive intent",
+    "rederive": "Re-derive",
+    "deriving": "Deriving…",
+    "empty": {
+      "title": "Not derived yet",
+      "body": "Derive this PR's intent from its title, description, linked issue, and any linked/changed spec docs."
+    },
+    "error": {
+      "title": "Couldn't load the PR's intent",
+      "deriveFailed": "Couldn't derive the PR's intent."
+    }
   }
 }
