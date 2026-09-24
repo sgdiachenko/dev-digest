@@ -1,4 +1,4 @@
-import type { RunEventKind, RunLogLine } from '@devdigest/shared';
+import type { RunEvent, RunEventKind, RunLogLine } from '@devdigest/shared';
 import type { RunBus } from './sse.js';
 
 /**
@@ -8,14 +8,26 @@ import type { RunBus } from './sse.js';
  * memory, load skills/specs, each model call, grounding, persistence) goes
  * through here so it is, in one shot:
  *   1. streamed live to the UI over the SSE RunBus (the Live Log),
- *   2. captured in the run's event buffer → persisted as the run_traces.log doc
- *      (survives reload), and
+ *   2. captured in the run's event buffer → persisted as the run_traces.log doc,
+ *      including each event's structured `data` payload (survives reload), and
  *   3. mirrored to the server's structured stdout logger (pino) for ops.
  *
  * A run logger can target ONE run (the usual case) or FAN OUT to several runIds
  * at once — used for shared pre-work (diff/intent) that happens before the
  * per-agent loop, so each target agent's stream shows it too.
  */
+
+/** Map buffered SSE events to persisted log lines, keeping each event's
+ *  `data` payload when present. Lines that never carried data keep the bare
+ *  `{t,kind,msg}` shape (no `data` key at all). */
+export function toRunLogLines(events: RunEvent[]): RunLogLine[] {
+  return events.map((e) => ({
+    t: e.t,
+    kind: e.kind,
+    msg: e.msg,
+    ...(e.data !== undefined ? { data: e.data } : {}),
+  }));
+}
 
 /** Minimal pino-compatible logger: (obj, msg). Optional stdout mirror. */
 export type PinoLike = {
@@ -92,6 +104,6 @@ export class RunLogger {
 
   /** The run's full event buffer mapped to persisted log lines (incl. pre-work). */
   logFor(runId: string): RunLogLine[] {
-    return this.bus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg }));
+    return toRunLogLines(this.bus.buffer(runId));
   }
 }

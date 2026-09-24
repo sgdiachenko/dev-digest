@@ -109,7 +109,7 @@ package / feature / screen / endpoint), or a way to tell that it is done.
      anything that reads `ref.current` or calls
      `getBoundingClientRect`/`ResizeObserver` across a conditional render):
      mark it in *Review handoff → Manual verification* — `plan-verifier`,
-     `architecture-reviewer` and security review are all static and cannot
+     `architecture-reviewer` and `security-reviewer` are all static and cannot
      catch a React ref/effect-timing bug that only shows up once the
      component tree actually mounts and scrolls (see
      [docs/plans/agent-token-optimization.md](../../docs/plans/agent-token-optimization.md)

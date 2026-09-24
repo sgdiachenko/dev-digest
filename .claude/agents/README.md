@@ -16,14 +16,18 @@ user ─► researcher (when evidence is needed)
      ─► implementer ─► code + Implementation Report
      ─► test-writer (optional: coverage gaps / regression tests) ─► Test Report
      ─► plan-verifier ─► Verification Report   (unmet → back to implementer)
-     ─► architecture-reviewer ─► findings  +  security review (not yet an agent)
+     ─► architecture-reviewer ─► findings  ∥  security-reviewer ─► findings
      ─► doc-writer (when the feature needs docs) ─► Documentation Report
      ─► /pr-self-review ─► gh pr create
 ```
 
 `plan-verifier` runs after `test-writer` so new tests count as evidence in the
 traceability matrix; `doc-writer` runs before `/pr-self-review` so any docs it
-writes are inside the gated fingerprint.
+writes are inside the gated fingerprint. `architecture-reviewer` and
+`security-reviewer` are both read-only and independent of each other, so the
+main session can run them in parallel; the security phase-2 false-positive
+filter (see `docs/plans/agent-token-optimization.md`) runs only when
+`security-reviewer` actually returns `CRITICAL`/`WARNING` findings.
 
 The main session orchestrates: no agent here can spawn another (`Agent` is
 not in any tool list), and a subagent cannot ask the user questions — each
@@ -65,8 +69,8 @@ drive the flow above. Confirmed on a measured feature; see
   portals, anything reading `ref.current`/`getBoundingClientRect` across a
   conditional render), open the app in a browser and check the *live*
   behavior — scroll, resize, watch `getComputedStyle` — before `doc-writer`
-  runs, not after. `plan-verifier`, `architecture-reviewer` and security
-  review are all static: none of them can catch a React ref/effect-timing
+  runs, not after. `plan-verifier`, `architecture-reviewer` and
+  `security-reviewer` are all static: none of them can catch a React ref/effect-timing
   bug that only shows up once the component tree actually mounts and
   re-renders, and one such bug shipped past every one of them in the session
   that produced §5.3.3.
@@ -81,6 +85,7 @@ drive the flow above. Confirmed on a measured feature; see
 | [test-writer](test-writer.md) | Adds or extends automated tests for a given target — a plan/report or a named feature/bug — across `server/`, `client/`, `reviewer-core/`, `e2e/`. Confirms each test fails for the right reason. Edits test files only, never product code | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | A plan + Implementation Report, or files/feature + behaviour to cover + packages | **Test Report**: status, tests added/changed, right-reason evidence per test, checks with exit codes, not-run (`.it`/e2e), skills applied, convention overrides, INSIGHTS updated, open issues — or *blocked* |
 | [plan-verifier](plan-verifier.md) | Read-only traceability check of finished work against the approved plan and the original requirements — every requirement, `C#`, `S#` done-when and Test-plan item gets a verdict with evidence. Flags unplanned changes. Does not re-judge the plan | `sonnet` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | The full plan, the Implementation Report, and the original requirements | **Verification Report**: overall verdict + counts, traceability matrix, skill sources read, checks re-run, report discrepancies, unplanned changes, not-verifiable items — or *Clarifying questions* |
 | [architecture-reviewer](architecture-reviewer.md) | Read-only review of onion-ring direction and ports/DI (`server/`, `reviewer-core/`) and layer direction/placement (`client/`) on the diff. Findings in the `pr-self-review` finding shape | `opus` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally the plan's Review handoff + Implementation Report | **Architecture Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape), verdict, config-vs-skill-doc drift, gaps |
+| [security-reviewer](security-reviewer.md) | Read-only security review of a diff (`server/`, `client/`, `reviewer-core/`): traces attacker-controlled input to sinks (routes, SQL, process spawns, filesystem paths, tokens/secrets, LLM prompt input, HTML) and reports confidence-gated findings in the `pr-self-review` finding shape | `sonnet` | Read, Grep, Glob, Bash (`maxTurns: 48`). No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally the plan's Review handoff + Implementation Report | **Security Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape + `confidence`), verdict, phase-2 handoff, checked-nothing-found, gaps |
 | [doc-writer](doc-writer.md) | Documents already-implemented, already-verified work as repo Markdown + Mermaid diagrams, routed to the right `docs/`/`specs/`/`README.md`/`AGENTS.md` location, with its indexes updated. Edits Markdown only | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | Source material (plan/report/memo/code) + feature name + packages | **Documentation Report**: files written, diagrams, indexes updated, claims → evidence, link check, open issues — or *Clarifying questions* |
 
 **implementer ↔ test-writer split**: the implementer writes the tests each
@@ -109,7 +114,7 @@ Which skill applies to which file is decided by
 [`routing.md`](../skills/pr-self-review/routing.md), the same table
 `/pr-self-review` uses.
 
-### Role-scoped skills (test-writer, architecture-reviewer, plan-verifier, doc-writer)
+### Role-scoped skills (test-writer, architecture-reviewer, security-reviewer, plan-verifier, doc-writer)
 
 Only `planner` and `implementer` must stay identical (C15 in the plan that
 introduced these four agents). Each of the other agents preloads a smaller,
@@ -132,6 +137,9 @@ role-scoped list; every skill on a list is justified here.
 | architecture-reviewer | `frontend-architecture` | its entire job in `client/` |
 | architecture-reviewer | `next-best-practices` | route-level placement rules that overlap with layering |
 | architecture-reviewer | `engineering-insights` | reads `INSIGHTS.md` as review context (read-only — see the agent file) |
+| security-reviewer | `security` | its entire job — OWASP Top 10:2025, confidence-gated reporting |
+| security-reviewer | `fastify-best-practices` | stack-correct routes/CORS/schema rules, since `security/SKILL.md`'s own examples are Express-shaped |
+| security-reviewer | `engineering-insights` | reads `INSIGHTS.md` as review context (read-only — see the agent file), e.g. the zip-bomb gotcha it checks for |
 | plan-verifier | `engineering-insights` | reads `INSIGHTS.md`; the only skill it needs unconditionally |
 | plan-verifier | `onion-architecture` | most plans touch `server/`/`reviewer-core/`, so this is preloaded rather than Read on demand |
 | plan-verifier | `frontend-architecture` | most plans touch `client/`, for the same reason |
@@ -162,12 +170,12 @@ actually cited.
   the implementer in auto mode.
 - No `isolation: worktree`: a fresh worktree has no `node_modules`, so the
   checks could not run, and it would not see uncommitted branch changes.
-- `architecture-reviewer` and `plan-verifier` carry **no `permissionMode`** —
-  auto mode ignores it regardless, and `plan` mode would block the check
-  commands both agents need to run (`arch:check`, `lint`, unit tests). Their
-  read-only Bash allow-list is a **prompt rule**, the same as everywhere else
-  in this repo (no hooks), and the check commands they run are
-  prompt-allowed, not tool-restricted.
+- `architecture-reviewer`, `security-reviewer` and `plan-verifier` carry **no
+  `permissionMode`** — auto mode ignores it regardless, and `plan` mode would
+  block the check commands these agents need to run (`arch:check`, `lint`,
+  unit tests, the secret-scan grep). Their read-only Bash allow-list is a
+  **prompt rule**, the same as everywhere else in this repo (no hooks), and
+  the check commands they run are prompt-allowed, not tool-restricted.
 
 ## Sources the rules are based on
 
@@ -222,6 +230,19 @@ actually cited.
 | Verdict is a pure function of findings; zero findings is valid | in-repo: [docs/agent-prompts/general-reviewer.md](../../docs/agent-prompts/general-reviewer.md) |
 | Fresh-context adversarial review after implementation | [adversarial review](https://github.com/2389-research/tracker/issues/625), [ReviewGrounder](https://lambda.ai/blog/reviewgrounder-ai-assisted-peer-review) |
 
+### security-reviewer
+
+| Rule | Source |
+|---|---|
+| Frontmatter schema (`disallowedTools`, `maxTurns`, valid field list) | [Create custom subagents](https://code.claude.com/docs/en/sub-agents), Anthropic, accessed 2026-09-24 |
+| Confidence-gated LLM filtering cuts false positives ~88.6% at ~3% recall cost | [QASecClaw](https://arxiv.org/pdf/2605.01885) (arXiv preprint) |
+| Persona + rich context + file:line/quote evidence + confidence scoring, not generic checklist prompting | [How to Prompt LLMs for Better, Faster Security Reviews](https://crashoverride.com/blog/prompting-llm-security-reviews), Crash Override, Oct 2025 |
+| Two-phase search → false-positive filter; sonnet for phase 1 | in-repo: [docs/plans/agent-token-optimization.md](../../docs/plans/agent-token-optimization.md) |
+| Severity mapping, evidence rule, never-flagged list | in-repo: [severity.md](../skills/pr-self-review/severity.md) |
+| Finding/verdict shape; lethal-trifecta classification rule | in-repo: [report.md](../skills/pr-self-review/report.md), [docs/agent-prompts/security-reviewer.md](../../docs/agent-prompts/security-reviewer.md) |
+| OWASP Top 10:2025 categories | [.claude/skills/security/references.md](../skills/security/references.md) |
+| Onion-ring rule for secrets/env placement | [onion-architecture](../skills/onion-architecture/SKILL.md) |
+
 ### plan-verifier
 
 | Rule | Source |
@@ -256,6 +277,7 @@ actually cited.
        <(sed -n '/^skills:/,/^---/p' .claude/agents/implementer.md)
   ```
 - New skill → also decide whether it belongs in `test-writer` /
-  `architecture-reviewer` / `plan-verifier` / `doc-writer`'s role-scoped list,
+  `architecture-reviewer` / `security-reviewer` / `plan-verifier` /
+  `doc-writer`'s role-scoped list,
   and update its rationale row in the table above.
 - New agent → add a catalog row and, if it joins the flow, update the diagram.

@@ -22,10 +22,11 @@ run on the host, not in a container).
   evidence), `planner` (read-only Development Plan), `implementer` (executes
   the plan, runs the package checks), `test-writer` (adds test coverage,
   test files only), `plan-verifier` (read-only traceability check),
-  `architecture-reviewer` (read-only onion/layering review), `doc-writer`
+  `architecture-reviewer` (read-only onion/layering review),
+  `security-reviewer` (read-only OWASP-based security review), `doc-writer`
   (Markdown docs + diagrams). Flow: researcher → planner → user approves →
-  implementer → test-writer → plan-verifier → architecture-reviewer + security
-  review → doc-writer → `/pr-self-review`
+  implementer → test-writer → plan-verifier → architecture-reviewer ∥
+  security-reviewer → doc-writer → `/pr-self-review`
 
 ## Commands
 
@@ -94,8 +95,9 @@ for the exact command (pnpm vs npm differs).
   [planner](.claude/agents/planner.md) and
   [implementer](.claude/agents/implementer.md) — the two lists must stay
   identical so a plan never assumes practices the implementer doesn't have.
-  `test-writer`, `architecture-reviewer`, `plan-verifier` and `doc-writer`
-  carry role-scoped `skills:` lists instead — each one justified in
+  `test-writer`, `architecture-reviewer`, `security-reviewer`,
+  `plan-verifier` and `doc-writer` carry role-scoped `skills:` lists instead —
+  each one justified in
   [`.claude/agents/README.md`](.claude/agents/README.md).
 - Secrets (LLM keys, `GITHUB_TOKEN`) live in `~/.devdigest/secrets.json`
   (mode `0600`), not `.env`, not the database.

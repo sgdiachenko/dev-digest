@@ -14,6 +14,9 @@ export const RunLogLine = z.object({
   t: z.string(),
   kind: RunEventKind,
   msg: z.string(),
+  /** The event's structured payload (model, token counts, sources, …), saved
+      for that run; null/absent for lines that never carried one. */
+  data: z.unknown().optional(),
 });
 export type RunLogLine = z.infer<typeof RunLogLine>;
 

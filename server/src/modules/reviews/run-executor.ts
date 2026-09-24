@@ -9,7 +9,7 @@ import {
   type PromptIntent,
   type PromptLogLevel,
 } from '@devdigest/reviewer-core';
-import { RunLogger } from '../../platform/run-logger.js';
+import { RunLogger, toRunLogLines } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
@@ -559,7 +559,7 @@ export class ReviewRunExecutor {
       raw_output: '',
       memory_pulled: [],
       specs_read: [],
-      log: this.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
+      log: toRunLogLines(this.runBus.buffer(runId)),
     };
   }
 }
