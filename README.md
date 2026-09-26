@@ -14,6 +14,7 @@ aliases, not published modules):
 | `server/`        | `@devdigest/api`            | Fastify API + Drizzle/Postgres (pgvector)             | 3001 |
 | `client/`        | `@devdigest/web`            | Next.js 15 web app (the studio)                       | 3000 |
 | `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → findings    | —    |
+| `mcp-server/`    | `@devdigest/mcp-server`     | Local MCP server (stdio) driving the review flow      | —    |
 | `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser)             | —    |
 | `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
 
@@ -47,6 +48,12 @@ flowchart LR
   SHARED -.->|"one schema, every package"| WEB
   SHARED -.-> API
   SHARED -.-> ENGINE
+  SHARED -.-> MCP
+
+  MCP["mcp-server/<br/>stdio · 5 tools"]
+  AGENT["AI agent<br/>(Claude Code)"]
+  AGENT -->|"stdio (JSON-RPC)"| MCP
+  MCP -->|"REST /agents /pulls /runs …"| API
 ```
 
 The review flow end to end: **add a repo** → server clones it and `repo-intel`
@@ -61,6 +68,7 @@ Each package has its own README with deeper diagrams:
 [`client`](client/README.md) (UI route map) ·
 [`server`](server/README.md) (API map) ·
 [`reviewer-core`](reviewer-core/README.md) (review pipeline) ·
+[`mcp-server`](mcp-server/README.md) (the 5 tools) ·
 [`e2e`](e2e/README.md).
 
 ## What works on day 1
@@ -148,6 +156,7 @@ path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 | server unit (hermetic) | `server-unit.yml` | no |
 | server integration (real Postgres) | `server-integration.yml` | yes |
 | reviewer-core (engine) | `reviewer-core.yml` | no |
+| mcp-server | `mcp-server.yml` | no |
 | web e2e (agent-browser, real stack) | `e2e-web.yml` | yes |
 
 Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers

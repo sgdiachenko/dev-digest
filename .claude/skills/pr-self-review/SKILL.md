@@ -121,6 +121,7 @@ layering breaks that `typecheck` cannot see.
 | `server/` | `pnpm -C server lint` · `pnpm -C server typecheck` · `pnpm -C server arch:check` · `pnpm -C server exec vitest run --exclude '**/*.it.test.ts'` | `.github/workflows/server-unit.yml` |
 | `client/` | `pnpm -C client lint` · `pnpm -C client typecheck` · `pnpm -C client test` | `.github/workflows/client.yml` |
 | `reviewer-core/` | `npm --prefix reviewer-core run typecheck` · `npm --prefix reviewer-core test` | `.github/workflows/reviewer-core.yml` |
+| `mcp-server/` | `pnpm -C mcp-server typecheck` · `pnpm -C mcp-server test` | `.github/workflows/mcp-server.yml` |
 | `e2e/` | `npm --prefix e2e run typecheck` | `.github/workflows/e2e-web.yml` |
 
 A non-zero exit is a `CRITICAL` with the failing output quoted. This is the

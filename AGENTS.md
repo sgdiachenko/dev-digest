@@ -1,6 +1,6 @@
 # AGENTS.md — dev-digest
 
-Local-first AI PR review. **Course starter**: 4 standalone packages, no
+Local-first AI PR review. **Course starter**: 5 standalone packages, no
 workspace tool (no pnpm workspaces / turborepo) — each has its own
 `package.json` + lockfile. Cross-package types via tsconfig path aliases, not
 published modules.
@@ -16,6 +16,7 @@ run on the host, not in a container).
 - `server/` — Fastify 5 + Drizzle/Postgres API (`:3001`) → [server/AGENTS.md](server/AGENTS.md)
 - `client/` — Next.js 15 studio, App Router (`:3000`) → [client/AGENTS.md](client/AGENTS.md)
 - `reviewer-core/` — pure review engine (diff → LLM → findings), no DB/FS → [reviewer-core/AGENTS.md](reviewer-core/AGENTS.md)
+- `mcp-server/` — local MCP server (stdio) exposing the review flow to an AI agent → [mcp-server/AGENTS.md](mcp-server/AGENTS.md)
 - `e2e/` — deterministic browser e2e (agent-browser, no LLM) → [e2e/AGENTS.md](e2e/AGENTS.md)
 - `docs/` — cross-cutting reference docs (agent prompts, model choice) that don't belong to one package
 - `.claude/agents/` — Claude Code subagents: `researcher` (read-only

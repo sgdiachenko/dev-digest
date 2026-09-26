@@ -1,0 +1,55 @@
+# mcp-server suite — the local MCP server (@devdigest/mcp-server).
+# 5 tools over stdio, driving the DevDigest review flow via HTTP. Tests are
+# hermetic units (the DevDigestApi is mocked, no real API/network). Uses pnpm
+# (its own pnpm-lock.yaml), unlike reviewer-core/e2e.
+#
+# server/src/vendor/shared/** is in the path filter because mcp-server hand-
+# mirrors a 6-file subset of it (D6) — a contract change there should re-run
+# this suite even if mcp-server/src itself didn't change.
+name: mcp-server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp-server/**'
+      - 'server/src/vendor/shared/**'
+      - '.github/workflows/mcp-server.yml'
+  pull_request:
+    paths:
+      - 'mcp-server/**'
+      - 'server/src/vendor/shared/**'
+      - '.github/workflows/mcp-server.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-server-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp-server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: mcp-server/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
