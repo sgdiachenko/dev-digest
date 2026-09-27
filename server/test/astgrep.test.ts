@@ -91,6 +91,72 @@ export enum Color { RED, BLUE }
     expect(syms.find((s) => s.name === 'Color')?.kind).toBe('enum');
   });
 
+  it('finds a decorated exported class and its methods (NestJS/Angular shape)', () => {
+    const src = `
+@Injectable()
+export class AuthService {
+  signup(dto: SignupDto) { return dto; }
+
+  @SomeMethodDecorator()
+  login(dto: LoginDto) { return dto; }
+}
+`;
+    const syms = parseSymbols('src/auth.service.ts', src);
+    const names = syms.map((s) => s.name);
+
+    expect(names).toContain('AuthService');
+    expect(names).toContain('signup');
+    expect(names).toContain('AuthService.signup');
+    expect(names).toContain('login');
+    expect(names).toContain('AuthService.login');
+
+    const cls = syms.find((s) => s.name === 'AuthService')!;
+    expect(cls.kind).toBe('class');
+    expect(cls.exported).toBe(true);
+  });
+
+  it('finds a decorated exported class stacked with multiple decorators', () => {
+    const src = `
+@Controller('auth')
+@UseGuards(SomeGuard)
+export class AuthController {
+  @Post('signup')
+  signup() { return null; }
+}
+`;
+    const syms = parseSymbols('src/auth.controller.ts', src);
+    expect(syms.map((s) => s.name)).toContain('AuthController');
+    expect(syms.map((s) => s.name)).toContain('signup');
+  });
+
+  it('resolves callers of a decorated class\'s bare method across files', () => {
+    const declFile = 'src/auth.service.ts';
+    const declSrc = `
+@Injectable()
+export class AuthService {
+  signup(dto: SignupDto) { return dto; }
+}
+`;
+    const callerFile = 'src/auth.controller.ts';
+    const callerSrc = `
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('signup')
+  signup(@Body() dto: SignupDto) {
+    return this.authService.signup(dto);
+  }
+}
+`;
+    const refs = parseReferences(callerFile, callerSrc).filter((r) => r.toSymbol === 'signup');
+    expect(refs.length).toBeGreaterThan(0);
+    // The declaration's own file must not "see" the reference (parity check —
+    // parseSymbols still runs on declFile, just proving the decl line itself
+    // never counts as a reference regardless of the decorator fix above).
+    expect(parseReferences(declFile, declSrc).some((r) => r.toSymbol === 'signup')).toBe(false);
+  });
+
   it('handles `export default class` and `export { X }` re-exports', () => {
     const src = `
 class Hidden {}

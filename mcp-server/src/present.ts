@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   Agent,
+  BlastRadiusResponse,
   ConventionCandidate,
   ConventionStatus,
   Finding,
@@ -100,10 +101,7 @@ export function toConventionCompacts(candidates: ConventionCandidate[]): Convent
 
 // ---- get_blast_radius -----------------------------------------------------
 
-/** D4: a soft stub — always this exact shape, never `isError`. */
-export const GetBlastRadiusOutput = z.object({
-  implemented: z.literal(false),
-  message: z.string(),
-  affected_files: z.array(z.string()),
-});
+/** The API's own response is already compact (S1: additive over `BlastRadius`
+ *  with `degraded`/`reason`) — no further trimming needed here. */
+export const GetBlastRadiusOutput = BlastRadiusResponse;
 export type GetBlastRadiusOutput = z.infer<typeof GetBlastRadiusOutput>;

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   Agent,
   ApiErrorBody,
+  BlastRadiusResponse,
   ConventionCandidate,
   Repo,
   PrMeta,
@@ -24,6 +25,7 @@ export interface DevDigestApi {
   listRuns(pullId: string): Promise<RunSummary[]>;
   listReviews(pullId: string): Promise<ReviewRecord[]>;
   listConventions(repoId: string): Promise<ConventionCandidate[]>;
+  getBlastRadius(pullId: string): Promise<BlastRadiusResponse>;
 }
 
 export class FetchDevDigestApi implements DevDigestApi {
@@ -62,6 +64,10 @@ export class FetchDevDigestApi implements DevDigestApi {
       `/repos/${encodeURIComponent(repoId)}/conventions`,
       z.array(ConventionCandidate),
     );
+  }
+
+  getBlastRadius(pullId: string): Promise<BlastRadiusResponse> {
+    return this.request(`/pulls/${encodeURIComponent(pullId)}/blast`, BlastRadiusResponse);
   }
 
   private async request<S extends z.ZodTypeAny>(

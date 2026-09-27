@@ -54,6 +54,11 @@ export const BlastCaller = z.object({
   name: z.string(),
   file: z.string(),
   line: z.number().int(),
+  /** Endpoints/crons this caller-row itself reaches (P3, Graph view — exact
+   *  attribution on the persistent path; equal to the group's on ripgrep/
+   *  degraded). Always present, never `undefined`. */
+  endpoints_affected: z.array(z.string()),
+  crons_affected: z.array(z.string()),
 });
 export type BlastCaller = z.infer<typeof BlastCaller>;
 
@@ -71,6 +76,29 @@ export const BlastRadius = z.object({
   summary: z.string(),
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
+
+/** Mirrors repo-intel's `DegradedReason` (`modules/repo-intel/types.ts`) —
+ *  server-internal literal union, restated here since ring-0 contracts import
+ *  nothing but zod. */
+export const BlastDegradedReason = z.enum([
+  'flag_off',
+  'index_failed',
+  'index_partial',
+  'repo_too_large',
+  'no_data',
+]);
+export type BlastDegradedReason = z.infer<typeof BlastDegradedReason>;
+
+/**
+ * Additive over `BlastRadius` (D1): `GET /pulls/:id/blast`'s actual response.
+ * `reason` is always present (`null` when the index has enough data) so a
+ * client never has to branch on `undefined`.
+ */
+export const BlastRadiusResponse = BlastRadius.extend({
+  degraded: z.boolean(),
+  reason: BlastDegradedReason.nullable(),
+});
+export type BlastRadiusResponse = z.infer<typeof BlastRadiusResponse>;
 
 // ---- Risks ----
 export const RiskSeverity = z.enum(['high', 'medium', 'low']);

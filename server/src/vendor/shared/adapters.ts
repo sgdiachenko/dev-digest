@@ -151,6 +151,18 @@ export interface GitHubClient {
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
+  /**
+   * Commits that touched `path`, most-recent first (PR History, P3/E6) — a
+   * thin GitHub REST read, not the `pull_requests` table (which only holds
+   * PRs imported into DevDigest, not a repo's full history).
+   */
+  listCommitsForPath(repo: RepoRef, path: string, perPage: number): Promise<{ sha: string }[]>;
+  /** PRs associated with a commit (may include still-open/unmerged PRs — the
+   *  caller filters those out). */
+  listPullRequestsForCommit(
+    repo: RepoRef,
+    sha: string,
+  ): Promise<{ number: number; title: string; merged_at: string | null; author: string }[]>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

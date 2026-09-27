@@ -1,29 +1,34 @@
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { DevDigestApi } from '../api/client.js';
+import { resolveRepo, resolvePull } from '../resolve.js';
 import { GetBlastRadiusOutput } from '../present.js';
+import { ToolError, toErrorResult } from '../errors.js';
 
 /**
- * D10 — approved verbatim, do not paraphrase.
+ * Rewritten for the real implementation (S7) — the old stub description
+ * described `{ implemented: false, ... }`, which no longer exists.
  */
-export const GET_BLAST_RADIUS_DESCRIPTION = `Not implemented yet: a future analysis of which files and symbols a pull
-request's changes affect downstream. Always returns
-{ implemented: false, message, affected_files: [] } regardless of input,
-and never fails — treat implemented: false as "not available yet", not as
-an error.`;
+export const GET_BLAST_RADIUS_DESCRIPTION = `Show which symbols a pull request changes and what depends on them: for
+each changed symbol, its known callers (file:line, from the repo's indexed
+call graph) and the HTTP endpoints/cron jobs downstream of them. Identify
+the pull request with repo (GitHub "owner/name") and pr (its number).
+Returns a "degraded" flag and a "reason" when the repo's index is
+incomplete or missing (the analysis is then best-effort, not an error) —
+never fails for that reason. Errors only when the repo or PR itself is not
+tracked in DevDigest.`;
 
-/** Flat top-level args only (course principle 2) — unused today, kept flat
- *  for when the real implementation (a later lesson) needs them. */
+export interface GetBlastRadiusDeps {
+  api: DevDigestApi;
+}
+
+/** Flat top-level args only (course principle 2). */
 export const getBlastRadiusInputShape = {
-  repo: z.string().min(1).describe('GitHub repo as "owner/name".'),
+  repo: z.string().min(1).describe('GitHub repo as "owner/name" (case-insensitive).'),
   pr: z.number().int().positive().describe('Pull request number, as shown on GitHub.'),
 };
 
-/**
- * D4: a soft stub, on purpose — no API call, never `isError`, always this
- * exact shape. The real analysis (reading `repo-intel`'s dependency graph) is
- * a later course lesson's homework.
- */
-export function createGetBlastRadiusTool() {
+export function createGetBlastRadiusTool(deps: GetBlastRadiusDeps) {
   return {
     name: 'get_blast_radius',
     description: GET_BLAST_RADIUS_DESCRIPTION,
@@ -34,16 +39,21 @@ export function createGetBlastRadiusTool() {
       idempotentHint: true,
       openWorldHint: false,
     },
-    handler: async (): Promise<CallToolResult> => {
-      const result = GetBlastRadiusOutput.parse({
-        implemented: false,
-        message: 'Blast radius analysis is not implemented yet.',
-        affected_files: [],
-      });
-      return {
-        structuredContent: result,
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-      };
+    handler: async (args: { repo: string; pr: number }): Promise<CallToolResult> => {
+      try {
+        const repo = await resolveRepo(deps.api, args.repo);
+        const pull = await resolvePull(deps.api, repo, args.pr);
+        const raw = await deps.api.getBlastRadius(pull.id!);
+        const result = GetBlastRadiusOutput.parse(raw);
+        return {
+          structuredContent: result,
+          content: [{ type: 'text', text: JSON.stringify(result) }],
+        };
+      } catch (err) {
+        return toErrorResult(
+          err instanceof ToolError ? err.message : `Unexpected error: ${(err as Error).message}`,
+        );
+      }
     },
   };
 }

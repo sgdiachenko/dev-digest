@@ -8,6 +8,7 @@ import { RunCache } from '../src/run-cache.js';
 import type { Config } from '../src/config.js';
 import {
   makeAgent,
+  makeBlastRadiusResponse,
   makeConventionCandidate,
   makeMockApi,
   makePrMeta,
@@ -189,16 +190,30 @@ describe('get_conventions', () => {
 });
 
 describe('get_blast_radius', () => {
-  it('always returns the stub, never isError, and makes no API call', async () => {
-    const tool = createGetBlastRadiusTool();
+  it('resolves repo/pr and returns the API blast-radius response as structuredContent', async () => {
+    const api = makeMockApi();
+    api.listRepos.mockResolvedValue([makeRepo({ full_name: 'acme/widgets', id: 'repo-1' })]);
+    api.listPullsForRepo.mockResolvedValue([makePrMeta({ number: 42, id: 'pr-1' })]);
+    api.getBlastRadius.mockResolvedValue(makeBlastRadiusResponse());
+    const tool = createGetBlastRadiusTool({ api });
 
-    const result = await tool.handler();
+    const result = await tool.handler({ repo: 'ACME/Widgets', pr: 42 });
 
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent).toEqual({
-      implemented: false,
-      message: 'Blast radius analysis is not implemented yet.',
-      affected_files: [],
-    });
+    expect(result.structuredContent).toEqual(makeBlastRadiusResponse());
+    expect(api.getBlastRadius).toHaveBeenCalledWith('pr-1');
+  });
+
+  it('errors with an actionable message when the PR is unknown', async () => {
+    const api = makeMockApi();
+    api.listRepos.mockResolvedValue([makeRepo({ full_name: 'acme/widgets', id: 'repo-1' })]);
+    api.listPullsForRepo.mockResolvedValue([]);
+    const tool = createGetBlastRadiusTool({ api });
+
+    const result = await tool.handler({ repo: 'acme/widgets', pr: 999 });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as Array<{ text: string }>)[0]?.text).toMatch(/not found/);
+    expect(api.getBlastRadius).not.toHaveBeenCalled();
   });
 });

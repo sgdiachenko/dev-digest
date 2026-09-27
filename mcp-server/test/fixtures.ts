@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import type {
   Agent,
+  BlastRadiusResponse,
   ConventionCandidate,
   PrMeta,
   Repo,
@@ -153,6 +154,34 @@ export function makeReviewRunResponse(
   };
 }
 
+export function makeBlastRadiusResponse(
+  overrides: Partial<BlastRadiusResponse> = {},
+): BlastRadiusResponse {
+  return {
+    changed_symbols: [{ name: 'getContext', file: 'src/modules/_shared/context.ts', kind: 'function' }],
+    downstream: [
+      {
+        symbol: 'getContext',
+        callers: [
+          {
+            name: 'blastRoutes',
+            file: 'src/modules/blast/routes.ts',
+            line: 21,
+            endpoints_affected: ['GET /pulls/:id/blast'],
+            crons_affected: [],
+          },
+        ],
+        endpoints_affected: ['GET /pulls/:id/blast'],
+        crons_affected: [],
+      },
+    ],
+    summary: '1 changed symbol(s), 1 caller(s) across 1 group(s), 1 endpoint(s) and 0 cron(s) affected.',
+    degraded: false,
+    reason: null,
+    ...overrides,
+  };
+}
+
 /** A fully-stubbed `DevDigestApi` — every method is a `vi.fn()` the test configures. */
 export function makeMockApi(): DevDigestApi & Record<keyof DevDigestApi, ReturnType<typeof vi.fn>> {
   return {
@@ -163,5 +192,6 @@ export function makeMockApi(): DevDigestApi & Record<keyof DevDigestApi, ReturnT
     listRuns: vi.fn().mockResolvedValue([makeRunSummary()]),
     listReviews: vi.fn().mockResolvedValue([makeReviewRecord()]),
     listConventions: vi.fn().mockResolvedValue([makeConventionCandidate()]),
+    getBlastRadius: vi.fn().mockResolvedValue(makeBlastRadiusResponse()),
   };
 }

@@ -23,7 +23,7 @@ export function createToolDefinitions(deps: ServerDeps) {
     createRunAgentOnPullRequestTool(deps),
     createGetFindingsTool({ api: deps.api, cache: deps.cache }),
     createGetConventionsTool({ api: deps.api }),
-    createGetBlastRadiusTool(),
+    createGetBlastRadiusTool({ api: deps.api }),
   ];
 }
 

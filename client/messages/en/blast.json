@@ -14,5 +14,22 @@
   "graph": {
     "empty": "No downstream callers to graph.",
     "ariaLabel": "Blast radius graph"
+  },
+  "error": {
+    "title": "Couldn't load the blast radius"
+  },
+  "legend": {
+    "symbol": "changed symbol",
+    "callers": "callers",
+    "endpoints": "endpoints affected",
+    "crons": "crons affected"
+  },
+  "degraded": "Best-effort — repo index is incomplete",
+  "reason": {
+    "flag_off": "Repo indexing is disabled for this workspace.",
+    "index_failed": "The last indexing attempt for this repo failed.",
+    "index_partial": "The repo index is only partially built.",
+    "repo_too_large": "This repo is too large to fully index.",
+    "no_data": "No indexed data is available for this repo yet."
   }
 }
