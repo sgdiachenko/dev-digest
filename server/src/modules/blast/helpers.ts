@@ -63,7 +63,18 @@ function buildSummary(changedSymbols: ChangedSymbol[], downstream: DownstreamImp
  * shows up in `changed_symbols`, the client renders it separately.
  */
 export function buildBlastRadius(result: BlastResult): BlastRadiusResponse {
-  const changedSymbols: ChangedSymbol[] = result.changedSymbols.map((s) => ({
+  const maxRankBySymbol = new Map<string, number>();
+  for (const caller of result.callers) {
+    maxRankBySymbol.set(
+      caller.viaSymbol,
+      Math.max(maxRankBySymbol.get(caller.viaSymbol) ?? 0, caller.rank),
+    );
+  }
+  const orderedResultSymbols = [...result.changedSymbols].sort(
+    (a, b) => (maxRankBySymbol.get(b.name) ?? 0) - (maxRankBySymbol.get(a.name) ?? 0),
+  );
+
+  const changedSymbols: ChangedSymbol[] = orderedResultSymbols.map((s) => ({
     name: s.name,
     file: s.file,
     kind: s.kind,
@@ -71,7 +82,7 @@ export function buildBlastRadius(result: BlastResult): BlastRadiusResponse {
 
   const seen = new Set<string>();
   const downstream: DownstreamImpact[] = [];
-  for (const symbol of result.changedSymbols) {
+  for (const symbol of orderedResultSymbols) {
     const viaSymbol = symbol.name;
     if (seen.has(viaSymbol)) continue;
     seen.add(viaSymbol);

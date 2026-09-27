@@ -61,4 +61,19 @@ export const s = {
     gap: 6,
     paddingLeft: 12,
   } satisfies CSSProperties,
+  impactLists: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  } satisfies CSSProperties,
+  impactGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+  } satisfies CSSProperties,
+  impactLabel: {
+    color: "var(--text-muted)",
+    fontSize: 11,
+    paddingLeft: 12,
+  } satisfies CSSProperties,
 } as const;

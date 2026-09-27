@@ -6,8 +6,9 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Card, Chip, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
+import { Badge, Button, Card, Chip, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
 import { useBlastRadius } from "@/lib/hooks/blast";
+import { useResyncRepoIntel } from "@/lib/hooks/repo-intel";
 import { BlastSymbolGroup } from "../BlastSymbolGroup";
 import { BlastSymbolGraph } from "../BlastSymbolGraph";
 import { PriorPrsSection } from "../PriorPrsSection";
@@ -42,10 +43,12 @@ function GraphLegend({ showCrons }: { showCrons: boolean }) {
 
 export function BlastRadiusCard({
   prId,
+  repoId,
   repoFullName,
   headSha,
 }: {
   prId: string | null | undefined;
+  repoId: string;
   repoFullName?: string | null;
   headSha?: string | null;
 }) {
@@ -53,6 +56,7 @@ export function BlastRadiusCard({
   const tBrief = useTranslations("brief");
   const { data, isLoading, isError, refetch } = useBlastRadius(prId);
   const [view, setView] = React.useState<BlastView>("tree");
+  const resync = useResyncRepoIntel(repoId);
 
   if (isLoading) {
     return (
@@ -106,16 +110,27 @@ export function BlastRadiusCard({
             </div>
           )}
 
-          {data.degraded && (
-            <Badge color="var(--warn)" bg="var(--warn-bg)" icon="AlertTriangle">
-              {t("degraded")}
-            </Badge>
-          )}
+          {data.degraded && <div style={s.degradedActions}>
+              <Badge color="var(--warn)" bg="var(--warn-bg)" icon="AlertTriangle">
+                {t("degraded")}
+              </Badge>
+              <Button
+                kind="secondary"
+                size="sm"
+                disabled={resync.isPending}
+                onClick={() => {
+                  resync.mutate(undefined, { onSuccess: () => void refetch() });
+                }}
+              >
+                {resync.isPending ? t("resync.pending") : t("resync.action")}
+              </Button>
+            </div>}
         </div>
 
         {data.degraded && data.reason && (
           <div style={s.degradedReason}>{t(`reason.${data.reason}`)}</div>
         )}
+        {resync.isError && <div style={s.resyncError}>{t("resync.error")}</div>}
 
         {data.downstream.length > 0 && (
           <div style={s.viewSwitch}>

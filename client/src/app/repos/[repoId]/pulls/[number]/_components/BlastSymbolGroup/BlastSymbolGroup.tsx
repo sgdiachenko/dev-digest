@@ -68,17 +68,23 @@ export function BlastSymbolGroup({
           </div>
 
           {(group.endpoints_affected.length > 0 || group.crons_affected.length > 0) && (
-            <div style={s.subList}>
-              {group.endpoints_affected.map((endpoint) => (
-                <Badge key={endpoint} icon="Globe" color="var(--accent)" bg="var(--accent-bg)" mono>
-                  {endpoint}
-                </Badge>
-              ))}
-              {group.crons_affected.map((cron) => (
-                <Badge key={cron} icon="Clock" color="var(--warn)" bg="var(--warn-bg)" mono>
-                  {cron}
-                </Badge>
-              ))}
+            <div style={s.impactLists}>
+              {group.endpoints_affected.length > 0 && <div style={s.impactGroup}>
+                  <span style={s.impactLabel}>{t("legend.endpoints")}</span>
+                  <div style={s.subList}>{group.endpoints_affected.map((endpoint) => (
+                    <Badge key={endpoint} icon="Globe" color="var(--accent)" bg="var(--accent-bg)" mono>
+                      {endpoint}
+                    </Badge>
+                  ))}</div>
+                </div>}
+              {group.crons_affected.length > 0 && <div style={s.impactGroup}>
+                  <span style={s.impactLabel}>{t("legend.crons")}</span>
+                  <div style={s.subList}>{group.crons_affected.map((cron) => (
+                    <Badge key={cron} icon="Clock" color="var(--warn)" bg="var(--warn-bg)" mono>
+                      {cron}
+                    </Badge>
+                  ))}</div>
+                </div>}
             </div>
           )}
         </div>

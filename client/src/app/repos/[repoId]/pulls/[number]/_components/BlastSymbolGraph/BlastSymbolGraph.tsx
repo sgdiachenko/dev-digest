@@ -12,14 +12,17 @@ import { layoutGraph, type GraphNode } from "./helpers";
 import { s } from "./styles";
 
 function NodeBadge({ node }: { node: GraphNode }) {
-  const accented = node.kind === "symbol" || node.kind === "target";
+  const accented = node.kind === "symbol" || node.kind === "endpoint";
+  const cron = node.kind === "cron";
+  const color = cron ? "var(--warn)" : accented ? "var(--accent-text)" : "var(--text-secondary)";
+  const bg = cron ? "var(--warn-bg)" : accented ? "var(--accent-bg)" : "var(--bg-elevated)";
   return (
     <div style={{ ...s.nodeWrap, left: node.x, top: node.y }}>
       <Badge
         mono
-        color={accented ? "var(--accent-text)" : "var(--text-secondary)"}
-        bg={accented ? "var(--accent-bg)" : "var(--bg-elevated)"}
-        style={{ border: `1px solid ${accented ? "var(--accent)" : "var(--border)"}` }}
+        color={color}
+        bg={bg}
+        style={{ border: `1px solid ${cron ? "var(--warn)" : accented ? "var(--accent)" : "var(--border)"}` }}
       >
         {node.label}
       </Badge>

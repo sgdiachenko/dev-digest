@@ -34,9 +34,19 @@ export const s = {
     fontWeight: 700,
     color: "var(--text-primary)",
   } satisfies CSSProperties,
+  degradedActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
   degradedReason: {
     fontSize: 12,
     color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  resyncError: {
+    fontSize: 12,
+    color: "var(--danger)",
   } satisfies CSSProperties,
   viewSwitch: {
     display: "flex",

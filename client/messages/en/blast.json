@@ -18,6 +18,11 @@
   "error": {
     "title": "Couldn't load the blast radius"
   },
+  "resync": {
+    "action": "Resync index",
+    "pending": "Resyncing…",
+    "error": "Couldn't start the index resync. Try again."
+  },
   "legend": {
     "symbol": "changed symbol",
     "callers": "callers",

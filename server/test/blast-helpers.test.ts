@@ -68,4 +68,28 @@ describe('buildBlastRadius — per-caller attribution (E1)', () => {
     // Same list, group-level (unchanged behavior).
     expect(group.endpoints_affected).toEqual(['GET /api/public', 'GET /api/other']);
   });
+
+  it('orders changed symbols and downstream groups by their highest caller rank', () => {
+    const result: BlastResult = {
+      changedSymbols: [
+        { file: 'src/low.ts', name: 'lowImpact', kind: 'function' },
+        { file: 'src/high.ts', name: 'highImpact', kind: 'function' },
+      ],
+      callers: [
+        { file: 'src/low-caller.ts', symbol: 'lowCaller', viaSymbol: 'lowImpact', line: 2, rank: 0.1 },
+        { file: 'src/high-caller.ts', symbol: 'highCaller', viaSymbol: 'highImpact', line: 4, rank: 0.9 },
+      ],
+      impactedEndpoints: [],
+      factsByFile: {},
+      degraded: false,
+    };
+
+    const response = buildBlastRadius(result);
+
+    expect(response.changed_symbols.map((symbol) => symbol.name)).toEqual([
+      'highImpact',
+      'lowImpact',
+    ]);
+    expect(response.downstream.map((group) => group.symbol)).toEqual(['highImpact', 'lowImpact']);
+  });
 });

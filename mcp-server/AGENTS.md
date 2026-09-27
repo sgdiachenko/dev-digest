@@ -77,8 +77,8 @@ from source via `tsx`, never compiled to JS.
   `RunCache` — there is no "review by run_id" endpoint on the API. A
   `run_id` from a different process, a restarted MCP server, or a run
   started from the web UI is reported as unknown, not guessed at.
-- **`get_blast_radius` never fails and never calls the API** (D4) — it is a
-  deliberate stub; the real analysis is a later course lesson.
+- **`get_blast_radius` is read-only** — it resolves repo/PR, calls the same
+  `/pulls/:id/blast` API as the web UI, and validates the shared response contract.
 - **stdout is the JSON-RPC channel.** Never `console.log` anywhere in this
   package; `src/index.ts`'s top-level `catch` is the only `console.error`.
 - Only `check-shared-sync.sh` decides whether `src/vendor/shared/` is in

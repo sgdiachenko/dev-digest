@@ -95,14 +95,13 @@ candidates are never included.
 { "repo": "owner/name", "pr": 42 }
 ```
 
-A deliberate stub — no API call, never an error:
+Resolves the tracked repository and pull request, calls the same
+`GET /pulls/:id/blast` endpoint as the web UI, and returns its validated
+`BlastRadiusResponse`:
 
 ```json
-{ "implemented": false, "message": "Blast radius analysis is not implemented yet.", "affected_files": [] }
+{ "changed_symbols": [], "downstream": [], "summary": "0 changed symbol(s), no downstream callers found.", "degraded": false, "reason": null }
 ```
-
-The real analysis (reading `repo-intel`'s dependency graph) is a later
-course lesson's homework.
 
 ## Error shape
 

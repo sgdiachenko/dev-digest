@@ -8,7 +8,7 @@ import type { DownstreamImpact } from "@devdigest/shared";
 export interface GraphNode {
   id: string;
   label: string;
-  kind: "symbol" | "caller" | "target";
+  kind: "symbol" | "caller" | "endpoint" | "cron";
   x: number;
   y: number;
 }
@@ -35,21 +35,24 @@ const NODE_COL_WIDTH = 180;
 
 interface CallerNode {
   name: string;
-  endpoints: string[];
+  targets: Array<{ name: string; kind: "endpoint" | "cron" }>;
 }
 
 /** E2 — dedup caller rows by `name` (the contract keeps one row per
  *  `file:line`, Tree view needs that); union each caller's own
  *  endpoints/crons into one graph node. */
 function dedupCallers(group: DownstreamImpact): CallerNode[] {
-  const byName = new Map<string, Set<string>>();
+  const byName = new Map<string, Map<string, "endpoint" | "cron">>();
   for (const c of group.callers) {
-    const existing = byName.get(c.name) ?? new Set<string>();
-    for (const e of c.endpoints_affected) existing.add(e);
-    for (const cr of c.crons_affected) existing.add(cr);
+    const existing = byName.get(c.name) ?? new Map<string, "endpoint" | "cron">();
+    for (const e of c.endpoints_affected) existing.set(e, "endpoint");
+    for (const cr of c.crons_affected) existing.set(cr, "cron");
     byName.set(c.name, existing);
   }
-  return [...byName.entries()].map(([name, targets]) => ({ name, endpoints: [...targets] }));
+  return [...byName.entries()].map(([name, targets]) => ({
+    name,
+    targets: [...targets.entries()].map(([targetName, kind]) => ({ name: targetName, kind })),
+  }));
 }
 
 /** Evenly spaced row position within `[TOP_PADDING, height - TOP_PADDING]`;
@@ -62,7 +65,9 @@ function rowY(index: number, count: number, height: number): number {
 
 export function layoutGraph(group: DownstreamImpact): GraphLayout {
   const callers = dedupCallers(group);
-  const targets = [...new Set(callers.flatMap((c) => c.endpoints))];
+  const targets = [...new Map(
+    callers.flatMap((c) => c.targets).map((target) => [`${target.kind}:${target.name}`, target]),
+  ).values()];
 
   const rowCount = Math.max(callers.length, targets.length, 1);
   const height = rowCount * ROW_HEIGHT + TOP_PADDING * 2;
@@ -85,18 +90,19 @@ export function layoutGraph(group: DownstreamImpact): GraphLayout {
     edges.push({ id: `${symbolId}->${id}`, x1: COL_X.symbol, y1: symbolY, x2: COL_X.caller, y2: y });
   });
 
-  targets.forEach((name, i) => {
+  targets.forEach((target, i) => {
     const y = rowY(i, targets.length, height);
-    targetY.set(name, y);
-    nodes.push({ id: `target:${name}`, label: name, kind: "target", x: COL_X.target, y });
+    targetY.set(`${target.kind}:${target.name}`, y);
+    nodes.push({ id: `${target.kind}:${target.name}`, label: target.name, kind: target.kind, x: COL_X.target, y });
   });
 
   for (const c of callers) {
     const cId = `caller:${c.name}`;
     const cy = callerY.get(c.name)!;
-    for (const name of c.endpoints) {
-      const ty = targetY.get(name)!;
-      edges.push({ id: `${cId}->target:${name}`, x1: COL_X.caller, y1: cy, x2: COL_X.target, y2: ty });
+    for (const target of c.targets) {
+      const targetId = `${target.kind}:${target.name}`;
+      const ty = targetY.get(targetId)!;
+      edges.push({ id: `${cId}->${targetId}`, x1: COL_X.caller, y1: cy, x2: COL_X.target, y2: ty });
     }
   }
 

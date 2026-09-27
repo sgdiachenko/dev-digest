@@ -12,6 +12,11 @@ vi.mock("@/lib/hooks/blast", () => ({
 vi.mock("@/lib/hooks/pr-history", () => ({
   usePrHistory: () => ({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
+vi.mock("@/lib/hooks/repo-intel", () => ({
+  useResyncRepoIntel: () => ({
+    mutate: vi.fn(), isPending: false, isError: false,
+  }),
+}));
 
 import { useBlastRadius } from "@/lib/hooks/blast";
 import { BlastRadiusCard } from "./BlastRadiusCard";
@@ -49,7 +54,7 @@ function renderCard() {
       locale="en"
       messages={{ blast: blastMessages, brief: briefMessages, "pr-history": prHistoryMessages }}
     >
-      <BlastRadiusCard prId="pr-1" repoFullName="acme/widgets" headSha="deadbeef" />
+      <BlastRadiusCard prId="pr-1" repoId="repo-1" repoFullName="acme/widgets" headSha="deadbeef" />
     </NextIntlClientProvider>,
   );
 }
