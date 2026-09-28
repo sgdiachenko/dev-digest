@@ -23,6 +23,7 @@ export const AgentCompact = Agent.pick({
   description: true,
   provider: true,
   model: true,
+  enabled: true,
 });
 export type AgentCompact = z.infer<typeof AgentCompact>;
 
@@ -75,6 +76,74 @@ export function toReviewResult(runId: string, review: ReviewRecord): ReviewResul
     score: review.score ?? 0,
     findings,
   });
+}
+
+/** One agent's most recent review of a PR — the `get_findings` element shape. */
+export const AgentReviewSummary = z.object({
+  agent_id: z.string().nullable(),
+  agent_name: z.string().nullable(),
+  run_id: z.string().nullable(),
+  verdict: Verdict,
+  summary: z.string(),
+  score: z.number().int(),
+  total_findings: z.number().int(),
+  findings: z.array(FindingCompact),
+});
+export type AgentReviewSummary = z.infer<typeof AgentReviewSummary>;
+
+export const GetFindingsOutput = z.object({
+  /** The run_id the caller asked about — kept for traceability, even though
+   *  `reviews` below covers every agent's latest review of the PR. */
+  run_id: z.string(),
+  reviews: z.array(AgentReviewSummary),
+});
+export type GetFindingsOutput = z.infer<typeof GetFindingsOutput>;
+
+/**
+ * The whole PR's current findings picture, not just the one run the caller
+ * named: every `kind: 'review'` record, grouped by `agent_id`, keeping only
+ * the newest (`created_at`) review per agent. A hand-seeded review with no
+ * `agent_id` is never merged with another — each is its own one-review group.
+ * Dismissed findings are excluded per group (D8), same as `toReviewResult`.
+ */
+export function toGetFindingsOutput(runId: string, reviews: ReviewRecord[]): GetFindingsOutput {
+  const latestByAgent = new Map<string, ReviewRecord>();
+  const unowned: ReviewRecord[] = [];
+  for (const r of reviews) {
+    if (r.kind !== 'review') continue;
+    if (r.agent_id == null) {
+      unowned.push(r);
+      continue;
+    }
+    const prior = latestByAgent.get(r.agent_id);
+    if (!prior || new Date(r.created_at) > new Date(prior.created_at)) {
+      latestByAgent.set(r.agent_id, r);
+    }
+  }
+
+  const toSummary = (r: ReviewRecord): AgentReviewSummary => {
+    const findings = r.findings
+      .filter((f) => f.dismissed_at == null)
+      .map((f) => FindingCompact.parse(f));
+    return AgentReviewSummary.parse({
+      agent_id: r.agent_id,
+      agent_name: r.agent_name ?? null,
+      run_id: r.run_id,
+      verdict: r.verdict ?? 'comment',
+      summary: r.summary ?? '',
+      score: r.score ?? 0,
+      total_findings: findings.length,
+      findings,
+    });
+  };
+
+  // Newest review first — sort the source records (which carry `created_at`)
+  // before mapping, so the summary itself never needs that field.
+  const summaries = [...latestByAgent.values(), ...unowned]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map(toSummary);
+
+  return GetFindingsOutput.parse({ run_id: runId, reviews: summaries });
 }
 
 // ---- get_conventions ------------------------------------------------------

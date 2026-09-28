@@ -7,8 +7,10 @@ import { ListAgentsOutput, toAgentCompact } from '../present.js';
  * D10 — approved verbatim, do not paraphrase.
  */
 export const LIST_AGENTS_DESCRIPTION = `List the reviewer agents configured in this DevDigest workspace. Returns
-each agent's id, name, description, provider and model. Call this first to
-get a valid \`agent\` id before calling run_agent_on_pull_request.`;
+each agent's id, name, description, provider, model, and whether it is
+enabled. Call this first to get a valid \`agent\` id before calling
+run_agent_on_pull_request — enabled: false means the agent is skipped by a
+"review all" run but can still be run explicitly by id.`;
 
 export interface ListAgentsDeps {
   api: DevDigestApi;

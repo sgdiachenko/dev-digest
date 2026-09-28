@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "devdigest": {
+      "command": "pnpm",
+      "args": ["--dir", "mcp-server", "start"]
+    }
+  }
+}

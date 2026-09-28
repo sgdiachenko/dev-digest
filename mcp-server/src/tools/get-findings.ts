@@ -2,17 +2,19 @@ import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { DevDigestApi } from '../api/client.js';
 import type { RunCache } from '../run-cache.js';
-import { ReviewResult, toReviewResult } from '../present.js';
+import { GetFindingsOutput, toGetFindingsOutput } from '../present.js';
 import { ToolError, runStatusError, runUnknownError, toErrorResult } from '../errors.js';
 
 /**
  * D10 — approved verbatim, do not paraphrase.
  */
-export const GET_FINDINGS_DESCRIPTION = `Fetch the result of a review run by its run_id (the id run_agent_on_pull_
-request returns). Returns the same verdict/summary/findings shape once the
-run has finished. If the run is still in progress, failed, or unrecognized
-in this session, returns a message explaining what to do next instead of
-the findings.`;
+export const GET_FINDINGS_DESCRIPTION = `Fetch the whole PR's current findings picture by a run_id (the id run_agent_
+on_pull_request returns): the most recent review from EVERY agent that has
+already reviewed this PR, not just the named run — each with its own
+verdict/summary/score/total_findings/findings. The named run_id still gates
+the call: if that specific run is still in progress, failed, or unrecognized
+in this session, returns a message explaining what to do next instead of the
+findings, even if other agents on the same PR are already done.`;
 
 export interface GetFindingsDeps {
   api: DevDigestApi;
@@ -29,7 +31,7 @@ export function createGetFindingsTool(deps: GetFindingsDeps) {
     name: 'get_findings',
     description: GET_FINDINGS_DESCRIPTION,
     inputSchema: getFindingsInputShape,
-    outputSchema: ReviewResult.shape,
+    outputSchema: GetFindingsOutput.shape,
     annotations: {
       readOnlyHint: true,
       idempotentHint: true,
@@ -56,7 +58,7 @@ export function createGetFindingsTool(deps: GetFindingsDeps) {
           );
         }
 
-        const result = toReviewResult(args.run_id, review);
+        const result = toGetFindingsOutput(args.run_id, reviews);
         return {
           structuredContent: result,
           content: [{ type: 'text', text: JSON.stringify(result) }],

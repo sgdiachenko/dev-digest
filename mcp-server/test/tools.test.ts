@@ -21,7 +21,7 @@ import {
 const testConfig: Config = { apiUrl: 'http://x', pollIntervalMs: 1, runTimeoutMs: 50 };
 
 describe('list_agents', () => {
-  it('returns only id/name/description/provider/model per agent', async () => {
+  it('returns only id/name/description/provider/model/enabled per agent', async () => {
     const api = makeMockApi();
     api.listAgents.mockResolvedValue([
       makeAgent({ id: 'a1', name: 'Sec', description: 'security reviewer', provider: 'anthropic', model: 'claude', enabled: false }),
@@ -32,7 +32,7 @@ describe('list_agents', () => {
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toEqual({
-      agents: [{ id: 'a1', name: 'Sec', description: 'security reviewer', provider: 'anthropic', model: 'claude' }],
+      agents: [{ id: 'a1', name: 'Sec', description: 'security reviewer', provider: 'anthropic', model: 'claude', enabled: false }],
     });
   });
 });
@@ -118,44 +118,40 @@ describe('get_findings', () => {
     expect((result.content as Array<{ text: string }>)[0]?.text).toMatch(/still in progress/);
   });
 
-  it('returns the compact review, excluding dismissed findings (D8), once done', async () => {
+  it('returns every agent\'s latest review of the whole PR, excluding dismissed findings (D8) and older same-agent reviews', async () => {
     const api = makeMockApi();
     api.listRuns.mockResolvedValue([makeRunSummary({ run_id: 'run-1', status: 'done' })]);
+    const findingOverrides = { file: 'a.ts', start_line: 1, end_line: 1, rationale: 'r', suggestion: null, confidence: 0.9, review_id: 'x', accepted_at: null };
     api.listReviews.mockResolvedValue([
+      // agent-1's OLDER review — superseded, must not appear in the output.
       makeReviewRecord({
+        id: 'review-old',
+        run_id: 'run-0',
+        agent_id: 'agent-1',
+        agent_name: 'General',
+        created_at: '2026-01-01T00:00:00.000Z',
+        findings: [{ id: 'stale', severity: 'WARNING', category: 'style', title: 'stale', dismissed_at: null, ...findingOverrides }],
+      }),
+      // agent-1's NEWER review — the one that should survive, from the run_id the caller named.
+      makeReviewRecord({
+        id: 'review-1',
         run_id: 'run-1',
+        agent_id: 'agent-1',
+        agent_name: 'General',
+        created_at: '2026-01-02T00:00:00.000Z',
         findings: [
-          {
-            id: 'kept',
-            severity: 'CRITICAL',
-            category: 'security',
-            title: 'kept',
-            file: 'a.ts',
-            start_line: 1,
-            end_line: 1,
-            rationale: 'r',
-            suggestion: null,
-            confidence: 0.9,
-            review_id: 'review-1',
-            accepted_at: null,
-            dismissed_at: null,
-          },
-          {
-            id: 'dismissed',
-            severity: 'WARNING',
-            category: 'style',
-            title: 'dismissed',
-            file: 'b.ts',
-            start_line: 2,
-            end_line: 2,
-            rationale: 'r',
-            suggestion: null,
-            confidence: 0.5,
-            review_id: 'review-1',
-            accepted_at: null,
-            dismissed_at: new Date().toISOString(),
-          },
+          { id: 'kept', severity: 'CRITICAL', category: 'security', title: 'kept', dismissed_at: null, ...findingOverrides },
+          { id: 'dismissed', severity: 'WARNING', category: 'style', title: 'dismissed', dismissed_at: new Date().toISOString(), ...findingOverrides },
         ],
+      }),
+      // A second, different agent's review of the same PR.
+      makeReviewRecord({
+        id: 'review-2',
+        run_id: 'run-2',
+        agent_id: 'agent-2',
+        agent_name: 'Security',
+        created_at: '2026-01-01T12:00:00.000Z',
+        findings: [],
       }),
     ]);
     const cache = new RunCache();
@@ -165,8 +161,43 @@ describe('get_findings', () => {
     const result = await tool.handler({ run_id: 'run-1' });
 
     expect(result.isError).toBeUndefined();
-    const structured = result.structuredContent as { findings: Array<{ id: string }> };
-    expect(structured.findings.map((f) => f.id)).toEqual(['kept']);
+    expect(result.structuredContent).toEqual({
+      run_id: 'run-1',
+      reviews: [
+        {
+          agent_id: 'agent-1',
+          agent_name: 'General',
+          run_id: 'run-1',
+          verdict: 'request_changes',
+          summary: 'Looks mostly fine, one issue.',
+          score: 62,
+          total_findings: 1,
+          findings: [
+            {
+              id: 'kept',
+              severity: 'CRITICAL',
+              category: 'security',
+              title: 'kept',
+              file: 'a.ts',
+              start_line: 1,
+              end_line: 1,
+              rationale: 'r',
+              suggestion: null,
+            },
+          ],
+        },
+        {
+          agent_id: 'agent-2',
+          agent_name: 'Security',
+          run_id: 'run-2',
+          verdict: 'request_changes',
+          summary: 'Looks mostly fine, one issue.',
+          score: 62,
+          total_findings: 0,
+          findings: [],
+        },
+      ],
+    });
   });
 });
 
