@@ -1,0 +1,9 @@
+{
+  "title": "Prior PRs touching these files",
+  "toggle": "{count} PRs",
+  "empty": "No merged PRs previously touched these files.",
+  "error": {
+    "title": "Couldn't load prior PRs"
+  },
+  "mergedBy": "merged by {author}"
+}

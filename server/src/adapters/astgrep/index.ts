@@ -213,13 +213,35 @@ export function parseSymbols(file: string, source: string): ParsedSymbol[] {
   return dedupe(out);
 }
 
-/** Pull a child decl out of an `export_statement`; return exported flag. */
+/**
+ * Pull a child decl out of an `export_statement`; return exported flag.
+ *
+ * A decorated declaration (`@Injectable() export class Foo {}`) parses its
+ * `decorator` node(s) as child(ren) of the SAME `export_statement`, ahead of
+ * the `export` keyword itself — so without skipping `decorator` here, this
+ * would return the decorator instead of the class, and `handleDecl` would
+ * silently see nothing to extract (its `default` case is a no-op). This
+ * matters for every decorator-heavy codebase (NestJS `@Injectable`/
+ * `@Controller`, Angular `@Component`/`@Injectable`), where it's the norm,
+ * not the exception, for an exported class to carry a decorator.
+ */
 function unwrapExport(top: SgNode): { node: SgNode; exported: boolean } {
   if (top.kind() !== 'export_statement') return { node: top, exported: false };
-  // Find the first non-keyword child (skip `export`, `default`, `*`, `from`, `;`).
+  // Find the first non-keyword, non-decorator child (skip `export`, `default`,
+  // `*`, `from`, `;`, and any leading decorator(s)).
   for (const c of top.children()) {
     const k = c.kind();
-    if (k === 'export' || k === 'default' || k === '*' || k === 'from' || k === ';' || k === 'string' || k === 'export_clause') continue;
+    if (
+      k === 'export' ||
+      k === 'default' ||
+      k === '*' ||
+      k === 'from' ||
+      k === ';' ||
+      k === 'string' ||
+      k === 'export_clause' ||
+      k === 'decorator'
+    )
+      continue;
     return { node: c, exported: true };
   }
   return { node: top, exported: true };

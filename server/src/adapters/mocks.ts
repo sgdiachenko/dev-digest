@@ -126,6 +126,13 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /** `listCommitsForPath` fixtures, keyed by file path. */
+  commitsByPath?: Record<string, { sha: string }[]>;
+  /** `listPullRequestsForCommit` fixtures, keyed by commit sha. */
+  pullsByCommit?: Record<
+    string,
+    { number: number; title: string; merged_at: string | null; author: string }[]
+  >;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -237,6 +244,17 @@ export class MockGitHubClient implements GitHubClient {
 
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
+  }
+
+  async listCommitsForPath(_repo: RepoRef, path: string, perPage: number): Promise<{ sha: string }[]> {
+    return (this.opts.commitsByPath?.[path] ?? []).slice(0, perPage);
+  }
+
+  async listPullRequestsForCommit(
+    _repo: RepoRef,
+    sha: string,
+  ): Promise<{ number: number; title: string; merged_at: string | null; author: string }[]> {
+    return this.opts.pullsByCommit?.[sha] ?? [];
   }
 }
 

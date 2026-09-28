@@ -90,6 +90,57 @@ app.get<{ Params: { id: string } }>('/pulls/:id/blast', blast);
     expect(eps).toContain('GET /pulls/:id/blast');
   });
 
+  it('detects NestJS @Controller/@Get/@Post route registrations', () => {
+    const src = `
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly userService: AuthService) {}
+
+  @Post('signup')
+  signup(@Body() createUserDto: SignupDto) {
+    return this.userService.signup(createUserDto);
+  }
+
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  login(@Body() credentials: LoginDto) {
+    return this.userService.login(credentials);
+  }
+}
+
+@Controller('words')
+export class WordsController {
+  @Get()
+  findAll() { return []; }
+}
+`;
+    const eps = extractEndpoints(src);
+    expect(eps).toContain('POST /auth/signup');
+    expect(eps).toContain('POST /auth/login');
+    expect(eps).toContain('GET /words');
+  });
+
+  it('scopes a NestJS controller prefix to its own class only', () => {
+    const src = `
+@Controller('a')
+export class AController {
+  @Get('one')
+  one() { return 1; }
+}
+
+@Controller('b')
+export class BController {
+  @Get('two')
+  two() { return 2; }
+}
+`;
+    const eps = extractEndpoints(src);
+    expect(eps).toContain('GET /a/one');
+    expect(eps).toContain('GET /b/two');
+    expect(eps).not.toContain('GET /a/two');
+    expect(eps).not.toContain('GET /b/one');
+  });
+
   it('detects cron expressions and background job kinds', () => {
     const src = `
 cron.schedule('*/5 * * * *', poll);

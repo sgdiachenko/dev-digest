@@ -33,6 +33,8 @@ import { IntentRepository } from '../modules/intent/repository.js';
 import { IntentService } from '../modules/intent/service.js';
 import { PullsRepository } from '../modules/pulls/repository.js';
 import { SmartDiffService } from '../modules/smart-diff/service.js';
+import { BlastService } from '../modules/blast/service.js';
+import { PrHistoryService } from '../modules/pr-history/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
@@ -87,6 +89,8 @@ export class Container {
   private _intentService?: IntentService;
   private _pullsRepo?: PullsRepository;
   private _smartDiffService?: SmartDiffService;
+  private _blastService?: BlastService;
+  private _prHistoryService?: PrHistoryService;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -190,6 +194,37 @@ export class Container {
    */
   smartDiffService(): SmartDiffService {
     return (this._smartDiffService ??= new SmartDiffService(this.pullsRepo));
+  }
+
+  /**
+   * The Blast radius use case. No repository of its own — `pullsRepo`
+   * already exposes everything `BlastStore` needs; `repoIntel` (below)
+   * already exposes everything `BlastIntel` needs — both satisfy their
+   * respective ports structurally.
+   */
+  blastService(): BlastService {
+    return (this._blastService ??= new BlastService(this.pullsRepo, this.repoIntel));
+  }
+
+  /**
+   * "Prior PRs touching these files" use case (P3). No repository of its
+   * own — `pullsRepo` already exposes everything `PrHistoryStore`/
+   * `PrHistoryRepos` need. Async (unlike `blastService()`) because it needs
+   * `await this.github()`.
+   *
+   * UNLIKE `intentService()` (which passes a lazy `() => this.github()`
+   * resolver so every call re-resolves through `_github`), this resolves
+   * `github()` ONCE and bakes the concrete client into `PrHistoryService`.
+   * `invalidateSecretCaches()` clears `_github` but never `_prHistoryService`,
+   * so a `GITHUB_TOKEN` rotation has no effect on this feature until the
+   * process restarts — a deliberate P3 simplification (see INSIGHTS.md), not
+   * the `intentService()` pattern.
+   */
+  async prHistoryService(): Promise<PrHistoryService> {
+    if (this._prHistoryService) return this._prHistoryService;
+    const github = await this.github();
+    this._prHistoryService = new PrHistoryService(this.pullsRepo, this.pullsRepo, github);
+    return this._prHistoryService;
   }
 
   get codeIndex(): CodeIndex {

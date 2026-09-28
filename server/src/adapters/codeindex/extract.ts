@@ -174,10 +174,25 @@ export function extractReferences(content: string, symbol: string): ExtractedRef
   return out;
 }
 
+// NestJS: `@Controller('prefix')` on a class, `@Get()/@Post('sub')/...` on its
+// methods. The controller's prefix applies to every verb decorator declared
+// directly inside that class body, until the class's closing brace.
+const NEST_CONTROLLER_RE = /@Controller\s*\(\s*(?:(['"`])([^'"`]*)\1\s*)?\)/;
+const NEST_VERB_RE = /@(Get|Post|Put|Patch|Delete|All)\s*\(\s*(?:(['"`])([^'"`]*)\2\s*)?\)/;
+const CLASS_LINE_RE = /(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+[A-Za-z_$][\w$]*/;
+
+/** Join a NestJS controller prefix and a method's route segment into one `/a/b` path. */
+function joinNestRoute(prefix: string, sub: string): string {
+  const parts = [prefix, sub].filter((p) => p.length > 0).map((p) => p.replace(/^\/+|\/+$/g, ''));
+  return '/' + parts.join('/');
+}
+
 /**
  * Heuristic endpoint detector: HTTP route registrations in a file.
  * Catches Fastify/Express style `app.get('/path', ...)`, `router.post(...)`,
- * `app.get<...>('/path')`, and `route({ method, url })`. Returns "METHOD /path".
+ * `app.get<...>('/path')`, and `route({ method, url })` — and NestJS
+ * `@Controller('prefix')` classes with `@Get()/@Post('sub')/...` methods.
+ * Returns "METHOD /path".
  */
 export function extractEndpoints(content: string): string[] {
   const out = new Set<string>();
@@ -185,11 +200,31 @@ export function extractEndpoints(content: string): string[] {
   const verbRe =
     /\b(?:app|router|fastify|server|api)\.(get|post|put|patch|delete|options|head)\s*(?:<[^>]*>)?\s*\(\s*(['"`])([^'"`]+)\2/i;
   const routeObjRe = /method\s*:\s*['"`](GET|POST|PUT|PATCH|DELETE)['"`][\s\S]*?url\s*:\s*['"`]([^'"`]+)['"`]/i;
+
+  let braceDepth = 0;
+  let controllerDepth: number | null = null;
+  let controllerPrefix = '';
+  let pendingControllerPrefix: string | null = null;
+
   for (const raw of lines) {
     const m = raw.match(verbRe);
     if (m) out.add(`${m[1]!.toUpperCase()} ${m[3]}`);
     const r = raw.match(routeObjRe);
     if (r) out.add(`${r[1]!.toUpperCase()} ${r[2]}`);
+
+    const ctrl = raw.match(NEST_CONTROLLER_RE);
+    if (ctrl) pendingControllerPrefix = ctrl[2] ?? '';
+    if (pendingControllerPrefix !== null && CLASS_LINE_RE.test(raw)) {
+      controllerPrefix = pendingControllerPrefix;
+      controllerDepth = braceDepth;
+      pendingControllerPrefix = null;
+    } else if (controllerDepth !== null && braceDepth === controllerDepth + 1) {
+      const verb = raw.match(NEST_VERB_RE);
+      if (verb) out.add(`${verb[1]!.toUpperCase()} ${joinNestRoute(controllerPrefix, verb[3] ?? '')}`);
+    }
+
+    braceDepth += countBraces(raw);
+    if (controllerDepth !== null && braceDepth <= controllerDepth) controllerDepth = null;
   }
   return [...out];
 }

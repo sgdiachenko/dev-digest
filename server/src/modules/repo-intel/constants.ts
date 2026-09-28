@@ -40,8 +40,18 @@ export const MAX_CALLERS_PER_SYMBOL = 20;
  *
  * v2 (T3): graph + decl_file resolution + file_rank + repo-map landed, so every
  * T2 `partial` index must be rebuilt to gain the rank-driven data.
+ *
+ * v3: `astgrep`'s `unwrapExport` was silently dropping every decorated
+ * exported class/function (`@Injectable() export class X`) — the norm in any
+ * NestJS/Angular codebase — so it (and every method inside it) never became a
+ * symbol, and never had callers. `extract.ts`'s `extractEndpoints` also
+ * gained NestJS `@Controller`/`@Get`/`@Post`/... route detection (it
+ * previously understood only Fastify/Express call syntax). Any repo indexed
+ * under v2 needs a full reindex to pick up decorated classes and NestJS
+ * endpoints — an incremental resync alone won't re-run these parsers over
+ * unchanged files.
  */
-export const INDEXER_VERSION = 2;
+export const INDEXER_VERSION = 3;
 
 // --- [T2] Full-index limits (documented now, enforced in the pipeline) ------
 export const MAX_INDEXED_FILES = 5000;
