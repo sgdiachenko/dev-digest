@@ -12,9 +12,10 @@ vi.mock("@/lib/hooks/blast", () => ({
 vi.mock("@/lib/hooks/pr-history", () => ({
   usePrHistory: () => ({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
+const mockResyncMutate = vi.fn();
 vi.mock("@/lib/hooks/repo-intel", () => ({
   useResyncRepoIntel: () => ({
-    mutate: vi.fn(), isPending: false, isError: false,
+    mutate: mockResyncMutate, isPending: false, isError: false,
   }),
 }));
 
@@ -59,6 +60,14 @@ function renderCard() {
   );
 }
 
+const EMPTY_DOWNSTREAM: BlastRadiusResponse = {
+  changed_symbols: [{ name: "rateLimit", file: "src/rate-limit.ts", kind: "function" }],
+  downstream: [],
+  summary: "1 changed symbol(s), no downstream callers found.",
+  degraded: false,
+  reason: null,
+};
+
 describe("BlastRadiusCard", () => {
   it("defaults to the Tree view and renders a BlastSymbolGroup per downstream group", () => {
     mockedUseBlastRadius.mockReturnValue({
@@ -96,15 +105,8 @@ describe("BlastRadiusCard", () => {
   });
 
   it("hides the Tree/Graph switch and shows the Tree-flavored empty text when there is no downstream impact", () => {
-    const EMPTY: BlastRadiusResponse = {
-      changed_symbols: [{ name: "rateLimit", file: "src/rate-limit.ts", kind: "function" }],
-      downstream: [],
-      summary: "1 changed symbol(s), no downstream callers found.",
-      degraded: false,
-      reason: null,
-    };
     mockedUseBlastRadius.mockReturnValue({
-      data: EMPTY,
+      data: EMPTY_DOWNSTREAM,
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -113,5 +115,56 @@ describe("BlastRadiusCard", () => {
 
     expect(screen.queryByRole("button", { name: "graph" })).not.toBeInTheDocument();
     expect(screen.getByText("1 changed symbol(s), no downstream callers found.")).toBeInTheDocument();
+  });
+
+  it("shows the Graph-flavored empty text when downstream becomes empty while already in Graph view", () => {
+    mockedUseBlastRadius.mockReturnValue({
+      data: WITH_DOWNSTREAM,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useBlastRadius>);
+    const { rerender } = renderCard();
+
+    // Switch to Graph view while there is still data to graph.
+    fireEvent.click(screen.getByRole("button", { name: "graph" }));
+    expect(screen.getByText("changed symbol")).toBeInTheDocument();
+
+    // Data refetches to empty (e.g. the PR's diff changed) while `view` stays
+    // "graph" — local component state, not reset by a data change.
+    mockedUseBlastRadius.mockReturnValue({
+      data: EMPTY_DOWNSTREAM,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useBlastRadius>);
+    rerender(
+      <NextIntlClientProvider
+        locale="en"
+        messages={{ blast: blastMessages, brief: briefMessages, "pr-history": prHistoryMessages }}
+      >
+        <BlastRadiusCard prId="pr-1" repoId="repo-1" repoFullName="acme/widgets" headSha="deadbeef" />
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.queryByRole("button", { name: "graph" })).not.toBeInTheDocument();
+    expect(screen.getByText("No downstream callers to graph.")).toBeInTheDocument();
+    expect(screen.queryByText("1 changed symbol(s), no downstream callers found.")).not.toBeInTheDocument();
+  });
+
+  it("shows a degraded badge with a reason and a Resync action that triggers useResyncRepoIntel", () => {
+    mockedUseBlastRadius.mockReturnValue({
+      data: { ...EMPTY_DOWNSTREAM, degraded: true, reason: "index_partial" },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useBlastRadius>);
+    renderCard();
+
+    expect(screen.getByText("Best-effort — repo index is incomplete")).toBeInTheDocument();
+    expect(screen.getByText("The repo index is only partially built.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Resync index" }));
+    expect(mockResyncMutate).toHaveBeenCalledTimes(1);
   });
 });
