@@ -58,7 +58,14 @@ append to one — say so if something worth recording surfaces.
 You need a scope: an explicit base ref/commit range, or nothing — in which
 case default scope is "all open changes" = `gate.sh base` merge-base plus
 staged, unstaged and untracked changes (the same four kinds
-`pr-self-review/SKILL.md` Step 1 collects). If the plan's *Review handoff →
+`pr-self-review/SKILL.md` Step 1 collects).
+
+**Delta re-review** (a review-fix round of `/impl`): the prompt gives
+`Re-check:` — the previous findings `F#` with their file:line — and
+`Fix files:` — the files that round changed. Then (1) give each `F#` a
+verdict `fixed | still-open | moved` with the current line quoted, and (2)
+review **only the changed lines of the fix files** for new findings. Don't
+re-review the rest of the diff; it was reviewed in the previous round. If the plan's *Review handoff →
 Security* section and/or an Implementation Report are in your prompt, use them
 to focus the review; they are optional. If you have neither a stated scope nor
 a repo with any diff to review, return only:

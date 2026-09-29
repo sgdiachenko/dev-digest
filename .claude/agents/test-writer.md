@@ -57,6 +57,10 @@ never touch product code, not even to make a test pass.
 
 ## Step 0 — check the input
 
+With a spec-driven plan, the plan's *Test plan* rows `T#: AC-n → path`
+marked `written by: test-writer` are your checklist — cover each one, and
+report every row you could not cover under *Open issues*.
+
 You need a target: either an approved plan + its Implementation Report, or a
 concrete description of files/feature + the behaviour to cover + the
 package(s) it lives in. If none of that is in your prompt, do not guess —
@@ -116,12 +120,15 @@ blocked
 
    | Package | Commands |
    |---|---|
-   | `server/` | `pnpm -C server lint` · `pnpm -C server typecheck` · `pnpm -C server exec vitest run --exclude '**/*.it.test.ts'` |
-   | `client/` | `pnpm -C client lint` · `pnpm -C client typecheck` · `pnpm -C client test` |
+   | `server/` | `pnpm -C server lint` · `pnpm -C server typecheck` · `pnpm -C server exec vitest run --reporter=dot --exclude '**/*.it.test.ts'` |
+   | `client/` | `pnpm -C client lint` · `pnpm -C client typecheck` · `pnpm -C client exec vitest run --reporter=dot` |
    | `reviewer-core/` | `npm --prefix reviewer-core run typecheck` · `npm --prefix reviewer-core test` |
    | `e2e/` | `npm --prefix e2e run typecheck` |
 
-   Never pipe a check. Never run `*.it.test.ts`. Exit 127 / missing
+   While iterating, run only the new/changed test files
+   (`pnpm -C <pkg> exec vitest run --reporter=dot <files>`); the full table
+   once at the end. Never pipe a check; redirect to a file and read only the
+   failing lines when the exit is non-zero. Never run `*.it.test.ts`. Exit 127 / missing
    `node_modules` is *skipped (deps not installed)*, not a failure.
 7. **Record insights** via `engineering-insights` — append one dated line to
    the package's `INSIGHTS.md` only if something non-obvious happened;

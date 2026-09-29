@@ -11,23 +11,70 @@ map of the set — read the agent file for the actual rules.
 ## Flow
 
 ```
-user ─► researcher (when evidence is needed)
+user ─► spec-creator (analyze) ─► design gaps + EC# + MC# + UX# + RQ# + Q#
+          ─► researcher × N in parallel (one per RQ#, when any) ─► spec-creator (analyze again, only if research raised new items)
+          ─► user answers Q#
+     ─► spec-creator (write) ─► docs/specs/SPEC-NN-<slug>.md (draft) ─► user approves ─► spec-creator (approve)
+     ─► researcher (when evidence is needed)
      ─► brainstorm (optional: ≥2 plausible approaches) ─► Options Comparison ─► user picks O#
-     ─► planner ─► Development Plan ─► user approves
-     ─► implementer ─► code + Implementation Report
-     ─► test-writer (optional: coverage gaps / regression tests) ─► Test Report
-     ─► plan-verifier ─► Verification Report   (unmet → back to implementer)
-     ─► architecture-reviewer ─► findings  ∥  security-reviewer ─► findings
+     ─► implementation-planner (pass 1) ─► requirements review + Q# + REC# + execution mode ─► user answers
+     ─► implementation-planner (pass 2) ─► Implementation Plan ─► user approves
+   ── /impl <plan> from here on (spec-creator and implementation-planner run by hand) ──
+     ─► implementer ─► code + Implementation Report (incl. the plan's T# tests)
+          (multi-agent: one implementer per work package W#, in parallel per DAG wave;
+           single-agent: one implementer, linear S1..Sn)
+     ─► plan-verifier ─► Verification Report   (unmet → fix, re-verify those rows)
+     ─► architecture-reviewer ∥ security-reviewer ∥ /code-review (correctness bugs) ─► findings
+     ─► review-fix loop (ledger F#, fix, delta re-review; ≤3 rounds)
      ─► doc-writer (when the feature needs docs) ─► Documentation Report
      ─► /pr-self-review ─► gh pr create
 ```
 
+`spec-creator` runs first for a new feature (Spec-Driven Development) and
+may be skipped for bug fixes or small changes. It always runs in two passes:
+`analyze` reads the request, the designs the user supplied and the affected
+modules, and returns — writing nothing — design gaps, edge cases `EC#`,
+module-communication points `MC#`, UX proposals `UX#`, research requests
+`RQ#` and questions `Q#`. The main session runs one `researcher` per `RQ#`
+in parallel (each `RQ#` is independent by construction), passes the reports
+back as `Research:`, asks the user (`AskUserQuestion`) and re-invokes it
+with `Mode: write` and `Answers:`. It reads `AGENTS.md`/`INSIGHTS.md` only
+of the packages the feature touches, and registers every spec in
+`docs/specs/README.md`. The result is `docs/specs/SPEC-NN-<slug>.md`
+(`Status: draft`, EARS acceptance criteria). `revise` edits a draft;
+`approve` flips it to `approved` only on the user's explicit word. An
+approved spec is never rewritten — a changed decision is a new spec with
+`Supersedes:`. The approved spec is the task description handed to
+`implementation-planner`, whose steps carry `covers: AC-n`;
+`plan-verifier` then uses the spec's `AC`/`EC`/`NFR` IDs as its requirement
+rows (a test asserting the behaviour, not a step's `done:` claim, is the
+evidence). After
+verification `doc-writer` only **appends** to it (`Status: implemented` +
+an `## Implementation` section linking plan/docs/tests per AC) — it never
+edits the requirements, so the spec stays the yardstick the code was
+checked against. These `SPEC-*` files are *requirements written
+before the code*; they are distinct from `doc-writer`'s specs (behavioural
+guarantees / design records written after verification). Its write scope —
+`docs/specs/SPEC-*.md` only — is a prompt rule (no hooks), like the
+implementer's Bash limits.
+
+`spec-creator` and `implementation-planner` are run by hand. From an
+approved plan, `/impl` ([../skills/impl/SKILL.md](../skills/impl/SKILL.md))
+runs the rest from the main session — waves of implementers, verification,
+the review-fix loop, docs and the PR gate — keeping its state in
+`docs/plans/<slug>.impl.md` so it can resume in a fresh chat. `test-writer`
+is not part of `/impl` (token budget): the implementer writes the plan's
+`T#` tests; `test-writer` stays available on demand for coverage gaps.
+`architecture-reviewer` checks layering only; correctness bugs are
+`/code-review`'s, which runs alongside it.
+
 `brainstorm` is optional, the same way `test-writer` and `doc-writer` are: the
 main session runs it only when a task has ≥2 plausible implementation
-approaches, and skips it — straight to `planner` — when one approach is
-already obvious. `planner` then plans **only** the option the user picked, not
-a re-evaluation of the comparison. `plan-verifier` runs after `test-writer` so
-new tests count as evidence in the traceability matrix; `doc-writer` runs
+approaches, and skips it — straight to `implementation-planner` — when one approach is
+already obvious. `implementation-planner` then plans **only** the option the user picked, not
+a re-evaluation of the comparison. `plan-verifier` runs after all tests are written
+(the implementer's, and `test-writer`'s when it is used) so they count as
+evidence in the traceability matrix; `doc-writer` runs
 before `/pr-self-review` so any docs it writes are inside the gated
 fingerprint. `architecture-reviewer` and `security-reviewer` are both
 read-only and independent of each other, so the main session can run them in
@@ -40,6 +87,26 @@ not in any tool list), and a subagent cannot ask the user questions — each
 one returns a *clarifying questions* / *blocked* block instead of guessing.
 Plan step IDs (`S1..Sn`) are shared by the plan, the report and the review
 handoff, so a reviewer can check the diff against the plan.
+
+`implementation-planner` plans implementation only — it never writes or plans
+specifications (no spec sections, no step touching a `specs/` path;
+requirements specs are `spec-creator`'s, post-implementation specs
+`doc-writer`'s, e2e flow files `test-writer`'s). It always runs in two
+passes: pass 1 returns a requirements review, clarifying questions `Q#`,
+recommendations `REC#` and the **execution-mode question**; the main session
+asks the user (`AskUserQuestion`) and re-invokes it with `Mode:`, `Answers:`
+and the accepted/rejected `REC#`; pass 2 returns the plan. Modes:
+
+- **multi-agent (parallel)** — default for non-trivial work. Steps are
+  grouped into work packages `W1..Wn` with non-overlapping `owns:` paths,
+  ordered as a DAG with contracts first; the main session starts one
+  `implementer` per package, all packages of a wave in parallel, the next
+  wave after the previous one is done.
+- **single-agent (one pass)** — default for small or tightly coupled
+  changes. One linear `S1..Sn`, one `implementer`.
+
+The chosen mode is recorded in the plan's *Execution mode* field; the main
+session writes the approved plan to `docs/plans/<feature>.md`.
 
 ### Orchestration practices (main session, not an agent's own rule)
 
@@ -64,20 +131,20 @@ drive the flow above. Confirmed on a measured feature; see
   low (e.g. `0` for a multi-step task), resume the same agent with an
   explicit instruction to execute now, synchronously, rather than accepting
   the response (§5.3.1).
-- **A large `researcher` report going into `planner` doesn't have to be
+- **A large `researcher` report going into `implementation-planner` doesn't have to be
   pasted in full.** `researcher` stays strictly read-only (no Write/Edit —
   that guarantee doesn't change), so it cannot write its own findings to a
   file; instead, the main session saves the returned report to
-  `docs/plans/<feature>.context.md` and passes `planner` that path plus a
+  `docs/plans/<feature>.context.md` and passes `implementation-planner` that path plus a
   one-line pointer, instead of the whole report text, when the report is
   long (§2.3.1/§2.1 of the optimization doc).
 - **`brainstorm`'s report follows the same context-pack pattern.** It is
   read-only too, so the main session saves its returned report to
-  `docs/plans/<feature>.options.md` and passes `planner` that path plus the
-  `O#` the user picked — `planner` then plans only that option. Skip
+  `docs/plans/<feature>.options.md` and passes `implementation-planner` that path plus the
+  `O#` the user picked — `implementation-planner` then plans only that option. Skip
   `brainstorm` entirely when the approach is already obvious (a bug fix, a
   small change, a task with one clear implementation) — it is priced like
-  `planner` (`opus`, full read of the repo) and only pays for itself when
+  `implementation-planner` (`opus`, full read of the repo) and only pays for itself when
   there really are competing approaches to weigh.
 - **For a plan step that measures or times a DOM node** (sticky headers,
   portals, anything reading `ref.current`/`getBoundingClientRect` across a
@@ -93,13 +160,14 @@ drive the flow above. Confirmed on a measured feature; see
 
 | Agent | Responsibility | Model | Tools / permissions | Input | Output |
 |---|---|---|---|---|---|
+| [spec-creator](spec-creator.md) | Writes the SDD specification before any planning: analyzes the request, the user's designs and the affected modules for design gaps, edge cases, module communication, NFRs and UX improvements; hands research requests to `researcher`; asks the user; then writes `SPEC-NN` (EARS ACs with priority + `verify:`, NFRs, UI state matrix, rollout, traceability) and registers it. No implementation details | `opus` | Read, Grep, Glob, read-only Bash, Write, Edit — **writes only `docs/specs/SPEC-*.md` + `docs/specs/README.md`** (prompt rule). No Skill/Agent/Web | `Mode:` analyze / write / revise / approve; request; designs (file paths, pasted text); `Research:`; `Answers:`; `Spec:` | Analyze: **Spec analysis** (understanding, boundaries + INSIGHTS read, UI state matrix, `D-GAP#`, `EC#`, `MC#`, `UX#`, untrusted inputs, NFR needs, `RQ#`, `Q#`). Write/revise/approve: the spec file + registry row + **Spec report** (counts, verify mix, decisions applied, open questions, final self-check, handoff) |
 | [researcher](researcher.md) | Answers a concrete question with evidence from the repo (code, docs, git history) and/or external sources | `sonnet` | Read, Grep, Glob, read-only Bash, WebSearch, WebFetch. No Write/Edit/Skill | A concrete question + scope (repo / external / both) | *Repo research* or *External research* report: TL;DR, conclusions with confidence, evidence (`path:line` / URLs), sources, **Not found / gaps** |
-| [brainstorm](brainstorm.md) | Optional, between researcher and planner: states decision drivers, then compares 2-3 plausible implementation options plus a "do nothing" baseline against them. Never picks for the user | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Task description (goal, scope, done criterion) + optional `docs/plans/<feature>.context.md` | **Options Comparison**: problem & scope, decision drivers, baseline, options (axis, per-driver verdict, strongest objection, effort, reversibility), comparison matrix, recommendation, why not the others, decision needed, risks, gaps — or *Clarifying questions* |
-| [planner](planner.md) | Turns a feature/bug request into a structured Development Plan that respects modules, INSIGHTS, skills and architecture constraints. Does not review | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Task description (goal, scope, done criterion); optionally a researcher report | **Development Plan**: goal & scope, context, affected modules, constraints (with sources), steps `S1..Sn` (files, skills, reuse, done-when, depends-on), test plan, risks, review handoff, gaps — or *Clarifying questions* |
-| [implementer](implementer.md) | Executes an approved plan in `server/`, `client/`, `reviewer-core/`, `e2e/`; writes tests; runs the touched packages' CI checks. No review, commits or PRs | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | The approved Development Plan, passed in full in the prompt | Code changes (+ at most one `INSIGHTS.md` line) and an **Implementation Report**: status, per-step result, files changed, skills applied, checks with exit codes, deviations, reviewer handoff — or *blocked* |
+| [brainstorm](brainstorm.md) | Optional, between researcher and implementation-planner: states decision drivers, then compares 2-3 plausible implementation options plus a "do nothing" baseline against them. Never picks for the user | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Task description (goal, scope, done criterion) + optional `docs/plans/<feature>.context.md` | **Options Comparison**: problem & scope, decision drivers, baseline, options (axis, per-driver verdict, strongest objection, effort, reversibility), comparison matrix, recommendation, why not the others, decision needed, risks, gaps — or *Clarifying questions* |
+| [implementation-planner](implementation-planner.md) | Reviews the requirements (clarifying questions, recommendations), asks the execution mode (multi-agent parallel vs single-agent), then turns the request into a structured Implementation Plan that respects modules, INSIGHTS, skills and architecture constraints. Plans implementation only — never specifications. Does not review | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Pass 1: task description; optionally a researcher report / brainstorm pick. Pass 2: the same + `Mode:`, `Answers:`, accepted/rejected `REC#` | Pass 1: **Requirements review** + `Q#` + `REC#` + execution-mode question. Pass 2: **Implementation Plan**: goal & scope, requirements decisions, execution mode, work packages `W#` with `owns:` (multi-agent), context, affected modules, constraints (with sources), steps `S1..Sn` (files, skills, reuse, done-when, depends-on), test plan, risks, review handoff, gaps |
+| [implementer](implementer.md) | Executes an approved plan in `server/`, `client/`, `reviewer-core/`, `e2e/`; writes tests; runs the touched packages' CI checks. No review, commits or PRs | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | The approved Implementation Plan, inline or as a path (`docs/plans/<feature>.md`) (+ the `W#` it owns in multi-agent mode) | Code changes (+ at most one `INSIGHTS.md` line) and an **Implementation Report**: status, per-step result, files changed, skills applied, checks with exit codes, deviations, reviewer handoff — or *blocked* |
 | [test-writer](test-writer.md) | Adds or extends automated tests for a given target — a plan/report or a named feature/bug — across `server/`, `client/`, `reviewer-core/`, `e2e/`. Confirms each test fails for the right reason. Edits test files only, never product code | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | A plan + Implementation Report, or files/feature + behaviour to cover + packages | **Test Report**: status, tests added/changed, right-reason evidence per test, checks with exit codes, not-run (`.it`/e2e), skills applied, convention overrides, INSIGHTS updated, open issues — or *blocked* |
-| [plan-verifier](plan-verifier.md) | Read-only traceability check of finished work against the approved plan and the original requirements — every requirement, `C#`, `S#` done-when and Test-plan item gets a verdict with evidence. Flags unplanned changes. Does not re-judge the plan | `sonnet` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | The full plan, the Implementation Report, and the original requirements | **Verification Report**: overall verdict + counts, traceability matrix, skill sources read, checks re-run, report discrepancies, unplanned changes, not-verifiable items — or *Clarifying questions* |
-| [architecture-reviewer](architecture-reviewer.md) | Read-only review of onion-ring direction and ports/DI (`server/`, `reviewer-core/`) and layer direction/placement (`client/`) on the diff. Findings in the `pr-self-review` finding shape | `opus` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally the plan's Review handoff + Implementation Report | **Architecture Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape), verdict, config-vs-skill-doc drift, gaps |
+| [plan-verifier](plan-verifier.md) | Read-only traceability check of finished work against the approved plan and the original requirements — every requirement, `C#`, `S#` done-when and Test-plan item gets a verdict with evidence. Flags unplanned changes. Does not re-judge the plan | `sonnet` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | The plan, the Implementation Report(s) and the requirements/spec — inline or as paths | **Verification Report**: overall verdict + counts, traceability matrix, skill sources read, checks re-run, report discrepancies, unplanned changes, not-verifiable items — or *Clarifying questions* |
+| [architecture-reviewer](architecture-reviewer.md) | Read-only review of onion-ring direction and ports/DI (`server/`, `reviewer-core/`) and layer direction/placement (`client/`) on the diff. Findings in the `pr-self-review` finding shape | `sonnet` (user decision 2026-09-29, cost; the mechanical checks `arch:check`/lint carry most of the signal) | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally the plan's Review handoff + Implementation Report | **Architecture Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape), verdict, config-vs-skill-doc drift, gaps |
 | [security-reviewer](security-reviewer.md) | Read-only security review of a diff (`server/`, `client/`, `reviewer-core/`): traces attacker-controlled input to sinks (routes, SQL, process spawns, filesystem paths, tokens/secrets, LLM prompt input, HTML) and reports confidence-gated findings in the `pr-self-review` finding shape | `sonnet` | Read, Grep, Glob, Bash (`maxTurns: 48`). No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally the plan's Review handoff + Implementation Report | **Security Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape + `confidence`), verdict, phase-2 handoff, checked-nothing-found, gaps |
 | [doc-writer](doc-writer.md) | Documents already-implemented, already-verified work as repo Markdown + Mermaid diagrams, routed to the right `docs/`/`specs/`/`README.md`/`AGENTS.md` location, with its indexes updated. Edits Markdown only | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | Source material (plan/report/memo/code) + feature name + packages | **Documentation Report**: files written, diagrams, indexes updated, claims → evidence, link check, open issues — or *Clarifying questions* |
 
@@ -110,10 +178,10 @@ for a gap or a regression after the fact, touches test files only, and never
 modifies product code (not even the mocks the implementer would have
 touched).
 
-### Preloaded skills (planner = implementer)
+### Implementation skills (implementation-planner preloads, implementer reads per step)
 
-Both agents preload the **same 16 skills** via `skills:`, so a plan never
-assumes practices the implementer doesn't follow:
+`implementation-planner` preloads all **16** engineering skills via
+`skills:`:
 
 `engineering-insights` · `onion-architecture` · `fastify-best-practices` ·
 `drizzle-orm-patterns` · `postgresql-table-design` · `next-best-practices` ·
@@ -121,22 +189,34 @@ assumes practices the implementer doesn't follow:
 `zod` · `typescript-expert` · `response-schema` · `breaking-change` ·
 `deprecation-policy` · `semver-discipline` · `security`
 
+Together their `SKILL.md` bodies are ~154 KB (~38–40k tokens). The planner
+runs once, so it pays that once. `implementer` preloads only
+`engineering-insights` and Reads, per step, the skills the step's `skills:`
+field names plus the file's lane skills — a server-only work package never
+loads the React/Next/RTL skills and vice versa. Before this change every
+parallel implementer paid the full ~40k before its first edit. The plan's
+`C#` Constraints carry the binding rules, so the SKILL.md is only for detail.
+
 Left out on purpose: `mermaid-diagram` (used only by `doc-writer`) and
 `pr-self-review` (not an implementation practice). The Skill tool is disabled
-in both, so the set is fixed. Cost: roughly 27k tokens of context per run.
+in both agents.
 
 Which skill applies to which file is decided by
 [`routing.md`](../skills/pr-self-review/routing.md), the same table
 `/pr-self-review` uses.
 
-### Role-scoped skills (brainstorm, test-writer, architecture-reviewer, security-reviewer, plan-verifier, doc-writer)
+### Role-scoped skills (spec-creator, brainstorm, test-writer, architecture-reviewer, security-reviewer, plan-verifier, doc-writer)
 
-Only `planner` and `implementer` must stay identical (C15 in the plan that
-introduced these four agents). Each of the other agents preloads a smaller,
-role-scoped list; every skill on a list is justified here.
+Each of the other agents preloads a smaller, role-scoped list; every skill
+on a list is justified here.
 
 | Agent | Skill | Why it's preloaded |
 |---|---|---|
+| spec-creator | `ears-requirements` | the format and self-check of every `US`/`AC`/`EC`/`NFR` line, verify hints, traceability matrix |
+| spec-creator | `ux-design-review` | analyzing the user's designs: UI state matrix, interaction risks, WCAG 2.2 AA, microcopy → `D-GAP#`/`UX#`/`Q#` |
+| spec-creator | `mermaid-diagram` | the spec's *Workflow and module communication* section is Mermaid |
+| spec-creator | `security` | *Untrusted inputs* is a mandatory spec section; OWASP categories turn "PR content / LLM output / user input" into concrete handling requirements |
+| spec-creator | `engineering-insights` | reads `INSIGHTS.md` gotchas that constrain requirements (read-only — it never appends). `breaking-change` / `response-schema` / `deprecation-policy` are Read on demand, only when the spec changes an existing contract; no implementation skills — it plans nothing |
 | brainstorm | `engineering-insights` | reads `INSIGHTS.md` as context for its decision drivers (read-only — same as `plan-verifier`/`architecture-reviewer`) |
 | brainstorm | `onion-architecture` | the most common axis between options in `server/`/`reviewer-core/` is "extend an existing ring/port" vs. "add a new module" |
 | brainstorm | `frontend-architecture` | the most common axis between options in `client/` is where a piece lands and which direction it depends |
@@ -161,6 +241,7 @@ role-scoped list; every skill on a list is justified here.
 | plan-verifier | `engineering-insights` | reads `INSIGHTS.md`; the only skill it needs unconditionally |
 | plan-verifier | `onion-architecture` | most plans touch `server/`/`reviewer-core/`, so this is preloaded rather than Read on demand |
 | plan-verifier | `frontend-architecture` | most plans touch `client/`, for the same reason |
+| plan-verifier | `ears-requirements` | reads a spec's `AC`/`EC`/`NFR` rows and their `verify:` hints as requirement rows (small; only used when the plan names a spec) |
 | doc-writer | `mermaid-diagram` | diagrams belong in the owning `README.md` |
 | doc-writer | `engineering-insights` | routes non-obvious findings to `INSIGHTS.md` instead of a doc |
 | doc-writer | `onion-architecture` | describing "how it's wired" correctly for `server/`/`reviewer-core/` |
@@ -212,16 +293,19 @@ touch and Reads that skill's `SKILL.md` before scoring the option against it.
 | Short Tree-of-Thoughts-style thoughts per option before detail; Self-Consistency not used | [Tree of Thoughts](https://arxiv.org/abs/2305.10601); [Self-Consistency](https://arxiv.org/abs/2203.11171) (collapses to one answer) |
 | Generation separated from evaluation; critique in one call | [Building Effective AI Agents](https://www.anthropic.com/engineering/building-effective-agents) (Evaluator-Optimizer) |
 | Critique argued from distinct lenses, not homogeneous debate | [Du et al., ICML 2024](https://arxiv.org/abs/2305.14325), [arXiv 2502.08788](https://arxiv.org/pdf/2502.08788) |
-| Step is optional, priced like `planner`/`test-writer`/`doc-writer` | [Anthropic multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system); in-repo: `docs/plans/agent-token-optimization.md` §2.5 |
+| Step is optional, priced like `implementation-planner`/`test-writer`/`doc-writer` | [Anthropic multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system); in-repo: `docs/plans/agent-token-optimization.md` §2.5 |
 | `model: opus`, because generating genuinely distinct options needs real judgment | in-repo: `docs/plans/agent-token-optimization.md` §2.2 |
-| Read-only, no web; `permissionMode: plan`; *Clarifying questions* instead of `AskUserQuestion` | [Create custom subagents](https://code.claude.com/docs/en/sub-agents); pattern from `planner.md`, `researcher.md` |
-| Report handed to `planner` via `docs/plans/<feature>.options.md` | in-repo: Orchestration practices above (context-pack pattern) |
+| Read-only, no web; `permissionMode: plan`; *Clarifying questions* instead of `AskUserQuestion` | [Create custom subagents](https://code.claude.com/docs/en/sub-agents); pattern from `implementation-planner.md`, `researcher.md` |
+| Report handed to `implementation-planner` via `docs/plans/<feature>.options.md` | in-repo: Orchestration practices above (context-pack pattern) |
 | Skills outside the preload read on demand | in-repo: `plan-verifier.md` "Skill loading rule" |
 
-### planner
+### implementation-planner
 
 | Rule | Source |
 |---|---|
+| Plans implementation only; specifications are `doc-writer`'s, e2e flows `test-writer`'s | user decision, 2026-09-29 |
+| Two passes: requirements review + `Q#` + `REC#` + execution mode first, plan only after answers | user decision, 2026-09-29; subagents can't call `AskUserQuestion` ([Create custom subagents](https://code.claude.com/docs/en/sub-agents)) |
+| Execution mode asked every time: multi-agent (parallel work packages, non-overlapping owned paths, DAG, contracts first) vs single-agent (linear) | user decision, 2026-09-29; [Anthropic multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) |
 | Separate read-only planning phase before code (explore → plan → implement → verify) | [Claude Code best practices](https://code.claude.com/docs/en/best-practices) |
 | Least-privilege, read-only tool set (like built-in `Plan` / `Explore`) | [Create custom subagents](https://code.claude.com/docs/en/sub-agents) |
 | Fresh context, no `AskUserQuestion` → *Clarifying questions* block | [Create custom subagents](https://code.claude.com/docs/en/sub-agents); pattern from [researcher.md](researcher.md) |
@@ -307,14 +391,9 @@ touch and Reads that skill's `SKILL.md` before scoring the option against it.
 
 - Change an agent → edit its `.md` here, then update the row above if its
   responsibility, model, tools or input/output changed.
-- New implementation skill → add it to `skills:` of **both** `planner.md` and
-  `implementer.md` (and to `routing.md`, see root `AGENTS.md`). Check the
-  lists still match:
-
-  ```sh
-  diff <(sed -n '/^skills:/,/^---/p' .claude/agents/planner.md) \
-       <(sed -n '/^skills:/,/^---/p' .claude/agents/implementer.md)
-  ```
+- New implementation skill → add it to `skills:` of `implementation-planner.md`,
+  to the lane table in `implementer.md` ("Which skill applies where") and to
+  `routing.md` (see root `AGENTS.md`).
 - New skill → also decide whether it belongs in `brainstorm` / `test-writer` /
   `architecture-reviewer` / `security-reviewer` / `plan-verifier` /
   `doc-writer`'s role-scoped list,

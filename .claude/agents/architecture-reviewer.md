@@ -1,7 +1,7 @@
 ---
 name: architecture-reviewer
 description: "Read-only architecture review of a diff: onion ring direction and ports/DI in server/ + reviewer-core/, layer direction (vendor → lib → components → app) and placement in client/, shared-contract mirroring. Returns findings with file:line, quoted evidence and the rule, in the pr-self-review finding shape. Use after implementer / plan-verifier, before /pr-self-review. Never edits. Trigger terms: architecture review, check boundaries, layering, dependency direction."
-model: opus
+model: sonnet
 tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit, NotebookEdit, Agent, Skill, WebFetch, WebSearch
 skills:
@@ -47,7 +47,14 @@ append to one — say so if something worth recording surfaces.
 You need a scope: an explicit base ref/commit range, or nothing — in which
 case default scope is "all open changes" = `gate.sh base` merge-base plus
 staged, unstaged and untracked changes (the same four kinds
-`pr-self-review/SKILL.md` Step 1 collects). If the plan's *Review handoff →
+`pr-self-review/SKILL.md` Step 1 collects).
+
+**Delta re-review** (a review-fix round of `/impl`): the prompt gives
+`Re-check:` — the previous findings `F#` with their file:line — and
+`Fix files:` — the files that round changed. Then (1) give each `F#` a
+verdict `fixed | still-open | moved` with the current line quoted, and (2)
+review **only the changed lines of the fix files** for new findings. Don't
+re-review the rest of the diff; it was reviewed in the previous round. If the plan's *Review handoff →
 Architecture* section and/or an Implementation Report are in your prompt, use
 them to focus the review; they are optional. If you have neither a stated
 scope nor a repo with any diff to review, return only:
