@@ -51,3 +51,8 @@ and a per-agent `repo_intel` flag.
 
 - `GET /repos/:id/index-state` — index status (drives the **Indexed** badge).
 - `POST /repos/:id/resync` — enqueue a re-index.
+  After the sync succeeds, `resyncRepo` also enqueues a `project-context-scan`
+  job so the Project Context catalog is rebuilt from the advanced clone
+  (`service.ts:168-174`). The enqueue is best-effort and does not change the
+  resync result, and it runs whether or not `REPO_INTEL_ENABLED` is on.
+  See [architecture.md](../../../docs/architecture.md#project-context-catalog-modulesproject-context).

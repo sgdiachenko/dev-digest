@@ -17,7 +17,11 @@
  *    byte (path truncation attacks in some C git builds).
  */
 
+import type { GitTreeEntry } from '@devdigest/shared';
+
 const SHA_RE = /^[0-9a-f]{7,40}$/;
+/** Full object id (sha-1 or sha-256) — `readBlob` takes only these. */
+const OID_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
 export class UnsafeGitShowArgsError extends Error {
   constructor(message: string) {
@@ -56,6 +60,36 @@ export function assertSafeRef(ref: string): void {
   if (!SHA_RE.test(ref)) {
     throw new UnsafeGitShowArgsError(`Unsafe git ref (expected a 7-40 char hex sha): ${ref}`);
   }
+}
+
+export function assertSafeOid(oid: string): void {
+  if (!OID_RE.test(oid)) {
+    throw new UnsafeGitShowArgsError(`Unsafe git object id (expected 40 or 64 hex chars): ${oid}`);
+  }
+}
+
+const LS_TREE_ENTRY_RE = /^(\d{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64}) +(\d+|-)$/;
+
+/**
+ * Parse `git ls-tree -r -l -z` output: `<mode> <type> <oid> <size|->\t<path>\0`
+ * per entry. `-` (non-blob) becomes `size: null`. Malformed records throw.
+ */
+export function parseLsTreeZ(raw: string): GitTreeEntry[] {
+  const out: GitTreeEntry[] = [];
+  for (const record of raw.split('\0')) {
+    if (record.length === 0) continue;
+    const tab = record.indexOf('\t');
+    const m = tab < 0 ? null : LS_TREE_ENTRY_RE.exec(record.slice(0, tab));
+    if (!m) throw new UnsafeGitShowArgsError('Unexpected "git ls-tree" output record');
+    out.push({
+      path: record.slice(tab + 1),
+      mode: m[1]!,
+      type: m[2] as GitTreeEntry['type'],
+      oid: m[3]!,
+      size: m[4] === '-' ? null : Number(m[4]),
+    });
+  }
+  return out;
 }
 
 export function assertSafePath(path: string): void {

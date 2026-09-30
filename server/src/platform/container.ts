@@ -35,6 +35,8 @@ import { PullsRepository } from '../modules/pulls/repository.js';
 import { SmartDiffService } from '../modules/smart-diff/service.js';
 import { BlastService } from '../modules/blast/service.js';
 import { PrHistoryService } from '../modules/pr-history/service.js';
+import { ProjectContextRepository } from '../modules/project-context/repository.js';
+import { ProjectContextService } from '../modules/project-context/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
@@ -91,6 +93,7 @@ export class Container {
   private _smartDiffService?: SmartDiffService;
   private _blastService?: BlastService;
   private _prHistoryService?: PrHistoryService;
+  private _projectContext?: ProjectContextService;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -225,6 +228,20 @@ export class Container {
     const github = await this.github();
     this._prHistoryService = new PrHistoryService(this.pullsRepo, this.pullsRepo, github);
     return this._prHistoryService;
+  }
+
+  /**
+   * Project Context catalog use case. Memoized: routes, the scan job handler
+   * and any future consumer (attachments) must share ONE instance, because the
+   * single-flight scan map lives in it.
+   */
+  get projectContext(): ProjectContextService {
+    return (this._projectContext ??= new ProjectContextService(
+      new ProjectContextRepository(this.db),
+      this.git,
+      this.tokenizer,
+      this.jobs,
+    ));
   }
 
   get codeIndex(): CodeIndex {

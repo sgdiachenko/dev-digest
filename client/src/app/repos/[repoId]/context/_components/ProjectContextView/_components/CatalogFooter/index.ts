@@ -1,0 +1,1 @@
+export { CatalogFooter } from "./CatalogFooter";

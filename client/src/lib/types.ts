@@ -31,6 +31,16 @@ export type {
   IndexStatus,
 } from "@devdigest/shared";
 
+export type {
+  ContextCatalog,
+  ContextDoc,
+  ContextDocContent,
+  ContextCategory,
+  ContextDocStatus,
+  ContextCatalogStatus,
+  ContextRescanAccepted,
+} from "@devdigest/shared";
+
 export type { Review, Finding, Severity, Verdict } from "@devdigest/shared";
 export type { PrBrief, SmartDiff } from "@devdigest/shared";
 

@@ -30,13 +30,21 @@ flowchart TD
   AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills)"]
   SKILLS["/skills"] --> SKILL["/skills/:id<br/>editor (config · preview · stats · versions)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
+  CTX["/repos/:repoId/context<br/>Project Context"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
   PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/smart-diff<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
   AGENTS -->|"/agents · /agents/:id · /agents/:id/skills"| API
   SKILLS -->|"/skills · /skills/:id · /skills/:id/stats<br/>/skills/:id/versions · /skills/:id/restore · /skills/import"| API
+  CTX -->|"GET /repos/:id/context · /repos/:id/context/file<br/>POST /repos/:id/context/rescan"| API
   SETTINGS -->|"/settings · /providers"| API
 ```
+
+`/repos/:repoId/context` (`src/app/repos/[repoId]/context/`) is the read-only
+Project Context page: document list with category chips and a filter, a safe
+Markdown preview, a freshness footer and Rescan. Filter, chips and the selected
+document live in the URL. Hooks: `src/lib/hooks/context.ts`. Usage badges
+("used by") stay empty until the attachments spec is implemented.
 
 Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
 `g`-then-key shortcuts). Pages are thin; feature logic sits in colocated

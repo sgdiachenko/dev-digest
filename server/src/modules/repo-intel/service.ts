@@ -53,6 +53,7 @@ import {
   RESYNC_JOB_KIND,
   SUPPORTED_EXT,
 } from './constants.js';
+import { CONTEXT_SCAN_JOB_KIND } from '../project-context/constants.js';
 import { runFullIndex, type IndexPayload } from './pipeline/full.js';
 import { runIncremental } from './pipeline/incremental.js';
 
@@ -163,6 +164,13 @@ export class RepoIntelService implements RepoIntel {
         durationMs: Date.now() - startedAt,
         reason: `sync_failed:${err instanceof Error ? err.message : String(err)}`,
       };
+    }
+    // The clone now reflects new code: rebuild the Project Context catalog too
+    // (best-effort — never affects the resync result).
+    try {
+      await this.deps.jobs.enqueue(repo.workspaceId, CONTEXT_SCAN_JOB_KIND, { repoId });
+    } catch {
+      // no handler / transient enqueue failure
     }
     return runIncremental(this.deps, this.repo, { repoId });
   }

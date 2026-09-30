@@ -2,7 +2,7 @@
 
 Two kinds of files live here:
 
-- **`SPEC-NN-<slug>.md`** — Spec-Driven-Development requirements, written
+- **`YYYY-MM-DD-<slug>.md`** — Spec-Driven-Development requirements, written
   **before** planning by the `spec-creator` agent
   ([`.claude/agents/spec-creator.md`](../../.claude/agents/spec-creator.md)):
   EARS acceptance criteria, edge cases, NFRs, module communication,
@@ -16,8 +16,10 @@ Two kinds of files live here:
 ## Registry
 
 Maintained by `spec-creator` (new rows, `draft` → `approved`, "superseded
-by") and `doc-writer` (`approved` → `implemented`). Numbers are global and
-never reused.
+by") and `doc-writer` (`approved` → `implemented`). The ID is the file name without `.md` (the
+creation date + a kebab-case slug); an ID is never reused.
 
 | ID | Title | Status | Modules | Supersedes | Superseded by |
 |---|---|---|---|---|---|
+| [2026-09-30-project-context-catalog](2026-09-30-project-context-catalog.md) | Project Context — document catalog, preview and token counts | implemented | server, client | none | — |
+| [2026-09-30-project-context-attachments](2026-09-30-project-context-attachments.md) | Project Context — attach documents to agents and skills, inject them into runs, show them in the run trace | approved | server, client, reviewer-core | none | — |

@@ -40,6 +40,41 @@ a feature module means one import + one `app.register`, not touching existing
 modules. On boot, the engine reaps any run left in a `running` state from a
 previous process (crash recovery for SSE-streamed reviews).
 
+## Project Context catalog (`modules/project-context/`)
+
+The module builds a per-repository catalog of Markdown documents and serves it
+over three routes (`routes.ts:22-49`; see [api-contracts.md](api-contracts.md#project-context)).
+
+- **Port.** `ProjectContextCatalog` (`modules/project-context/types.ts:16`) is
+  the read port other modules (the future attachments feature) may use;
+  `ProjectContextService` implements it (`service.ts:49`). Other modules import
+  only `constants.ts` or that port surface (`no-sideways-module-imports` counts
+  type imports).
+- **Memoized getter.** `container.projectContext` (`platform/container.ts:238-245`)
+  is created once: routes, the scan job handler and any future consumer must
+  share one instance because its single-flight scan map is per-instance.
+- **Triggers.** A rebuild is enqueued as job `project-context-scan` after clone
+  (`modules/repos/service.ts:86`) and after resync
+  (`modules/repo-intel/service.ts:168-174`, best-effort, never changes the
+  resync result). Resync does not depend on `REPO_INTEL_ENABLED` (spec Q-4).
+  Rescan (`POST .../rescan`) fetches, advances the clone, then rebuilds.
+- **Reads come from git objects.** `GitClient.listTree(repo, sha)` and
+  `GitClient.readBlob(repo, oid, maxBytes?)` (`vendor/shared/adapters.ts:256-262`)
+  list and read objects at the scanned SHA, never the working tree. Symlinks,
+  gitlinks, dot-directories other than `.devdigest`, and `node_modules` /
+  `vendor` / `.git` are excluded; a document is capped at 64 KB and a catalog at
+  1,000 entries (`constants.ts:12-22`). `used_by` is always `null` until the
+  [attachments spec](../../docs/specs/2026-09-30-project-context-attachments.md)
+  (approved, not implemented) lands (`contracts/project-context.ts:33`).
+- **Tokenizer port.** `Tokenizer` now lives in `vendor/shared/adapters.ts:268`
+  next to the other ports; `adapters/tokenizer` keeps the implementation.
+- **Persistence.** Tables `context_catalogs` and `context_docs`
+  (`db/schema/project-context.ts`, migration `0016_famous_spot.sql`). Migrations
+  do not run on boot.
+- **Unreachable commit (Q-3).** If the scanned commit is gone after gc or
+  re-shallow, the file route answers `404` with `reason: commit_unavailable`
+  (`service.ts:115`) and the UI offers Rescan.
+
 ## Intent Layer pre-work
 
 `ReviewRunExecutor.executeRuns` derives the PR's intent as shared pre-work,

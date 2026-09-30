@@ -57,6 +57,7 @@ export interface IndexStateUpsert {
 /** Minimal repo shape the facade needs to call CodeIndex on a clone. */
 export interface RepoBasics {
   id: string;
+  workspaceId: string;
   owner: string;
   name: string;
   defaultBranch: string;
@@ -137,6 +138,7 @@ export class RepoIntelRepository {
     const [row] = await this.db
       .select({
         id: t.repos.id,
+        workspaceId: t.repos.workspaceId,
         owner: t.repos.owner,
         name: t.repos.name,
         defaultBranch: t.repos.defaultBranch,

@@ -88,12 +88,34 @@ flowchart TB
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
   end
+  subgraph ProjectContext["Project Context"]
+    projectContext["project-context<br/>GET /repos/:id/context · GET /repos/:id/context/file<br/>POST /repos/:id/context/rescan · job project-context-scan"]
+  end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]
     workspace["workspace<br/>/workspace"]
   end
   HEALTH["/health (liveness) · /health/ready (DB ping → 200/503)"]
 ```
+
+### Project Context routes
+
+`modules/project-context/routes.ts:22-49`. Shapes and error details:
+[docs/api-contracts.md](docs/api-contracts.md#project-context). Design record:
+[docs/specs/2026-09-30-project-context-catalog.md](../docs/specs/2026-09-30-project-context-catalog.md).
+
+| Route | Purpose |
+|---|---|
+| `GET /repos/:id/context` | The repository's Markdown document catalog. The first open of a cloned repository starts a scan. |
+| `GET /repos/:id/context/file?path=` | One document's content, read from the git object at the scanned SHA. |
+| `POST /repos/:id/context/rescan` | `202`; fetch, advance the clone and rebuild the catalog in the background. |
+
+The `project-context-scan` job (`CONTEXT_SCAN_JOB_KIND`,
+`modules/project-context/constants.ts:8`) is enqueued after a clone
+(`modules/repos/service.ts:86`) and after a repo-intel resync
+(`modules/repo-intel/service.ts:168-174`). Migration `0016_famous_spot.sql`
+adds `context_catalogs` and `context_docs`; it is never applied on boot, so run
+`pnpm -C server db:migrate` by hand.
 
 ## Environment
 

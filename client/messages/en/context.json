@@ -1,24 +1,69 @@
 {
   "title": "Project Context",
-  "chunks": "{count} chunks",
-  "reindex": "Re-index",
-  "indexing": "Indexing…",
-  "resync": "Resync",
-  "resyncing": "Resyncing…",
-  "indexStatus": "Index status: {status}",
-  "loadError": "Couldn’t load specs",
-  "kb": "{kb}kb",
+  "subtitle": "Markdown documents read from the repository's git history.",
+  "listLabel": "Documents",
+  "filter": {
+    "label": "Filter documents by path",
+    "placeholder": "Filter by path…",
+    "categoriesLabel": "Filter by category"
+  },
+  "categories": {
+    "specs": "Specs",
+    "docs": "Docs",
+    "insights": "Insights"
+  },
+  "tokens": {
+    "estimate": "≈{count, number}",
+    "none": "—",
+    "tooltip": "Tokenizer estimate — can differ by 10–30 % depending on the model"
+  },
+  "footer": {
+    "summary": "{count, plural, one {# file} other {# files}} · scanned {time}",
+    "ref": "{branch}@{sha}"
+  },
+  "rescan": "Rescan",
+  "rescanning": "Rescanning…",
+  "status": {
+    "started": "Scan started",
+    "finished": "Scan finished"
+  },
+  "scanning": {
+    "title": "Scanning documents…",
+    "body": "Reading the repository's markdown files. This page updates when the scan finishes."
+  },
+  "scanError": "Last scan failed: {reason}",
+  "rescanError": "Rescan failed: {reason}",
+  "notCloned": {
+    "title": "Repository not cloned yet",
+    "body": "Documents are read from the local clone. Resync to fetch the repository, then the catalog builds automatically.",
+    "resync": "Resync",
+    "resyncing": "Resyncing…"
+  },
   "empty": {
-    "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+    "title": "No documents found",
+    "body": "Add markdown files such as PRDs, tech specs and acceptance criteria under .devdigest/specs/ and rescan."
   },
-  "mode": {
-    "preview": "preview",
-    "edit": "edit"
+  "noMatch": {
+    "title": "No documents match",
+    "clear": "Clear filters"
   },
-  "editor": {
-    "loadError": "Couldn’t load spec",
-    "save": "Save",
-    "saving": "Saving…"
+  "truncated": "Showing first 1,000 of {total, number}",
+  "loadError": "Couldn't load documents",
+  "retry": "Retry",
+  "secretWarning": "Possible secret",
+  "docStatus": {
+    "empty": "Empty",
+    "too_large": "Too large",
+    "unreadable": "Unreadable"
+  },
+  "preview": {
+    "selectPrompt": "Select a document to preview it.",
+    "loading": "Loading document…",
+    "empty": "Empty document",
+    "tooLarge": "Too large to preview ({size})",
+    "unreadable": "Couldn't read this document as text ({size})",
+    "notFound": "Document not found in {branch}@{sha}",
+    "loadError": "Couldn't load this document",
+    "backToList": "Back to list"
   }
 }

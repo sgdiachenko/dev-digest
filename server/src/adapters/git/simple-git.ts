@@ -9,9 +9,17 @@ import type {
   UnifiedDiff,
   BlameLine,
   GitCommit,
+  GitTreeEntry,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './diff-parser.js';
-import { assertSafeShowFileAtArgs, BlobTooLargeError, parseBlobSize } from './show-file-at-guard.js';
+import {
+  assertSafeOid,
+  assertSafeRef,
+  assertSafeShowFileAtArgs,
+  BlobTooLargeError,
+  parseBlobSize,
+  parseLsTreeZ,
+} from './show-file-at-guard.js';
 
 /**
  * Depth fetched by `sync()`. Deeper than the shallow clone (CLONE_DEPTH=1) so the
@@ -145,6 +153,22 @@ export class SimpleGitClient implements GitClient {
     // One array element ("ref:path"), passed via simple-git's array-form
     // `raw()` — never string-interpolated into a shell command.
     return g.raw(['show', `${ref}:${path}`]);
+  }
+
+  async listTree(repo: RepoRef, sha: string): Promise<GitTreeEntry[]> {
+    assertSafeRef(sha);
+    const raw = await this.git(repo).raw(['ls-tree', '-r', '-l', '-z', sha]);
+    return parseLsTreeZ(raw);
+  }
+
+  async readBlob(repo: RepoRef, oid: string, maxBytes?: number): Promise<Uint8Array> {
+    assertSafeOid(oid);
+    const g = this.git(repo);
+    if (maxBytes != null) {
+      const size = parseBlobSize(await g.raw(['cat-file', '-s', oid]));
+      if (size > maxBytes) throw new BlobTooLargeError(oid, '(blob)', size, maxBytes);
+    }
+    return new Uint8Array(await g.showBuffer([oid]));
   }
 }
 

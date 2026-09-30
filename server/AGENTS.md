@@ -26,8 +26,8 @@ pnpm exec vitest run .it.test                       # integration (real Postgres
 
 - `src/modules/<name>/` — one Fastify plugin per domain (`routes.ts` +
   service), registered statically in `src/modules/index.ts`: `repos`,
-  `pulls`, `polling`, `reviews`, `agents`, `repo-intel`, `settings`,
-  `workspace`
+  `pulls`, `polling`, `reviews`, `agents`, `repo-intel`, `project-context`,
+  `settings`, `workspace`
 - `src/platform/container.ts` — DI container; services depend on adapter
   *ports*, never concrete adapters
 - `src/adapters/` — port implementations (`llm`, `github`, `git`, `astgrep`,

@@ -201,6 +201,15 @@ export interface GitCommit {
   date: string;
 }
 
+/** One entry of `git ls-tree -r -l`. `size` is null for non-blobs (`-`). */
+export interface GitTreeEntry {
+  path: string;
+  mode: string;
+  type: 'blob' | 'tree' | 'commit';
+  oid: string;
+  size: number | null;
+}
+
 export interface GitClient {
   clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }>;
   fetchPullHead(repo: RepoRef, n: number): Promise<void>;
@@ -238,7 +247,26 @@ export interface GitClient {
    * "too large" (e.g. `BlobTooLargeError`) rather than silently truncating.
    */
   showFileAt(repo: RepoRef, ref: string, path: string, maxBytes?: number): Promise<string>;
+  /**
+   * Recursive listing of the git tree at commit `sha` (`git ls-tree -r -l`).
+   * Reads git objects only — never the working tree. `sha` MUST be a hex sha
+   * (guarded before shelling out). Includes symlinks (mode `120000`) and
+   * gitlinks (type `commit`); the caller filters.
+   */
+  listTree(repo: RepoRef, sha: string): Promise<GitTreeEntry[]>;
+  /**
+   * Raw bytes of the blob `oid` (git object, not the working tree). `oid` MUST
+   * be a full 40/64-char hex object id. `maxBytes`, when given, is enforced
+   * BEFORE the read (`cat-file -s`) and rejects with `BlobTooLargeError`.
+   */
+  readBlob(repo: RepoRef, oid: string, maxBytes?: number): Promise<Uint8Array>;
   clonePathFor(repo: RepoRef): string;
+}
+
+// ---------- Tokenizer ----------
+/** Token counter (approximate, model-agnostic). Never throws. */
+export interface Tokenizer {
+  count(text: string): number;
 }
 
 // ---------- CodeIndex (ripgrep + tree-sitter) ----------
