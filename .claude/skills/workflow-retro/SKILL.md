@@ -49,7 +49,9 @@ reconstruct the numbers from memory.
 
 Known limits (say them in the report, don't hide them): *active time* drops
 gaps over 5 min, so a user pause doesn't count; the overlap list is a
-path-string heuristic, including files named only in a Bash command; no prices
+path-string heuristic that keeps only files existing in the working tree (`--all-files`
+keeps the rest); prompt sharing is measured per sentence (>40 chars), so a rephrased
+rule is not counted; no prices
 are applied unless `assets/prices.json` has all four rates (input,
 cache_write, cache_read, output — USD per 1M tokens) for a model; the file
 ships unset on purpose, so a cost of `—` means "no rate", not "free". Never
@@ -83,8 +85,9 @@ is the pattern to copy.
 **D. Duplication**
 - Files read by ≥2 agents (script list) — was that necessary, or should one
   agent's output have been passed by path?
-- Shared lines across prompts of one batch (`shared prompt lines`) — boilerplate
-  that belongs in the agent file, not in every launch.
+- Shared sentences across prompts of one batch (`shared prompt sentences`) and the
+  session-wide "Repeated prompt boilerplate" list — instructions that belong in
+  the agent file, not in every launch.
 - The same finding restated across reports, and again by you to the user.
 - Context re-read: a resumed agent with a very high cache-read total
   (compare with a fresh agent of the same type) — the cost of resuming a

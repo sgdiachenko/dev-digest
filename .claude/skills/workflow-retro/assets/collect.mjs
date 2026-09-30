@@ -169,7 +169,7 @@ if (opt('--handback')) {
   for (const m of assistantMessages(readJsonl(path.join(dir, f)))) for (const b of m.blocks) {
     if (b.type === 'tool_use' && b.name === 'SubagentHandback') reports.push(Object.values(b.input || {}).filter((v) => typeof v === 'string').join('\n'));
   }
-  console.log(reports.join('\n\n----- next hand-back -----\n\n') || '(no hand-back found)');
+  fs.writeSync(1, (reports.join('\n\n----- next hand-back -----\n\n') || '(no hand-back found)') + '\n');
   process.exit(0);
 }
 const mainLines = readJsonl(sessionFile);
@@ -206,18 +206,25 @@ for (const m of mainMsgs) {
     });
   }
 }
-// prompt boilerplate shared inside one batch (duplicated instructions)
+// Prompt boilerplate. Whole-line equality misses paragraph-long instructions, so compare
+// SENTENCES (split on ., ;, : and newlines, >40 chars): inside one batch for the per-launch
+// percentage, and across the whole session for the repeated-boilerplate list.
+const sentencesOf = (text) => [...new Set(text.split(/(?<=[.;:])\s+|\n+/).map((x) => x.replace(/\s+/g, ' ').trim()).filter((x) => x.length > 40))];
 for (const bt of new Set(launches.map((l) => l.batch))) {
   const group = launches.filter((l) => l.batch === bt && !l.error);
   if (group.length < 2) continue;
   const count = new Map();
-  for (const l of group) for (const ln of new Set(l.prompt.split('\n').map((x) => x.trim()).filter((x) => x.length > 25))) count.set(ln, (count.get(ln) || 0) + 1);
+  for (const l of group) for (const sn of sentencesOf(l.prompt)) count.set(sn, (count.get(sn) || 0) + 1);
   for (const l of group) {
-    const lines = l.prompt.split('\n').map((x) => x.trim()).filter((x) => x.length > 25);
-    const shared = lines.filter((x) => count.get(x) > 1).length;
-    l.shared_prompt_pct = lines.length ? Math.round((100 * shared) / lines.length) : 0;
+    const sn = sentencesOf(l.prompt);
+    const shared = sn.filter((x) => count.get(x) > 1).length;
+    l.shared_prompt_pct = sn.length ? Math.round((100 * shared) / sn.length) : 0;
   }
 }
+const sessionCount = new Map();
+for (const l of launches.filter((x) => !x.error)) for (const sn of sentencesOf(l.prompt)) sessionCount.set(sn, (sessionCount.get(sn) || 0) + 1);
+const boilerplate = [...sessionCount.entries()].filter(([, n]) => n >= 3).sort((a, b) => b[1] * b[0].length - a[1] * a[0].length)
+  .slice(0, 6).map(([text, n]) => ({ text: text.slice(0, 160), prompts: n, chars_total: n * text.length }));
 const sends = {};
 for (const m of mainMsgs) for (const b of m.blocks) if (b.type === 'tool_use' && b.name === 'SendMessage' && b.input?.to) sends[b.input.to] = (sends[b.input.to] || 0) + 1;
 
@@ -267,7 +274,8 @@ agents.sort((a, b) => (a.start || 0) - (b.start || 0));
   fileReaders.clear();
   for (const [p, who] of folded) fileReaders.set(p, who);
 }
-const overlap = [...fileReaders.entries()].filter(([, s]) => s.size > 1)
+const existsHere = (p) => { try { return fs.existsSync(path.resolve(process.cwd(), p.replace(/^(\.\.\/)+/, ''))); } catch { return false; } };
+const overlap = [...fileReaders.entries()].filter(([p, s]) => s.size > 1 && (flag('--all-files') || existsHere(p)))
   .sort((a, b) => b[1].size - a[1].size).slice(0, 15)
   .map(([file, s]) => ({ file, agents: [...s] }));
 
@@ -280,11 +288,12 @@ const report = {
   main: { tokens: mainUsage, cache_hit_pct: cacheHit(mainUsage), assistant_messages: mainMsgs.length, active_ms: mainTime.active, wall_ms: mainTime.wall, errors: errorResults(mainLines) },
   totals: { all: total, subagents: subTotal, agents_launched: launches.length, agents_started: agents.length, launch_failures: launches.filter((l) => l.error).length, batches: batch },
   launches: launches.map(({ prompt, ...l }) => l),
-  agents, overlap,
+  agents, overlap, boilerplate,
   idle_gap_ms: IDLE_GAP_MS,
 };
 
-if (flag('--json')) { console.log(JSON.stringify(report, null, 2)); process.exit(0); }
+// Synchronous write: `console.log` + `process.exit` truncates a large JSON when stdout is a pipe.
+if (flag('--json')) { fs.writeSync(1, JSON.stringify(report, null, 2) + '\n'); process.exit(0); }
 
 // ---------------------------------------------------------------- markdown
 const T = (u) => `${k(u.input + u.cache_write)} in-new · ${k(u.cache_read)} cache-read · ${k(u.output)} out`;
@@ -306,7 +315,7 @@ if (mainCost != null || costKnown.length) {
 o.push('- "in-new" = fresh input + cache writes; cache-read is re-read context, billed far cheaper. Cost appears only for models with rates in assets/prices.json.');
 o.push('');
 o.push('## Launch order');
-o.push('| # | batch | agent | task | model | prompt | shared prompt lines | result |');
+o.push('| # | batch | agent | task | model | prompt | shared prompt sentences | result |');
 o.push('|---|---|---|---|---|---|---|---|');
 launches.forEach((l, i) => o.push(`| ${i + 1} | ${l.batch} | ${l.type} | ${l.description} | ${(l.model || '').replace('claude-', '') || '—'} | ${k(l.prompt_chars)} chars | ${l.shared_prompt_pct ?? '—'}${l.shared_prompt_pct != null ? '%' : ''} | ${l.error ? '❌ ' + l.error.slice(0, 60) : '✔ started'} |`));
 o.push('');
@@ -315,7 +324,11 @@ o.push('| agent | task | active | wall | tool uses | errors | resumed | tokens |
 o.push('|---|---|---|---|---|---|---|---|---|---|');
 for (const a of agents) o.push(`| ${a.label} | ${a.description} | ${shortDur(a.active_ms)} | ${shortDur(a.wall_ms)} | ${a.tool_uses} | ${a.errors} | ${a.resumed}× | ${T(a.tokens)} | ${a.cache_hit_pct}% | ${usd(a.cost_usd)} |`);
 o.push('');
-o.push('## Files touched by more than one agent (duplicated reading, heuristic)');
+o.push('## Repeated prompt boilerplate (sentences in ≥3 launch prompts, biggest first)');
+if (!boilerplate.length) o.push('none');
+for (const b of boilerplate) o.push(`- ×${b.prompts} (~${k(b.chars_total)} chars) "${b.text}"`);
+o.push('');
+o.push('## Files touched by more than one agent (duplicated reading; only files that exist in the working tree — `--all-files` keeps the rest)');
 if (!overlap.length) o.push('none');
 for (const x of overlap) o.push(`- \`${x.file}\` — ${x.agents.join(', ')}`);
 o.push('');
