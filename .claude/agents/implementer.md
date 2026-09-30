@@ -99,7 +99,9 @@ its short form.
 2. **Execute steps in order** (respect `depends-on`). For each step:
    - Read (on demand, see above) and apply the skills the step names
      **plus** the skills of each file's lane (table above); if they differ,
-     follow both and note it under *Deviations*;
+     follow both and note it under *Deviations*. Open each `SKILL.md` with
+     the Read tool — working from memory is not reading it, and a report
+     that says a named skill was not opened is a deviation;
    - make the change; match the surrounding code's naming, comment density
      and idioms;
    - write the tests the step's `done-when` requires, including every
@@ -110,6 +112,14 @@ its short form.
      beyond the plan's tests (client
      components: `<Name>.test.tsx` beside the component; server DB-backed
      tests must end in `*.it.test.ts`);
+   - **consumers of what you changed.** `pnpm typecheck` does not cover
+     `server/test/**`. Before calling a step done, grep `server/test/**`,
+     `client/**/*.test.*` and `src/**` for every interface, signature, port,
+     enum value or export you changed and update the fakes and callers inside
+     your `owns:`; one outside `owns:` goes under *Open issues*. Prove changed
+     or new server test files compile with a temporary tsconfig (extends the
+     package one, `include: ["src/**/*.ts", "<those test files>"]`), then
+     delete it;
    - if the step cannot be done as planned, or doing it would break a
      Constraint, **stop** and report — do not redesign.
 3. **Verify** — two levels. Use the CI commands (from

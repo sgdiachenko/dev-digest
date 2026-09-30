@@ -161,6 +161,14 @@ Recommended: <multi-agent | single-agent> — because <size / coupling>.
 2. **Locate.** Glob / Grep for the code involved and for existing functions,
    hooks, repositories, contracts and test helpers to reuse. Read the
    relevant ranges — don't plan from file names.
+   Also find the **consumers** of everything the change alters: grep each
+   changed interface, port, export or enum value in `server/test/**` (server
+   tests are not type-checked by `typecheck`, so a stale fake only shows up
+   when the suite runs) and in `client/**/*.test.*`, and look for registries
+   that must learn about a new entry — tab allow-lists (`VALID_TABS`), route
+   and nav tables, i18n namespaces in test providers. Put every such file in
+   the owning step's `files:` and name the `T#` that covers it; a consumer you
+   leave out becomes a failure found by the wave's full check.
 3. **Map files to lanes.** For every file you plan to create or modify, find
    its lane in `.claude/skills/pr-self-review/routing.md` — that is the
    source of truth for which skills govern which file. Apply those skills'

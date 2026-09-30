@@ -35,7 +35,9 @@ may be skipped for bug fixes or small changes. It always runs in two passes:
 `analyze` reads the request, the designs the user supplied and the affected
 modules, and returns — writing nothing — design gaps, edge cases `EC#`,
 module-communication points `MC#`, UX proposals `UX#`, research requests
-`RQ#` and questions `Q#`. The main session runs one `researcher` per `RQ#`
+`RQ#` and questions `Q#`. The main session passes the design **file paths**
+(an image pasted in chat shows `[Image: source: <path>]`), never a description
+alone. It runs one `researcher` per `RQ#`
 in parallel (each `RQ#` is independent by construction), passes the reports
 back as `Research:`, asks the user (`AskUserQuestion`) and re-invokes it
 with `Mode: write` and `Answers:`. It reads `AGENTS.md`/`INSIGHTS.md` only

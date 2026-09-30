@@ -76,6 +76,9 @@ Reports go to `docs/plans/<slug>.reports.md` (appended, one `##` per report).
 - **Multi-agent**: per wave, one `implementer` per `W#` of the wave, **all
   in one message**. Prompt = plan path + `W#` + "read only the Constraints,
   your W# row and its steps".
+- A parallel batch that fails to launch (e.g. "auto mode classifier gave no
+  verdict") is retried once as it was; if it fails again, launch the same
+  agents in smaller groups. Record the failure in the state file.
 - After each wave:
   1. Append the Implementation Reports to `<slug>.reports.md`.
   2. Run the **full** check table (below) once for the packages the wave
@@ -144,6 +147,14 @@ Plan's *Review handoff → Manual verification* not "none" → run the app
 (`./scripts/dev.sh`, the `run` skill or `claude-in-chrome`) and check the
 listed behaviour live. A regression → new `F#` (source: manual) → Phase 3
 fix step.
+
+Browser automation notes (the automation tab reports `visibilityState ===
+"hidden"`): use one-shot `javascript_tool` probes and separate `wait` steps —
+a `setTimeout` loop inside one call is throttled and times out at 45 s, and a
+screenshot taken right after navigation can be a stale frame. Tab lists
+(`VALID_TABS`) and other registries are checked by reading the page, not by
+mounting the component alone. If the tool fails 3 times, stop and record what
+could not be verified instead of retrying (`INSIGHTS.md` in `client/`).
 
 ## Phase 5 — Docs
 

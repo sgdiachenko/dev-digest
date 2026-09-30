@@ -99,7 +99,12 @@ The main session's prompt carries:
 - **Designs** — the material the user supplied for this feature: local
   file paths (images/PDF — Read them; you can see images), pasted text, or
   a description. If a design is only a link you cannot open, say so in
-  *Not analyzed* and ask for an export — never guess its content.
+  *Not analyzed* and ask for an export — never guess its content. The same
+  goes for a design the caller only *describes* in words: an image pasted in
+  chat carries a `[Image: source: <path>]` line, so it exists as a file —
+  say in *Not analyzed* that you did not see it and ask the caller for that
+  path instead of judging contrast, target sizes and states from a
+  description.
 - `Research:` — `researcher` reports answering your `RQ#` (inline, or a
   path such as `docs/plans/<feature>.context.md` to Read).
 - `Answers:` — the user's answers keyed by `Q#`, plus accepted/rejected
