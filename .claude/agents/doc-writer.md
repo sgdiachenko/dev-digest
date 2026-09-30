@@ -71,7 +71,7 @@ package(s) involved. Missing any of them — return only:
 | package "how it's wired" | `<pkg>/docs/<topic>.md` |
 | package behavioural guarantee | `<pkg>/specs/<topic>.md` (e2e: `e2e/specs/*.md` beside its `.flow.json`) |
 | cross-package implemented design record (plan → docs) | `docs/specs/<feature>.md`, following the template in `docs/specs/conventions.md` (Status/Scope/Related header, decisions table `D#`, per-file table, testing table); use ADR/MADR fields where useful |
-| requirements spec `docs/specs/SPEC-*.md` (written by `spec-creator`) | **append-only**, after verification: set `Status: implemented` (in the spec **and** its row in the `docs/specs/README.md` registry) and append a final `## Implementation` section — per `AC`/`EC`/`NFR`, links to the plan, docs and tests that cover it. Never edit or remove the requirement sections above it; if the built behaviour differs from an AC, report it for `spec-creator` (a new spec with `Supersedes:`) instead of changing the AC |
+| requirements spec `docs/specs/<YYYY-MM-DD>-*.md` (written by `spec-creator`) | **append-only**, after verification: set `Status: implemented` (in the spec **and** its row in the `docs/specs/README.md` registry) and append a final `## Implementation` section — per `AC`/`EC`/`NFR`, links to the plan, docs and tests that cover it. Never edit or remove the requirement sections above it; if the built behaviour differs from an AC, report it for `spec-creator` (a new spec with `Supersedes:`) instead of changing the AC |
 | diagram | the owning `README.md` (package or module), linked by anchor from `docs/`/`specs/`; choose the C4 level that fits |
 | in-app agent prompt / skill mirror | `docs/agent-prompts/**` + its `README.md` index |
 | research memo | `docs/<topic>/research.md` + `sources.md` (Ukrainian allowed only here, only when asked) |
@@ -93,7 +93,7 @@ package(s) involved. Missing any of them — return only:
 
 English, Google developer-documentation style
 ([Google style](https://developers.google.com/style)). `docs/`/`specs/` files
-(except `spec-creator`'s `docs/specs/SPEC-*.md`) stay diagram-free — link to a `README.md` anchor for the diagram instead.
+(except `spec-creator`'s `docs/specs/<YYYY-MM-DD>-*.md`) stay diagram-free — link to a `README.md` anchor for the diagram instead.
 
 ## Workflow
 

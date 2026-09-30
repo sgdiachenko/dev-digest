@@ -20,7 +20,7 @@ run on the host, not in a container).
 - `e2e/` — deterministic browser e2e (agent-browser, no LLM) → [e2e/AGENTS.md](e2e/AGENTS.md)
 - `docs/` — cross-cutting reference docs (agent prompts, model choice) that don't belong to one package
 - `.claude/agents/` — Claude Code subagents: `spec-creator` (SDD spec
-  `docs/specs/SPEC-NN-*.md` with EARS criteria + registry
+  `docs/specs/<YYYY-MM-DD>-*.md` with EARS criteria + registry
   `docs/specs/README.md`; writes only there; research via parallel `researcher`s),
   `researcher` (read-only
   evidence), `brainstorm` (read-only comparison of 2–3 implementation

@@ -1,7 +1,7 @@
 ---
 name: impl
 description: "Runs the implementation half of dev-digest's Spec-Driven Development flow from the main session, starting from an already approved Implementation Plan (spec-creator and implementation-planner are run separately, by hand): waves of implementers → full checks → plan-verifier → architecture/security/correctness review with a bounded review-fix loop → doc-writer → /pr-self-review. Keeps its state in docs/plans/<slug>.impl.md so it can resume in a fresh chat. Use when the user types /impl. Trigger terms: impl, implement the plan, run implementation, resume impl."
-argument-hint: "<plan path | slug> [SPEC-NN | spec path] [--from implement|verify|review|docs|pr] [extra instructions]"
+argument-hint: "<plan path | slug> [spec ID | spec path] [--from implement|verify|review|docs|pr] [extra instructions]"
 disable-model-invocation: true
 ---
 
@@ -39,7 +39,7 @@ Arguments: `$ARGUMENTS`
 1. Parse `$ARGUMENTS`:
    - plan: a path, or a slug → `docs/plans/<slug>.md`. Required. No plan →
      stop and say: run `implementation-planner` first.
-   - spec: `SPEC-NN` / a path, or the one the plan names under
+   - spec: a spec ID (`YYYY-MM-DD-<slug>`) / a path, or the one the plan names under
      *Requirements decisions → Spec*. If it isn't `Status: approved`, ask
      whether to go on.
    - `--from <phase>` or an existing `docs/plans/<slug>.impl.md` → resume:
@@ -56,7 +56,7 @@ Arguments: `$ARGUMENTS`
 
 ```markdown
 # impl: <feature>
-Plan: docs/plans/<slug>.md (multi-agent, waves: 1✔ 2…)   Spec: SPEC-NN
+Plan: docs/plans/<slug>.md (multi-agent, waves: 1✔ 2…)   Spec: <spec ID>
 Phase: review   Verify round: 1/2   Review round: 2/3
 Extra instructions: <one line or none>
 

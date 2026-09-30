@@ -66,7 +66,7 @@ for one that wasn't named):
 2. the Implementation Report (one per work package in multi-agent mode), in `implementer.md`'s Output format shape;
 3. the original requirements (the request the plan was written against) —
    or, for a spec-driven feature, the path of the approved spec
-   `docs/specs/SPEC-NN-<slug>.md` the plan names under *Requirements
+   `docs/specs/<YYYY-MM-DD>-<slug>.md` the plan names under *Requirements
    decisions → Spec:*. Read that file; it replaces the free-text request.
 
 Missing any of them — return only:

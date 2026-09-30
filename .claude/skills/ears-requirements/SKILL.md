@@ -1,6 +1,6 @@
 ---
 name: ears-requirements
-description: "Writing and checking testable requirements in EARS (Easy Approach to Requirements Syntax) for dev-digest SDD specs (docs/specs/SPEC-*.md): the five patterns with the course's Ukrainian triggers (КОЛИ, ПОКИ, ЯКЩО…ТОДІ, ДЕ) and the shall marker, the AC line format (ID, pattern, story, priority, verify hint), banned vague words and their rewrites, measurable non-functional requirements, the traceability matrix, and the spec self-check. Use when writing, revising or reviewing a spec, or when verifying code against a spec's AC/EC/NFR IDs. Trigger terms: EARS, acceptance criteria, AC, requirement, shall, spec, SPEC-NN, traceability, NFR, testable requirement."
+description: "Writing and checking testable requirements in EARS (Easy Approach to Requirements Syntax) for dev-digest SDD specs (docs/specs/<YYYY-MM-DD>-*.md): the five patterns with the course's Ukrainian triggers (КОЛИ, ПОКИ, ЯКЩО…ТОДІ, ДЕ) and the shall marker, the AC line format (ID, pattern, story, priority, verify hint), banned vague words and their rewrites, measurable non-functional requirements, the traceability matrix, and the spec self-check. Use when writing, revising or reviewing a spec, or when verifying code against a spec's AC/EC/NFR IDs. Trigger terms: EARS, acceptance criteria, AC, requirement, shall, spec, spec ID, traceability, NFR, testable requirement."
 metadata:
   tags: requirements, ears, sdd, acceptance-criteria, traceability
 ---

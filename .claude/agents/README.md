@@ -14,7 +14,7 @@ map of the set — read the agent file for the actual rules.
 user ─► spec-creator (analyze) ─► design gaps + EC# + MC# + UX# + RQ# + Q#
           ─► researcher × N in parallel (one per RQ#, when any) ─► spec-creator (analyze again, only if research raised new items)
           ─► user answers Q#
-     ─► spec-creator (write) ─► docs/specs/SPEC-NN-<slug>.md (draft) ─► user approves ─► spec-creator (approve)
+     ─► spec-creator (write) ─► docs/specs/<YYYY-MM-DD>-<slug>.md (draft) ─► user approves ─► spec-creator (approve)
      ─► researcher (when evidence is needed)
      ─► brainstorm (optional: ≥2 plausible approaches) ─► Options Comparison ─► user picks O#
      ─► implementation-planner (pass 1) ─► requirements review + Q# + REC# + execution mode ─► user answers
@@ -40,7 +40,7 @@ in parallel (each `RQ#` is independent by construction), passes the reports
 back as `Research:`, asks the user (`AskUserQuestion`) and re-invokes it
 with `Mode: write` and `Answers:`. It reads `AGENTS.md`/`INSIGHTS.md` only
 of the packages the feature touches, and registers every spec in
-`docs/specs/README.md`. The result is `docs/specs/SPEC-NN-<slug>.md`
+`docs/specs/README.md`. The result is `docs/specs/<YYYY-MM-DD>-<slug>.md`
 (`Status: draft`, EARS acceptance criteria). `revise` edits a draft;
 `approve` flips it to `approved` only on the user's explicit word. An
 approved spec is never rewritten — a changed decision is a new spec with
@@ -52,10 +52,10 @@ evidence). After
 verification `doc-writer` only **appends** to it (`Status: implemented` +
 an `## Implementation` section linking plan/docs/tests per AC) — it never
 edits the requirements, so the spec stays the yardstick the code was
-checked against. These `SPEC-*` files are *requirements written
+checked against. These dated spec files are *requirements written
 before the code*; they are distinct from `doc-writer`'s specs (behavioural
 guarantees / design records written after verification). Its write scope —
-`docs/specs/SPEC-*.md` only — is a prompt rule (no hooks), like the
+`docs/specs/<YYYY-MM-DD>-*.md` only — is a prompt rule (no hooks), like the
 implementer's Bash limits.
 
 `spec-creator` and `implementation-planner` are run by hand. From an
@@ -160,7 +160,7 @@ drive the flow above. Confirmed on a measured feature; see
 
 | Agent | Responsibility | Model | Tools / permissions | Input | Output |
 |---|---|---|---|---|---|
-| [spec-creator](spec-creator.md) | Writes the SDD specification before any planning: analyzes the request, the user's designs and the affected modules for design gaps, edge cases, module communication, NFRs and UX improvements; hands research requests to `researcher`; asks the user; then writes `SPEC-NN` (EARS ACs with priority + `verify:`, NFRs, UI state matrix, rollout, traceability) and registers it. No implementation details | `opus` | Read, Grep, Glob, read-only Bash, Write, Edit — **writes only `docs/specs/SPEC-*.md` + `docs/specs/README.md`** (prompt rule). No Skill/Agent/Web | `Mode:` analyze / write / revise / approve; request; designs (file paths, pasted text); `Research:`; `Answers:`; `Spec:` | Analyze: **Spec analysis** (understanding, boundaries + INSIGHTS read, UI state matrix, `D-GAP#`, `EC#`, `MC#`, `UX#`, untrusted inputs, NFR needs, `RQ#`, `Q#`). Write/revise/approve: the spec file + registry row + **Spec report** (counts, verify mix, decisions applied, open questions, final self-check, handoff) |
+| [spec-creator](spec-creator.md) | Writes the SDD specification before any planning: analyzes the request, the user's designs and the affected modules for design gaps, edge cases, module communication, NFRs and UX improvements; hands research requests to `researcher`; asks the user; then writes a dated spec `<YYYY-MM-DD>-<slug>.md` (EARS ACs with priority + `verify:`, NFRs, UI state matrix, rollout, traceability) and registers it. No implementation details | `opus` | Read, Grep, Glob, read-only Bash, Write, Edit — **writes only `docs/specs/<YYYY-MM-DD>-*.md` + `docs/specs/README.md`** (prompt rule). No Skill/Agent/Web | `Mode:` analyze / write / revise / approve; request; designs (file paths, pasted text); `Research:`; `Answers:`; `Spec:` | Analyze: **Spec analysis** (understanding, boundaries + INSIGHTS read, UI state matrix, `D-GAP#`, `EC#`, `MC#`, `UX#`, untrusted inputs, NFR needs, `RQ#`, `Q#`). Write/revise/approve: the spec file + registry row + **Spec report** (counts, verify mix, decisions applied, open questions, final self-check, handoff) |
 | [researcher](researcher.md) | Answers a concrete question with evidence from the repo (code, docs, git history) and/or external sources | `sonnet` | Read, Grep, Glob, read-only Bash, WebSearch, WebFetch. No Write/Edit/Skill | A concrete question + scope (repo / external / both) | *Repo research* or *External research* report: TL;DR, conclusions with confidence, evidence (`path:line` / URLs), sources, **Not found / gaps** |
 | [brainstorm](brainstorm.md) | Optional, between researcher and implementation-planner: states decision drivers, then compares 2-3 plausible implementation options plus a "do nothing" baseline against them. Never picks for the user | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Task description (goal, scope, done criterion) + optional `docs/plans/<feature>.context.md` | **Options Comparison**: problem & scope, decision drivers, baseline, options (axis, per-driver verdict, strongest objection, effort, reversibility), comparison matrix, recommendation, why not the others, decision needed, risks, gaps — or *Clarifying questions* |
 | [implementation-planner](implementation-planner.md) | Reviews the requirements (clarifying questions, recommendations), asks the execution mode (multi-agent parallel vs single-agent), then turns the request into a structured Implementation Plan that respects modules, INSIGHTS, skills and architecture constraints. Plans implementation only — never specifications. Does not review | `opus` | Read, Grep, Glob, read-only Bash; `permissionMode: plan`. No Write/Edit/Skill/Agent/Web | Pass 1: task description; optionally a researcher report / brainstorm pick. Pass 2: the same + `Mode:`, `Answers:`, accepted/rejected `REC#` | Pass 1: **Requirements review** + `Q#` + `REC#` + execution-mode question. Pass 2: **Implementation Plan**: goal & scope, requirements decisions, execution mode, work packages `W#` with `owns:` (multi-agent), context, affected modules, constraints (with sources), steps `S1..Sn` (files, skills, reuse, done-when, depends-on), test plan, risks, review handoff, gaps |

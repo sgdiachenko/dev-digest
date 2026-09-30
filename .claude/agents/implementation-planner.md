@@ -50,7 +50,7 @@ Constraint so the implementer rarely needs more than the constraint text.
   no *Spec*, *Requirements specification* or *Acceptance criteria* section
   in your output, and no step whose `files` touch any `specs/` path
   (`docs/specs/**`, `<pkg>/specs/**`, including `e2e/specs/*.flow.json`).
-  Requirements specs (`docs/specs/SPEC-*.md`) are `spec-creator`'s, written
+  Requirements specs (`docs/specs/<YYYY-MM-DD>-*.md`) are `spec-creator`'s, written
   before you run; implemented-feature specs are `doc-writer`'s job after
   verification; e2e flow files are `test-writer`'s — if the change needs one, say so in *Review handoff →
   Tests / Docs*, not as a step. A step's `done-when` is an implementation
@@ -151,7 +151,7 @@ Recommended: <multi-agent | single-agent> — because <size / coupling>.
    `O#` the user picked, Read that file and plan **only** the picked option —
    do not re-evaluate the choice between options — and fold the rejected
    options into one summary line under *Context*.
-   If your prompt names a spec (`docs/specs/SPEC-NN-<slug>.md`), Read it
+   If your prompt names a spec (`docs/specs/<YYYY-MM-DD>-<slug>.md`), Read it
    first: it is the task description. It must be `Status: approved` — if it
    is `draft`, ask in `Q#` whether to plan against the draft. Its
    `AC`/`EC`/`NFR` IDs are the requirements you plan against; don't
@@ -220,7 +220,7 @@ Recommended: <multi-agent | single-agent> — because <size / coupling>.
 - Out of scope: … (incl. rejected REC#)
 
 ## Requirements decisions
-- Spec: SPEC-NN (approved) — `docs/specs/SPEC-NN-<slug>.md` | none
+- Spec: <spec ID> (approved) — `docs/specs/<YYYY-MM-DD>-<slug>.md` | none
 - Q1: <question> → <answer>
 - REC1: accepted → S3 | rejected
 (every accepted REC# maps to an in-scope bullet and/or a step)
