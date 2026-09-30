@@ -15,6 +15,7 @@ import type {
   RepoRef,
   Tokenizer,
 } from '@devdigest/shared';
+import { BlobTooLargeError } from '../../adapters/git/show-file-at-guard.js';
 import { ConflictError, NotFoundError } from '../../platform/errors.js';
 import { REFRESH_JOB_KIND } from '../repo-intel/constants.js';
 import {
@@ -24,13 +25,17 @@ import {
   STALE_SCAN_MS,
 } from './constants.js';
 import { categorize, classifyDoc, compareByPath, decodeUtf8Strict, selectEntries } from './helpers.js';
+import { ContextUnavailableError } from './types.js';
 import type {
   CatalogDoc,
   CatalogState,
   ContextJobs,
   ContextRepo,
+  DocUsage,
   ProjectContextCatalog,
   ProjectContextStore,
+  ResolvedDoc,
+  ResolvedDocs,
   ScanLogger,
 } from './types.js';
 
@@ -84,7 +89,8 @@ export class ProjectContextService implements ProjectContextCatalog {
       }
     }
     const docs = (await this.store.listDocs(repo.id)).sort(compareByPath);
-    return this.toCatalog(repo.id, state, docs, state.status);
+    const usage = await this.store.listUsage(repo.id);
+    return this.toCatalog(repo.id, state, docs, state.status, usage);
   }
 
   async readDoc(workspaceId: string, repoId: string, path: string): Promise<ContextDocContent> {
@@ -130,6 +136,62 @@ export class ProjectContextService implements ProjectContextCatalog {
       const doc = await this.store.getDoc(repoId, path);
       const after = await this.store.getCatalogState(repoId);
       if (attempt >= 1 || before?.scannedSha === after?.scannedSha) return { doc, state: after };
+    }
+  }
+
+  async resolveDocs(workspaceId: string, repoId: string, paths: string[]): Promise<ResolvedDocs> {
+    const repo = await this.requireRepo(workspaceId, repoId);
+    if (!repo.clonePath) throw new ContextUnavailableError('no_clone');
+    const { rows, state } = await this.readDocRows(repo.id, paths);
+    if (!state?.scannedSha) throw new ContextUnavailableError('no_catalog');
+
+    const ref = this.refOf(repo);
+    const byPath = new Map(rows.map((d) => [d.path, d]));
+    // Only paths that are in the catalog reach git, and only by the catalog's blob oid. A
+    // `symlink` tree entry never becomes a catalog row (selectEntries drops it), so it cannot
+    // be attached, and therefore cannot be followed here.
+    const docs = await Promise.all(
+      paths.map((path): Promise<ResolvedDoc> => this.resolveOne(ref, path, byPath.get(path))),
+    );
+    return { sha: state.scannedSha, branch: state.branch ?? repo.defaultBranch, docs };
+  }
+
+  private async resolveOne(ref: RepoRef, path: string, doc: CatalogDoc | undefined): Promise<ResolvedDoc> {
+    if (!doc) {
+      return { path, category: null, status: 'missing', text: null, estTokens: null, secretWarning: false };
+    }
+    const base = {
+      path,
+      category: doc.category,
+      estTokens: doc.estTokens,
+      secretWarning: doc.secretWarning,
+    };
+    if (doc.status === 'too_large' || doc.status === 'unreadable') {
+      return { ...base, status: doc.status, text: null };
+    }
+    if (doc.status === 'empty') return { ...base, status: 'empty', text: '' };
+
+    let bytes: Uint8Array;
+    try {
+      bytes = await this.git.readBlob(ref, doc.blobOid, MAX_DOC_BYTES);
+    } catch (err) {
+      const status = err instanceof BlobTooLargeError ? 'too_large' : 'missing';
+      return { ...base, status, text: null, estTokens: status === 'missing' ? null : doc.estTokens };
+    }
+    const text = decodeUtf8Strict(bytes);
+    return text === null ? { ...base, status: 'unreadable', text: null } : { ...base, status: 'ok', text };
+  }
+
+  /**
+   * Rows and state must describe the same scan (same guard as `readDocRow`): a scan that
+   * commits between the reads would pair the new sha with the old rows. Re-read once if it moved.
+   */
+  private async readDocRows(repoId: string, paths: string[]) {
+    for (let attempt = 0; ; attempt++) {
+      const before = await this.store.getCatalogState(repoId);
+      const rows = await this.store.getDocs(repoId, paths);
+      const after = await this.store.getCatalogState(repoId);
+      if (attempt >= 1 || before?.scannedSha === after?.scannedSha) return { rows, state: after };
     }
   }
 
@@ -183,6 +245,7 @@ export class ProjectContextService implements ProjectContextCatalog {
     state: CatalogState | null,
     docs: CatalogDoc[],
     status: ContextCatalog['status'],
+    usage: Map<string, DocUsage> = new Map(),
   ): ContextCatalog {
     return {
       repo_id: repoId,
@@ -200,7 +263,8 @@ export class ProjectContextService implements ProjectContextCatalog {
         est_tokens: d.estTokens,
         status: d.status,
         secret_warning: d.secretWarning,
-        used_by: null,
+        // Always an object for a catalog document: empty arrays mean "not used".
+        used_by: usage.get(d.path) ?? { agents: [], skills: [] },
       })),
     };
   }

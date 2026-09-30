@@ -6,6 +6,7 @@ import type { ContextDoc } from "@/lib/types";
 import { s } from "../../styles";
 import { formatSize, truncateMiddle } from "../../helpers";
 import { TokenEstimate } from "../TokenEstimate";
+import { UsedBy } from "../UsedBy";
 
 /** One catalog row: a full-path button (name = full path) plus the token estimate beside it. */
 export function DocRow({
@@ -38,6 +39,7 @@ export function DocRow({
         {doc.status !== "ok" && <span style={s.rowMeta}>{t(`docStatus.${doc.status}`)}</span>}
         {doc.secret_warning && <Badge icon="AlertTriangle">{t("secretWarning")}</Badge>}
       </button>
+      <UsedBy usedBy={doc.used_by} />
       <TokenEstimate tokens={doc.est_tokens} />
     </li>
   );

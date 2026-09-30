@@ -39,7 +39,14 @@ export type {
   ContextDocStatus,
   ContextCatalogStatus,
   ContextRescanAccepted,
+  AgentContextView,
+  SkillContextView,
+  AttachedDoc,
+  InheritedDoc,
+  ContextAttachmentRef,
+  ContextAttachmentsBody,
 } from "@devdigest/shared";
+export type { ProjectContextTrace } from "@devdigest/shared";
 
 export type { Review, Finding, Severity, Verdict } from "@devdigest/shared";
 export type { PrBrief, SmartDiff } from "@devdigest/shared";

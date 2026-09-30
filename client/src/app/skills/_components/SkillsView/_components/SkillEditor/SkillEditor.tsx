@@ -6,6 +6,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
+import { ContextTab } from "./_components/ContextTab";
 import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
 import { StatsTab } from "./_components/StatsTab";
@@ -25,6 +26,7 @@ export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; 
         {tab === "config" && <ConfigTab skill={skill} />}
         {tab === "preview" && <PreviewTab skill={skill} />}
         {tab === "stats" && <StatsTab skillId={skill.id} />}
+        {tab === "context" && <ContextTab skillId={skill.id} />}
         {tab === "versions" && <VersionsTab skillId={skill.id} />}
       </div>
     </div>

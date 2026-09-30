@@ -1,12 +1,21 @@
 /* hooks/context.ts — React Query hooks for the Project Context catalog.
      GET  /repos/:id/context              → ContextCatalog (poll while scanning)
      GET  /repos/:id/context/file?path=   → ContextDocContent (404 = not at this commit)
-     POST /repos/:id/context/rescan       → 202 ContextRescanAccepted */
+     POST /repos/:id/context/rescan       → 202 ContextRescanAccepted
+     GET|PUT /agents/:id/context?repo_id= → AgentContextView (PUT body = full ordered list, all repos)
+     GET|PUT /skills/:id/context?repo_id= → SkillContextView */
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
-import type { ContextCatalog, ContextDocContent, ContextRescanAccepted } from "../types";
+import type {
+  AgentContextView,
+  ContextAttachmentRef,
+  ContextCatalog,
+  ContextDocContent,
+  ContextRescanAccepted,
+  SkillContextView,
+} from "../types";
 
 /** Catalog poll interval while a scan is running. */
 const SCAN_POLL_MS = 1500;
@@ -52,6 +61,54 @@ export function useRescanContext(repoId: string | null | undefined) {
       qc.setQueryData<ContextCatalog>(["context-catalog", repoId], (prev) =>
         prev ? { ...prev, status: "scanning", error: null } : prev,
       );
+      qc.invalidateQueries({ queryKey: ["context-catalog", repoId] });
+    },
+  });
+}
+
+/** The agent's attachments as computed for one repo (budget, estimates, inherited skill docs). */
+export function useAgentContext(agentId: string | null | undefined, repoId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["agent-context", agentId, repoId],
+    queryFn: () => api.get<AgentContextView>(`/agents/${agentId}/context?repo_id=${repoId}`),
+    enabled: !!agentId && !!repoId,
+  });
+}
+
+/** Replaces the agent's FULL ordered attachment list (all repos); may bump the agent's version. */
+export function useSetAgentContext(agentId: string | null | undefined, repoId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (docs: ContextAttachmentRef[]) =>
+      api.put<AgentContextView>(`/agents/${agentId}/context?repo_id=${repoId}`, { docs }),
+    onSuccess: (data) => {
+      qc.setQueryData(["agent-context", agentId, repoId], data);
+      qc.invalidateQueries({ queryKey: ["agent-context", agentId] });
+      qc.invalidateQueries({ queryKey: ["context-catalog", repoId] });
+      qc.invalidateQueries({ queryKey: ["agent", agentId] });
+      qc.invalidateQueries({ queryKey: ["agent-versions", agentId] });
+    },
+  });
+}
+
+export function useSkillContext(skillId: string | null | undefined, repoId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["skill-context", skillId, repoId],
+    queryFn: () => api.get<SkillContextView>(`/skills/${skillId}/context?repo_id=${repoId}`),
+    enabled: !!skillId && !!repoId,
+  });
+}
+
+/** Replaces the skill's FULL ordered attachment list; agents inheriting these docs change too. */
+export function useSetSkillContext(skillId: string | null | undefined, repoId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (docs: ContextAttachmentRef[]) =>
+      api.put<SkillContextView>(`/skills/${skillId}/context?repo_id=${repoId}`, { docs }),
+    onSuccess: (data) => {
+      qc.setQueryData(["skill-context", skillId, repoId], data);
+      qc.invalidateQueries({ queryKey: ["skill-context", skillId] });
+      qc.invalidateQueries({ queryKey: ["agent-context"] });
       qc.invalidateQueries({ queryKey: ["context-catalog", repoId] });
     },
   });

@@ -1,6 +1,6 @@
 # Spec: Project Context — attach documents to agents and skills, inject them into runs, show them in the run trace
 Spec ID: 2026-09-30-project-context-attachments
-Status: approved
+Status: implemented
 Supersedes: none
 Modules: server, client, reviewer-core
 
@@ -350,3 +350,197 @@ server mirrors `trace.ts` and `platform.ts` — `mcp-server/src/vendor/shared`;
 - Q-2: Can the fixed SHA (fetched with `--depth 50`) become unreachable between the catalog scan and a run, and should that surface as `missing` per document or as the AC-24 whole-block degradation? — for: researcher (to be settled by implementation-planner) — blocking: no
 - ~~Q-3~~ — resolved: 48,000-character engine safeguard (AC-25) and 5 s resolution timeout (AC-24) accepted.
 - ~~Q-4~~ — resolved: no keyboard reorder shortcut; drag or Move up / Move down buttons only (AC-4, NFR-6).
+
+## Implementation
+
+Built on branch `H05`. The requirement sections above are unchanged; the one
+reading that differs from their literal text (NFR-2) is recorded below.
+Plan: [project-context-attachments](../plans/project-context-attachments.md)
+(steps `S#`, tests `T#`); state, verification and review ledger:
+[impl log](../plans/project-context-attachments.impl.md); implementer reports:
+[reports](../plans/project-context-attachments.reports.md). Docs:
+[server/docs/api-contracts.md](../../server/docs/api-contracts.md#project-context-attachments),
+[server/docs/architecture.md](../../server/docs/architecture.md#project-context-attachments-modulescontext-attachments),
+[server/README.md](../../server/README.md#project-context-attachments-routes),
+[reviewer-core/docs/pipeline.md](../../reviewer-core/docs/pipeline.md),
+[client/README.md](../../client/README.md#context-tabs-attachments).
+
+Test paths: `S:` = `server/test/`, `R:` = `reviewer-core/test/`, `CA:` =
+`client/src/components/context-attachments/`, `AG:` =
+`client/src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/`,
+`SK:` = `client/src/app/skills/_components/SkillsView/_components/SkillEditor/_components/ContextTab/`,
+`DR:` = `client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/`,
+`PC:` = `client/src/app/repos/[repoId]/context/_components/ProjectContextView/`.
+Tests marked "not run" are `*.it.test.ts` files that were written and
+type-checked but never executed (they need Docker or CI).
+
+| Requirement | Plan | Tests |
+|---|---|---|
+| AC-1, AC-2 | S18, S19, S20 | T13, T15, T16 (`CA:AttachList`, `AG:ContextTab.test.tsx`, `SK:ContextTab.test.tsx`) |
+| AC-3, AC-4 | S6, S11, S12, S16, S18 | T13, T15 (PUT body is the full list across repos); server halves T6, T9 not run |
+| AC-5, AC-6 | S18 | T13 (`CA:AttachList/AttachList.test.tsx`: pending, "Saved" in `role=status`, revert + Retry) |
+| AC-7 | S6 | T6 not run (version bump, snapshot, v1 backfill); checked live on an isolated stack |
+| AC-8 | S1, S11, S12 | T1, T8 (`S:project-context-contracts`, `S:context-attachments-service`); 422 matrix T9 not run, checked live |
+| AC-9 | S7 | T8; T6, T9 not run; checked live (skill version unchanged) |
+| AC-10 | S11, S20 | T8, T16 |
+| AC-11, AC-12 | S10, S11, S19 | T7, T8, T15 (`S:context-attachments-helpers`) |
+| AC-13, AC-14 | S10, S18 | T7, T14 (`CA:BudgetMeter`), T15 |
+| AC-15, AC-16 | S11, S18 | T8, T13 |
+| AC-17 | S4 | T2 (`R:project-context.test.ts`), T4 (`S:prompt-callers`, `S:prompt-structured`) |
+| AC-18 | S8, S14 | T5 (`S:project-context-service`: `readBlob` by `blobOid`, no working-tree read), T10; integration half T11 not run |
+| AC-19, AC-20, AC-21 | S10, S11, S14 | T7, T8, T10 (`S:run-executor-project-context`) |
+| AC-22 | S10 | T7 (greedy continue after `over_budget`) |
+| AC-23 | S8 | T5; `symlink` unreachable, see Decisions; the integration case the plan lists for T11 is missing |
+| AC-24 | S11, S14 | T8, T10; integration half not run |
+| AC-25 | S4 | T2 |
+| AC-26 | S4, S14 | T2, T10 (messages identical when `specs` is not passed) |
+| AC-27 | S10, S14 | T7, T10 |
+| AC-28 | S10, S14 | T7, T10; known limit (see Known limits) |
+| AC-29 | S14 | T10 (path only, never the value); known limit |
+| AC-30, AC-31 | S1, S14 | T1, T10 (including a cancelled map-reduce run); integration half T11 not run |
+| AC-32, AC-35, AC-36, AC-37 | S17, S21 | T17 (`DR:RunTraceDrawer.test.tsx`) |
+| AC-33, AC-34 | S21 | T18 (`DR:_components/PromptModalBody/PromptModalBody.test.tsx`); focus handling: `DR:_components/PromptBlock/PromptBlock.test.tsx` |
+| AC-38, AC-39 | S8, S22 | T5, T19 (`PC:ProjectContextView.test.tsx`); integration half T9 not run |
+| EC-1 to EC-6, EC-9, EC-10 | S18, S19 | T13, T15; EC-10 also T8 |
+| EC-7 | S10, S18 | T7, T14 |
+| EC-8 | S8, S18 | T5, T13 |
+| EC-11 | S11, S20 | T8, T16 |
+| EC-12, EC-14 | S21 | T17 |
+| EC-13 | S21 | T18 (200-document block; the ~48,000-character jump list was not checked live) |
+| EC-15, EC-16 | S22 | T19 (12 users stay complete and scrollable) |
+| EC-17 | S10 | T7 |
+| EC-18 | S6, S11, S16 | T8; T6, T9 not run; checked live (identical list does not bump, reorder does) |
+| EC-19, EC-20 | S14 | T10 (`resolveForRun` called once per agent run) |
+| EC-21 | S14 | T10 (the "failure after resolution, before the engine" case cannot occur; nothing runs between them) |
+| EC-22, EC-23 | S4, S21 | T2; `DR:_components/PromptModalBody/PromptModalBody.test.tsx` (a forged `### fake` inside a document never enters the jump list) |
+| EC-24 | S11, S14 | T8, T10 |
+| EC-25 | S3 | T6 not run (cascade) |
+| EC-26 | S14 | T11 not run; it lacks the MCP-route case the plan lists |
+| NFR-1 | S6, S8 | T9, T11 not run; no timing measured |
+| NFR-2 | S4, S14 | T3 (`R:run.test.ts`), T10; read per LLM call (see Decisions) |
+| NFR-3 | S1, S10, S11 | T1, T2, T7, T8 |
+| NFR-4 | S3, S6, S14 | T8, T10; restart and integration halves T6, T9 not run |
+| NFR-5 | S4, S11, S14 | T2, T8, T10 |
+| NFR-6 | S17, S18, S21 | Manual pass only, partly done (see Verification status) |
+| NFR-7 | S4, S14 | T10 (no document text in the logger) |
+| NFR-8 | S1, S2 | T1 (a trace without the field parses), T10, T17 |
+| NFR-9 | S17 | T17; `rg '<untrusted' client/messages/en` finds nothing |
+
+### Verification status
+
+- Full checks all exit 0 at the last fingerprint (impl log, "full checks after
+  F4/F5"): contracts sync (3 copies), server lint/typecheck/`arch:check`
+  (0 errors, 7 pre-existing warnings) and 425 unit tests, client 222,
+  reviewer-core 40, mcp-server 26. The plan-verifier reported 0 unmet rows.
+- **Never run:** the integration halves in `S:context-attachments-store.it.test.ts`
+  (T6), `S:context-attachments.it.test.ts` (T9),
+  `S:project-context-run.it.test.ts` (T11) and the changed
+  `S:project-context.it.test.ts`. T11 lacks the AC-23, NFR-1 and MCP-route
+  cases the plan lists.
+- Manual API and UI checks ran on an isolated stack (ephemeral Postgres, API
+  `:3111`, web `:3110`); the list is in the impl log, "manual verification".
+  Migrations 0016 and 0017 applied cleanly to an empty database.
+- **NFR-6 is only partly done:** no axe scan, no contrast measurement, no
+  screen-reader run. Keyboard use (Move buttons, Space on a checkbox), names,
+  targets and the status region were exercised live.
+- **A real review run was not exercised** (it needs an LLM key): the Live log
+  lines, `× N calls` and real injection were not seen; the trace shown in the
+  drawer was constructed.
+- **Not re-verified live:** drag-and-drop with a mouse, and the F4 fix (focus
+  handling of the fullscreen dialog): the automation tab was hidden, so timers
+  were throttled. The fix is covered by 3 new tests in `PromptBlock.test.tsx`.
+
+### Decisions
+
+Questions answered before implementation (plan, *Рішення щодо вимог*):
+
+- **Q1 (a), NFR-2 reading.** The approved NFR-2 text is unchanged. It is read
+  as "at most 8,000 estimated input tokens **per LLM call**": in map-reduce the
+  block goes into every chunk's prompt, and the Live log line adds "× N calls"
+  when N > 1. The added cost in map-reduce is therefore up to 8,000 tokens times
+  the number of files and is visible but not capped.
+- **Q2 (a).** `PUT` sends the full list; `GET` returns `own` for all
+  repositories; totals, `inherited` and `over_budget` are computed for
+  `?repo_id=`, which is now required on `PUT` too. The body is `.strict()`.
+- **Q3 (a).** A run reads catalog rows at `scanned_sha` and then
+  `readBlob(blobOid, 64 KB)`, never the working tree. `symlink` stays in the
+  skip-reason enum but is unreachable on this path because the scan already
+  excludes symlinks, so AC-23's `symlink` case cannot occur. **SPEC Q-2 is
+  settled:** an unreadable blob (for example a commit removed by gc) is
+  `missing` per document; only no clone, no catalog row, a database error or the
+  5 s timeout degrade the whole block (AC-24).
+- **Q4 (a).** The drawer shows the server's `project_context.total_est_tokens`
+  for the project-context block; other blocks keep the client's chars/4 estimate.
+  All are labelled "≈ estimate", the run total "actual".
+- **Q5 (a).** `empty` documents can be attached and inject as a heading plus an
+  empty untrusted wrapper.
+
+Planner decisions:
+
+| # | Decision |
+|---|---|
+| D1 | On save, only newly added `(repo, path)` pairs must exist in the catalog; a saved pair that became "Not found" may stay and be reordered. |
+| D2 | Documents dropped by the 48,000-character safeguard are traced as `skipped` / `over_budget`. |
+| D3 | `InheritedDoc.skill_inactive_reason` (`disabled` or `unsafe`) is added; it is not in the spec's field list. |
+| D4 | Preview is a link to `/repos/:repoId/context?doc=<path>`, not a second preview component. |
+| D5 | `total_est_tokens` and `serialized_est_tokens` are sums of catalog estimates, not a count of the rendered text (headers and wrappers are not counted, hence "≈"). |
+| D6 | `ContextDoc.used_by` is always an object for catalog documents; empty arrays mean "Not used". |
+| D7 | `AgentVersionConfig.context_docs` (`.nullish()`) so a version snapshot shows an attachment change. |
+| D8 | `renderProjectContext` returns the full block (header and marker included); it is what `prompt_assembly.specs` and `serialized` store. |
+| D9 | The server computes N calls with the engine's exported `selectReviewMode`. |
+| D10 | An agent with no attachments for the PR repository logs "Project context: 0 docs, ≈0 tokens", stores `project_context: null` and `specs_read: []`, and builds an unchanged prompt. |
+| D11 | The reorder and toggle helpers are copied into `components/context-attachments/helpers.ts`, not imported from `app/`. |
+
+### Accepted deviations
+
+- The plan missed two page-level `VALID_TABS` lists
+  (`client/src/app/agents/[id]/page.tsx:15`,
+  `client/src/app/skills/_components/SkillsView/constants.ts:4`). Without
+  `context` in them the tab and every "Used by" link fell back to Config; both
+  were fixed in the main session.
+- The skill editor's Context tab is second (after Config), as in the design; it
+  was first appended as the last tab. `SkillsView/constants.test.ts` pins this.
+- `S:prompt-structured.test.ts` still passed `specs` as `string[]` and was
+  adjusted (the plan named only `prompt-callers.test.ts`; `test/**` is not
+  type-checked). `S:project-context.it.test.ts` had a `used_by === null`
+  assertion that D6 made false and was adjusted.
+- `SkillContextView` also carries `budget_tokens`, `total_est_tokens` and
+  `over_budget`; `PUT` requires `?repo_id=` (422 without it).
+- Review ledger: F1, F2, F3, F6 and F7 were accepted by the user as disputed
+  or skipped suggestions (F3 is a precedent import of `BlobTooLargeError`; F2:
+  the failure-trace lists documents as injected once resolution ran, which the
+  code ordering makes correct); F4 (fullscreen dialog focus) and F5 (long
+  paths) were fixed.
+
+### Known limits
+
+- AC-28 compares only `diff.files[].path`, so a rename or deletion of an
+  attached document in the PR produces no note: the diff carries no old path.
+- AC-29 notes cover only secret-flagged documents that survived the 48,000
+  character fit.
+- The editor's `would_skip` uses the token plan, while the engine's
+  48,000-character cap drops from the end (F1, disputed; matches AC-25): a very
+  character-dense document can look like it fits in the editor and be dropped at
+  run time.
+- `serialized_est_tokens` is the sum of catalog estimates, not a count of the
+  rendered text.
+- `GET` with an unknown `repo_id` returns `200` with an empty view; the spec
+  requires `404` only for a missing agent or skill.
+- A first `GET` or `PUT` view can start a catalog scan, and new paths get `422`
+  until it finishes.
+- On the 5 s timeout the underlying resolve is not cancelled.
+- The fullscreen prompt dialog has its own focus handling (`useModalFocus`).
+  The vendored shared `Modal` is unchanged, so the other dialogs built on it
+  still lack Escape and focus handling (known gap, not fixed).
+- The pre-existing `POST /repos/:id/resync` workspace-ownership gap is not
+  fixed here (plan, *Review handoff → Security*).
+- If the fixed SHA becomes unreadable (gc or re-shallow), the affected
+  documents show as `missing` per document (Q3); this path was not exercised.
+
+### Migration
+
+`0017_rich_korg.sql` adds `agent_context_docs` and `skill_context_docs`
+(PK `(agent_id | skill_id, repo_id, path)`, cascade foreign keys to
+agents/skills, repos and workspaces, **no** foreign key to `context_docs`, so a
+rescan cannot delete a selection). It is never applied on boot: run
+`pnpm -C server db:migrate`.

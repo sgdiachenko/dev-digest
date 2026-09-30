@@ -34,20 +34,22 @@
       "memoryPulled": "Memory pulled",
       "specsRead": "Specs read",
       "items": "{count, plural, one {# item} other {# items}}",
-      "none": "none"
+      "none": "none",
+      "specsAt": "at {sha}"
     },
     "stat": {
       "duration": "DURATION",
       "tokens": "TOKENS",
       "cost": "COST",
-      "findings": "FINDINGS"
+      "findings": "FINDINGS",
+      "tokensActual": "actual"
     },
     "prompt": {
       "system": "System",
       "skills": "Skills (dynamic)",
       "memory": "Memory (dynamic)",
       "repoMap": "Repo skeleton — repo-intel (dynamic)",
-      "specs": "Project context (dynamic)",
+      "specs": "Project context — attached specs (untrusted)",
       "callers": "Callers of changed symbols — repo-intel (dynamic)",
       "intent": "Derived intent (dynamic)",
       "user": "User / diff (dynamic)",
@@ -55,12 +57,26 @@
       "fullscreen": "Open fullscreen",
       "search": "Search in this block…",
       "noMatches": "No matches for “{q}”.",
-      "tokensEstimate": "~{count} tokens"
+      "estimate": "≈ {count, number} tokens · estimate",
+      "estimateTooltip": "Tokenizer estimate — can differ by 10–30 % depending on the model"
     },
     "tools": {
       "args": "args",
       "result": "result",
       "previewTruncated": "(preview truncated)"
+    },
+    "projectContext": {
+      "skipped": "{count, plural, one {# document skipped} other {# documents skipped}}",
+      "jumpTo": "Jump to {path}",
+      "jumpList": "Documents in this prompt",
+      "reason": {
+        "duplicate": "duplicate",
+        "missing": "not found at this commit",
+        "symlink": "symlink",
+        "too_large": "too large",
+        "unreadable": "unreadable",
+        "over_budget": "over budget"
+      }
     }
   },
   "drawer": {
@@ -70,7 +86,7 @@
     "running": "running",
     "completed": "completed",
     "copyRawOutput": "Copy raw output",
-  "copied": "Copied!",
+    "copied": "Copied!",
     "tracePending": "Trace is written when the run completes — see the Live log tab.",
     "loadingTrace": "Loading trace…",
     "noTrace": "No trace available yet."

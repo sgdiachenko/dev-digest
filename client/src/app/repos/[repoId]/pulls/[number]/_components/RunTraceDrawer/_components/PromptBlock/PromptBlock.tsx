@@ -6,7 +6,9 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Icon, Modal } from "@devdigest/ui";
 import { s } from "../../styles";
+import type { SkippedDoc } from "../../helpers";
 import { PromptModalBody } from "../PromptModalBody";
+import { useModalFocus } from "./useModalFocus";
 
 const miniBtnStyle: React.CSSProperties = {
   display: "inline-flex",
@@ -25,6 +27,8 @@ export function PromptBlock({
   text,
   color,
   tokens,
+  tooltip,
+  modalExtras,
 }: {
   label: string;
   text: string;
@@ -32,11 +36,17 @@ export function PromptBlock({
   /** Rough per-block token estimate (helpers.estimateTokens) — omitted when
    *  the block is empty, so an absent optional slot shows no count at all. */
   tokens?: number;
+  /** Hover text for the token estimate label. */
+  tooltip?: string;
+  /** Project-context extras for the fullscreen body (jump list + skipped docs). */
+  modalExtras?: { headings?: string[]; skipped?: SkippedDoc[] };
 }) {
   const t = useTranslations("runs");
   const [open, setOpen] = React.useState(false);
   const [full, setFull] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  useModalFocus(full, () => setFull(false), bodyRef);
   const copy = () => {
     void navigator.clipboard?.writeText(text || "");
     setCopied(true);
@@ -48,8 +58,8 @@ export function PromptBlock({
         <span style={s.promptDot(color)} />
         <span style={s.promptLabel}>{label}</span>
         {!!tokens && (
-          <span className="tnum" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {t("trace.prompt.tokensEstimate", { count: tokens })}
+          <span className="tnum" title={tooltip} style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {t("trace.prompt.estimate", { count: tokens })}
           </span>
         )}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
@@ -98,7 +108,9 @@ export function PromptBlock({
             </Button>
           }
         >
-          <PromptModalBody text={text} />
+          <div ref={bodyRef}>
+            <PromptModalBody text={text} headings={modalExtras?.headings} skipped={modalExtras?.skipped} />
+          </div>
         </Modal>
       )}
     </div>

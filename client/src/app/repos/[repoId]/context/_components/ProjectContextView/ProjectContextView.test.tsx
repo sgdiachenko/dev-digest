@@ -42,7 +42,7 @@ vi.mock("@/lib/hooks/context", () => ({
 }));
 
 function doc(path: string, category: ContextDoc["category"] = "docs"): ContextDoc {
-  return { path, category, size: 100, est_tokens: 25, status: "ok", secret_warning: false, used_by: null };
+  return { path, category, size: 100, est_tokens: 25, status: "ok", secret_warning: false, used_by: { agents: [], skills: [] } };
 }
 
 function catalogOf(o: Partial<ContextCatalog>): ContextCatalog {
@@ -212,5 +212,48 @@ describe("ProjectContextView — preview", () => {
   it("prompts to select a document when none is chosen", () => {
     renderView();
     expect(screen.getByText("Select a document to preview it.")).toBeInTheDocument();
+  });
+});
+
+describe("ProjectContextView — used by", () => {
+  it("shows 'Not used' for an unattached doc, a summary + link list for used ones, Esc returns focus", () => {
+    const used: ContextDoc = {
+      ...doc("alpha/a.md", "specs"),
+      used_by: { agents: [{ id: "a1", name: "Reviewer" }], skills: [{ id: "s1", name: "Security" }, { id: "s2", name: "Perf" }] },
+    };
+    ready(catalogOf({ files: [doc("zeta/b.md"), used, { ...doc("c.md"), used_by: null }] }));
+    renderView();
+    expect(screen.getByText("Not used")).toBeInTheDocument();
+    expect(screen.getByText("Usage unavailable")).toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "Used by 1 agent · 2 skills" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link")).toBeNull();
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Reviewer" })).toHaveAttribute("href", "/agents/a1?tab=context");
+    expect(screen.getByRole("link", { name: "Perf" })).toHaveAttribute("href", "/skills/s2?tab=context");
+
+    const link = screen.getByRole("link", { name: "Security" });
+    link.focus();
+    fireEvent.keyDown(link, { key: "Escape" });
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("lists every user of a widely used document in a scrollable list (EC-16)", () => {
+    const agents = Array.from({ length: 12 }, (_, i) => ({ id: `a${i}`, name: `Agent ${i}` }));
+    const widely: ContextDoc = { ...doc("shared.md", "docs"), used_by: { agents, skills: [] } };
+    ready(catalogOf({ files: [widely] }));
+    renderView();
+    const trigger = screen.getByRole("button", { name: "Used by 12 agents · 0 skills" });
+    fireEvent.click(trigger);
+    expect(screen.getAllByRole("link")).toHaveLength(12);
+    expect(screen.getByRole("link", { name: "Agent 11" })).toHaveAttribute("href", "/agents/a11?tab=context");
+    // the list is the trigger's controlled region and is height-limited and scrollable
+    const list = document.getElementById(trigger.getAttribute("aria-controls") as string) as HTMLElement;
+    expect(list).toHaveStyle({ overflowY: "auto" });
+    expect(list.style.maxHeight).not.toBe("");
   });
 });

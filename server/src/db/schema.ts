@@ -26,6 +26,7 @@ export * from './schema/runs';
 export * from './schema/ops';
 export * from './schema/repo-intel';
 export * from './schema/project-context';
+export * from './schema/context-attachments';
 
 import { users, workspaces, workspaceMembers, settings } from './schema/core';
 import { repos } from './schema/repos';
@@ -47,6 +48,7 @@ import {
   repoMapCache,
 } from './schema/repo-intel';
 import { contextCatalogs, contextDocs } from './schema/project-context';
+import { agentContextDocs, skillContextDocs } from './schema/context-attachments';
 
 /** Convenience: the full schema object for drizzle() client typing. */
 export const schema = {
@@ -94,4 +96,6 @@ export const schema = {
   repoMapCache,
   contextCatalogs,
   contextDocs,
+  agentContextDocs,
+  skillContextDocs,
 };

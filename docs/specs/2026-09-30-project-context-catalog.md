@@ -358,9 +358,9 @@ The plan's step and test ids are S# / T#.
 
 ### Known limits
 
-- `used_by` is always `null` until
+- `used_by` was always `null` until
   [2026-09-30-project-context-attachments](2026-09-30-project-context-attachments.md)
-  (approved, not implemented) lands.
+  landed; it is now an object of direct attachments.
 - Migration `0016_famous_spot.sql` (`context_catalogs`, `context_docs`) is never
   applied on boot; run `pnpm -C server db:migrate` by hand.
 - Left as-is, not defects of this change (impl log, "manual findings"): Markdown

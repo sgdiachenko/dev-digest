@@ -27,7 +27,7 @@ pnpm exec vitest run .it.test                       # integration (real Postgres
 - `src/modules/<name>/` — one Fastify plugin per domain (`routes.ts` +
   service), registered statically in `src/modules/index.ts`: `repos`,
   `pulls`, `polling`, `reviews`, `agents`, `repo-intel`, `project-context`,
-  `settings`, `workspace`
+  `context-attachments`, `settings`, `workspace`
 - `src/platform/container.ts` — DI container; services depend on adapter
   *ports*, never concrete adapters
 - `src/adapters/` — port implementations (`llm`, `github`, `git`, `astgrep`,
@@ -79,6 +79,7 @@ pnpm exec vitest run .it.test                       # integration (real Postgres
 ## Read When
 
 - **Understanding DI flow, adapters, or the request lifecycle** → [docs/architecture.md](docs/architecture.md)
+- **Changing how attached Project Context documents reach a run** → [docs/architecture.md](docs/architecture.md#project-context-attachments-modulescontext-attachments)
 - **Adding/changing a route or SSE stream** → [docs/api-contracts.md](docs/api-contracts.md)
 - **Tracing what "run a review" guarantees** → [specs/review-flow.md](specs/review-flow.md)
 - **Hit unexpected behavior here** → [INSIGHTS.md](INSIGHTS.md)

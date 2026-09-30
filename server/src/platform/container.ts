@@ -37,6 +37,7 @@ import { BlastService } from '../modules/blast/service.js';
 import { PrHistoryService } from '../modules/pr-history/service.js';
 import { ProjectContextRepository } from '../modules/project-context/repository.js';
 import { ProjectContextService } from '../modules/project-context/service.js';
+import { ContextAttachmentsService } from '../modules/context-attachments/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
@@ -94,6 +95,7 @@ export class Container {
   private _blastService?: BlastService;
   private _prHistoryService?: PrHistoryService;
   private _projectContext?: ProjectContextService;
+  private _contextAttachments?: ContextAttachmentsService;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -174,6 +176,7 @@ export class Container {
       this.git,
       this.skillsRepo,
       this.intentService(),
+      this.contextAttachments,
       this.config.promptLog,
     );
     return new ReviewService(this.reviewRepo, this.agentsRepo, this.runBus, executor);
@@ -241,6 +244,15 @@ export class Container {
       this.git,
       this.tokenizer,
       this.jobs,
+    ));
+  }
+
+  /** Project Context attachments (agents / skills ↔ catalog documents). Memoized, like its catalog. */
+  get contextAttachments(): ContextAttachmentsService {
+    return (this._contextAttachments ??= new ContextAttachmentsService(
+      this.agentsRepo,
+      this.skillsRepo,
+      this.projectContext,
     ));
   }
 

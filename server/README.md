@@ -91,6 +91,9 @@ flowchart TB
   subgraph ProjectContext["Project Context"]
     projectContext["project-context<br/>GET /repos/:id/context · GET /repos/:id/context/file<br/>POST /repos/:id/context/rescan · job project-context-scan"]
   end
+  subgraph Attachments["Project Context attachments"]
+    contextAttachments["context-attachments<br/>GET|PUT /agents/:id/context?repo_id=<br/>GET|PUT /skills/:id/context?repo_id="]
+  end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]
     workspace["workspace<br/>/workspace"]
@@ -116,6 +119,53 @@ The `project-context-scan` job (`CONTEXT_SCAN_JOB_KIND`,
 (`modules/repo-intel/service.ts:168-174`). Migration `0016_famous_spot.sql`
 adds `context_catalogs` and `context_docs`; it is never applied on boot, so run
 `pnpm -C server db:migrate` by hand.
+
+### Project Context attachments routes
+
+`modules/context-attachments/routes.ts:27-70`. Shapes, status codes and
+versioning rules:
+[docs/api-contracts.md](docs/api-contracts.md#project-context-attachments).
+Wiring and the run-time flow (resolve, fit, inject, trace):
+[docs/architecture.md](docs/architecture.md#project-context-attachments-modulescontext-attachments).
+Design record:
+[docs/specs/2026-09-30-project-context-attachments.md](../docs/specs/2026-09-30-project-context-attachments.md#implementation).
+
+| Route | Purpose |
+|---|---|
+| `GET /agents/:id/context?repo_id=` | The agent's attachments, the documents inherited from its linked skills, and the token budget for one repository. |
+| `PUT /agents/:id/context?repo_id=` | Replace the agent's full ordered list; bumps the agent version only if the list changed. |
+| `GET /skills/:id/context?repo_id=` | The skill's attachments plus the exact `## Project context` block they serialize to. |
+| `PUT /skills/:id/context?repo_id=` | Replace the skill's full ordered list; the skill version is unchanged. |
+
+Migration `0017_rich_korg.sql` adds `agent_context_docs` and
+`skill_context_docs` (cascade foreign keys, no foreign key to `context_docs`).
+It is never applied on boot, so run `pnpm -C server db:migrate` by hand. A run
+reads the attached documents from git objects at the catalog's `scanned_sha`
+and adds them as an untrusted `## Project context` block (at most 8,000
+estimated tokens per LLM call).
+
+#### Run-time injection flow
+
+```mermaid
+sequenceDiagram
+  participant R as ReviewRunExecutor
+  participant A as ContextAttachmentsService
+  participant C as ProjectContextCatalog
+  participant G as Git objects (scanned_sha)
+  participant E as reviewer-core
+  R->>A: resolveForRun (once per agent run, 5 s timeout)
+  A->>C: resolveDocs(paths of agent + injected skills)
+  C->>G: readBlob(blobOid, 64 KB)
+  alt no clone / no catalog / timeout / error
+    A-->>R: unavailable (Live log line, run continues)
+  else resolved
+    A-->>R: docs + trace record
+    R->>R: fitProjectContext (48,000 chars), Live log line
+    R->>E: reviewPullRequest(specs only if non-empty)
+    E-->>R: review
+    R->>R: store specs_read + project_context in the trace
+  end
+```
 
 ## Environment
 

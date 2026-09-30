@@ -88,7 +88,7 @@ d('project-context routes (Testcontainers pg)', () => {
     expect(done.scanned_sha).toBe('a'.repeat(40));
     expect(done.files.map((f) => f.path)).toEqual(['README.md', 'big.md', 'docs/b.md']);
     expect(done.files.find((f) => f.path === 'big.md')).toMatchObject({ status: 'too_large', est_tokens: null });
-    expect(done.files.every((f) => f.used_by === null)).toBe(true);
+    expect(done.files.every((f) => f.used_by?.agents.length === 0 && f.used_by?.skills.length === 0)).toBe(true);
     await app.close();
   });
 

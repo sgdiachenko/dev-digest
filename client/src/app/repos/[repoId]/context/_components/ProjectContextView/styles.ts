@@ -109,6 +109,50 @@ export const s = {
   } satisfies CSSProperties,
   rowMeta: { fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" } satisfies CSSProperties,
 
+  // UsedBy
+  usedByWrap: { position: "relative", display: "inline-block" } satisfies CSSProperties,
+  usedByButton: {
+    minHeight: 24,
+    minWidth: 24,
+    padding: "2px 6px",
+    fontSize: 12,
+    color: "var(--text-secondary)",
+    background: "transparent",
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+  } satisfies CSSProperties,
+  usedByList: {
+    position: "absolute",
+    right: 0,
+    top: "100%",
+    zIndex: 10,
+    width: 260,
+    maxHeight: 220,
+    overflowY: "auto",
+    padding: "6px 8px",
+    borderRadius: 6,
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-strong)",
+  } satisfies CSSProperties,
+  usedByHeading: {
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    color: "var(--text-muted)",
+    margin: "4px 0",
+  } satisfies CSSProperties,
+  usedByLink: {
+    display: "flex",
+    alignItems: "center",
+    minHeight: 28,
+    padding: "2px 6px",
+    fontSize: 13,
+    color: "var(--accent-text)",
+    overflowWrap: "anywhere",
+  } satisfies CSSProperties,
+
   // TokenEstimate
   tokenWrap: { position: "relative", display: "inline-block" } satisfies CSSProperties,
   token: {

@@ -46,7 +46,7 @@ The module builds a per-repository catalog of Markdown documents and serves it
 over three routes (`routes.ts:22-49`; see [api-contracts.md](api-contracts.md#project-context)).
 
 - **Port.** `ProjectContextCatalog` (`modules/project-context/types.ts:16`) is
-  the read port other modules (the future attachments feature) may use;
+  the read port other modules (`context-attachments`) use;
   `ProjectContextService` implements it (`service.ts:49`). Other modules import
   only `constants.ts` or that port surface (`no-sideways-module-imports` counts
   type imports).
@@ -63,9 +63,9 @@ over three routes (`routes.ts:22-49`; see [api-contracts.md](api-contracts.md#pr
   list and read objects at the scanned SHA, never the working tree. Symlinks,
   gitlinks, dot-directories other than `.devdigest`, and `node_modules` /
   `vendor` / `.git` are excluded; a document is capped at 64 KB and a catalog at
-  1,000 entries (`constants.ts:12-22`). `used_by` is always `null` until the
-  [attachments spec](../../docs/specs/2026-09-30-project-context-attachments.md)
-  (approved, not implemented) lands (`contracts/project-context.ts:33`).
+  1,000 entries (`constants.ts:12-22`). `used_by` is filled from
+  `ProjectContextStore.listUsage` (`repository.ts:115`, `service.ts:92`) with
+  direct attachments only; `null` still means "usage unavailable".
 - **Tokenizer port.** `Tokenizer` now lives in `vendor/shared/adapters.ts:268`
   next to the other ports; `adapters/tokenizer` keeps the implementation.
 - **Persistence.** Tables `context_catalogs` and `context_docs`
@@ -74,6 +74,95 @@ over three routes (`routes.ts:22-49`; see [api-contracts.md](api-contracts.md#pr
 - **Unreachable commit (Q-3).** If the scanned commit is gone after gc or
   re-shallow, the file route answers `404` with `reason: commit_unavailable`
   (`service.ts:115`) and the UI offers Rescan.
+
+## Project Context attachments (`modules/context-attachments/`)
+
+Lets a workspace owner pin catalog documents to an agent or a skill and injects
+them into review runs. Routes and DTOs:
+[api-contracts.md](api-contracts.md#project-context-attachments). Design record:
+[attachments spec](../../docs/specs/2026-09-30-project-context-attachments.md#implementation).
+Do not confuse the skill the attachments hang on (DB `skills` table) with
+`.claude/skills/*` (see [`../INSIGHTS.md`](../INSIGHTS.md), 2026-09 entry on the word "skills").
+
+- **Module.** `types.ts` (ports), `constants.ts` (`MAX_ATTACHMENTS = 20`,
+  `RESOLVE_TIMEOUT_MS = 5_000`), `helpers.ts` (pure: `orderRunCandidates`,
+  `planInjection`, `findDuplicates`, `touchedByDiff`, `formatContextLine`),
+  `service.ts`, `routes.ts`. Registered in `modules/index.ts:17,48`; the service
+  is a memoized container getter (`platform/container.ts:251`) because
+  `ReviewRunExecutor` and the routes must share one instance.
+- **Ports.** The service takes `AgentContextStore`, `SkillContextStore`
+  (`types.ts:35,46`, implemented by `AgentsRepository` / `SkillsRepository`) and
+  `ProjectContextCatalog`, never the container. `ReviewRunExecutor` takes the
+  read port `ProjectContextForRun` (`types.ts:80`; constructor parameter
+  `run-executor.ts:123`), which `ContextAttachmentsService` implements.
+- **Catalog port additions.** `ProjectContextCatalog.resolveDocs`
+  (`project-context/types.ts:29`, `service.ts:142`) reads documents only by
+  `blobOid` at the catalog's `scanned_sha` through `GitClient.readBlob`, never
+  the working tree. A path absent from the catalog or a failed blob read is
+  `missing` per document (SPEC Q-2 settled as per-document `missing`);
+  `symlink` stays in the skip-reason enum but is unreachable here because the
+  scan excludes symlinks. `ProjectContextStore.listUsage` joins
+  `agent_context_docs` / `skill_context_docs` for `used_by` (an accepted
+  read-join of another module's tables inside `ProjectContextRepository`).
+- **Persistence.** Migration `0017_rich_korg.sql` adds `agent_context_docs` and
+  `skill_context_docs` (`db/schema/context-attachments.ts`): PK
+  `(agent_id | skill_id, repo_id, path)`, `position`, and cascade foreign keys
+  to agents/skills, repos and workspaces. There is **no foreign key to
+  `context_docs`**, so a rescan (`replaceCatalog` deletes and reinserts every
+  row) cannot delete a selection; a vanished document shows as `missing`. The
+  migration is never applied on boot: run `pnpm -C server db:migrate`.
+- **Agent save is one transaction.** `AgentsRepository.replaceContextDocs`
+  (`agents/repository.ts:290`) locks the agent row `FOR UPDATE`, backfills a
+  missing v1 snapshot from the pre-change state (seeded agents may have none),
+  replaces the rows (`position` = index), and bumps the version and snapshots
+  (`context_docs` in `config_json`) only if the ordered list changed. The skill
+  equivalent does not touch the skill version.
+- **Validation order (`putAgent` / `putSkill`).** Owner exists (404) ->
+  duplicates (422) -> every `repo_id` resolves in the workspace through the
+  catalog (422) -> only newly added pairs must exist in the catalog (422) ->
+  replace -> return the view.
+
+### Run-time flow: resolve -> fit -> inject -> trace
+
+Diagram: [server/README.md](../README.md#run-time-injection-flow).
+
+1. **Resolve.** `ReviewRunExecutor.runOneAgent` calls `buildProjectContext`
+   (`run-executor.ts:307,531`) right after the skill blocks are built, once per
+   agent run, so the document list and SHA are fixed for that run.
+   `resolveForRun` is wrapped in `withTimeout(..., 5_000)` (`service.ts:205-207`).
+   Candidates are the agent's attachments for the PR repository, then those of
+   only the skills injected into this run, in order, deduplicated by path.
+   Whole-block failure (no clone, no catalog row, timeout, any error) yields
+   `kind: 'unavailable'` and the review continues without a block. On timeout the
+   underlying `resolveDocs` is not cancelled.
+2. **Fit.** `planInjection` keeps documents greedily within 8,000 estimated
+   tokens (`PROJECT_CONTEXT_BUDGET_TOKENS`, `repo-intel/constants.ts:68`),
+   skipping an oversized document as `over_budget` and continuing. The server
+   then applies the engine's `fitProjectContext` (48,000 characters, whole
+   documents dropped from the end); those drops are recorded as `over_budget`.
+3. **Inject.** `specs` is passed to `reviewPullRequest` only when at least one
+   document is kept (`run-executor.ts:347`), so a run with none builds a
+   byte-identical prompt. The block goes into the user message only, each
+   document in its own untrusted wrapper. In map-reduce the block is part of
+   every chunk's prompt.
+4. **Trace.** The success trace stores `specs_read` and `project_context`
+   (`run-executor.ts:422-423`); the failure/cancel trace stores them too once
+   resolution ran, and the block text only if the engine was entered
+   (`engineEntered`, `run-executor.ts:321,475-480`).
+
+The NFR-2 budget is read as at most 8,000 estimated input tokens **per LLM
+call**; with map-reduce the Live log line says `× N calls`. The Live log also
+carries `Project context: N docs, ≈T tokens`, a note per injected path that the
+PR diff also touches, and a path-only note for documents with a secret warning
+(`run-executor.ts:551-597`); none carries document text.
+
+**Known limits.** The diff-path note cannot see a rename or deletion (the diff
+has no old path). Secret notes cover only documents that survived the
+48,000-character fit. `serialized_est_tokens` and `total_est_tokens` sum catalog
+estimates, not rendered text. The editor's `would_skip` uses the token plan,
+while the engine's character cap drops from the end, so a very character-dense
+document can show as fitting in the editor yet be dropped at run time (review
+ledger F1, accepted; matches AC-25).
 
 ## Intent Layer pre-work
 

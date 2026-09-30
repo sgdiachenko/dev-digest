@@ -1,10 +1,11 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type {
   CatalogDoc,
   CatalogState,
   ContextRepo,
+  DocUsage,
   ProjectContextStore,
   ReplaceCatalogInput,
 } from './types.js';
@@ -99,6 +100,41 @@ export class ProjectContextRepository implements ProjectContextStore {
       .from(t.contextDocs)
       .where(and(eq(t.contextDocs.repoId, repoId), eq(t.contextDocs.path, path)));
     return row ? toDoc(row) : null;
+  }
+
+  async getDocs(repoId: string, paths: string[]): Promise<CatalogDoc[]> {
+    if (paths.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(t.contextDocs)
+      .where(and(eq(t.contextDocs.repoId, repoId), inArray(t.contextDocs.path, paths)));
+    return rows.map(toDoc);
+  }
+
+  /** Direct attachments only — a skill's documents are not credited to the agents linking it. */
+  async listUsage(repoId: string): Promise<Map<string, DocUsage>> {
+    const agentRows = await this.db
+      .select({ path: t.agentContextDocs.path, id: t.agents.id, name: t.agents.name })
+      .from(t.agentContextDocs)
+      .innerJoin(t.agents, eq(t.agents.id, t.agentContextDocs.agentId))
+      .where(eq(t.agentContextDocs.repoId, repoId))
+      .orderBy(asc(t.agents.name), asc(t.agents.id));
+    const skillRows = await this.db
+      .select({ path: t.skillContextDocs.path, id: t.skills.id, name: t.skills.name })
+      .from(t.skillContextDocs)
+      .innerJoin(t.skills, eq(t.skills.id, t.skillContextDocs.skillId))
+      .where(eq(t.skillContextDocs.repoId, repoId))
+      .orderBy(asc(t.skills.name), asc(t.skills.id));
+
+    const usage = new Map<string, DocUsage>();
+    const slot = (path: string): DocUsage => {
+      let u = usage.get(path);
+      if (!u) usage.set(path, (u = { agents: [], skills: [] }));
+      return u;
+    };
+    for (const r of agentRows) slot(r.path).agents.push({ id: r.id, name: r.name });
+    for (const r of skillRows) slot(r.path).skills.push({ id: r.id, name: r.name });
+    return usage;
   }
 
   async markScanning(repoId: string, workspaceId: string, startedAt: Date): Promise<void> {

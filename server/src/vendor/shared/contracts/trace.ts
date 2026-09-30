@@ -74,6 +74,35 @@ export const RunStats = z.object({
 });
 export type RunStats = z.infer<typeof RunStats>;
 
+export const ProjectContextSkipReason = z.enum([
+  'duplicate',
+  'missing',
+  'symlink',
+  'too_large',
+  'unreadable',
+  'over_budget',
+]);
+export type ProjectContextSkipReason = z.infer<typeof ProjectContextSkipReason>;
+
+export const ProjectContextTraceDoc = z.object({
+  path: z.string(),
+  source: z.enum(['agent', 'skill']),
+  skill_name: z.string().nullable(),
+  est_tokens: z.number().int().nullable(),
+  status: z.enum(['injected', 'skipped']),
+  reason: ProjectContextSkipReason.nullable(),
+});
+export type ProjectContextTraceDoc = z.infer<typeof ProjectContextTraceDoc>;
+
+/** Project Context block injected into a run; absent on runs recorded before attachments. */
+export const ProjectContextTrace = z.object({
+  sha: z.string(),
+  budget_tokens: z.number().int(),
+  total_est_tokens: z.number().int(),
+  docs: z.array(ProjectContextTraceDoc),
+});
+export type ProjectContextTrace = z.infer<typeof ProjectContextTrace>;
+
 /** The single-document trace stored in `run_traces.trace`. */
 export const RunTrace = z.object({
   config: z.object({
@@ -95,6 +124,7 @@ export const RunTrace = z.object({
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
+  project_context: ProjectContextTrace.nullish(),
   log: z.array(RunLogLine),
 });
 export type RunTrace = z.infer<typeof RunTrace>;

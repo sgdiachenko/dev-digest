@@ -120,6 +120,13 @@
       "when": 1790775104837,
       "tag": "0016_famous_spot",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790781941493,
+      "tag": "0017_rich_korg",
+      "breakpoints": true
     }
   ]
 }

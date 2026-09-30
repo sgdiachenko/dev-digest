@@ -1,5 +1,5 @@
 import type { LogLine } from "@devdigest/ui";
-import type { RunTrace } from "@devdigest/shared";
+import type { ProjectContextSkipReason, RunTrace } from "@devdigest/shared";
 
 interface RawEvent {
   t: string;
@@ -45,4 +45,55 @@ export function formatCost(usd: number | null | undefined): string {
 export function estimateTokens(text: string | null | undefined): number {
   if (!text) return 0;
   return Math.ceil(text.length / 4);
+}
+
+const HEADING_PREFIX = "### ";
+const WRAP_OPEN = '<untrusted source="spec:';
+const WRAP_CLOSE = "</untrusted>";
+
+/**
+ * Real `### <path>` headings of a rendered Project context block, as
+ * `{ line, path }` (line = index in `text.split("\n")`). Document text is
+ * untrusted and may contain its own `### …` lines, so only a heading that is
+ * directly followed by a `<untrusted source="spec:…">` wrapper counts, and
+ * everything between that wrapper and its closing tag is skipped (the server
+ * escapes a literal closing tag inside a document, so the first one ends it).
+ */
+export function projectContextHeadingLines(text: string | null | undefined): { line: number; path: string }[] {
+  if (!text) return [];
+  const lines = text.split("\n");
+  const out: { line: number; path: string }[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    if (line.startsWith(HEADING_PREFIX) && lines[i + 1]?.startsWith(WRAP_OPEN)) {
+      out.push({ line: i, path: line.slice(HEADING_PREFIX.length) });
+      i += 2;
+      while (i < lines.length && lines[i] !== WRAP_CLOSE) i++;
+    }
+    i++;
+  }
+  return out;
+}
+
+/** Document paths of the `### ` headings in a Project context block, in order. */
+export function projectContextHeadings(text: string | null | undefined): string[] {
+  return projectContextHeadingLines(text).map((h) => h.path);
+}
+
+export interface SkippedDoc {
+  path: string;
+  reason: ProjectContextSkipReason;
+}
+
+/** Documents the run resolved but did not inject, with the reason. */
+export function projectContextSkipped(trace: RunTrace): SkippedDoc[] {
+  return (trace.project_context?.docs ?? [])
+    .filter((d) => d.status === "skipped")
+    .map((d) => ({ path: d.path, reason: d.reason ?? "unreadable" }));
+}
+
+/** Short (7-char) commit sha for display. */
+export function shortSha(sha: string): string {
+  return sha.slice(0, 7);
 }

@@ -19,7 +19,7 @@ function doc(path: string, category: ContextDoc["category"]): ContextDoc {
     est_tokens: 3,
     status: "ok",
     secret_warning: false,
-    used_by: null,
+    used_by: { agents: [], skills: [] },
   };
 }
 

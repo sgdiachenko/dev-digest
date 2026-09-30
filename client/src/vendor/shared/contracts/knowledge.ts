@@ -361,6 +361,8 @@ export const AgentVersionConfig = z.object({
   ci_fail_on: CiFailOn,
   repo_intel: z.boolean(),
   skills: z.array(z.string()),
+  /** Ordered Project Context attachments at snapshot time; absent on older versions. */
+  context_docs: z.array(z.object({ repo_id: z.string(), path: z.string() })).nullish(),
 });
 export type AgentVersionConfig = z.infer<typeof AgentVersionConfig>;
 

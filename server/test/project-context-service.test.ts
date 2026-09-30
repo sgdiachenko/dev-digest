@@ -5,10 +5,12 @@ import type {
   CatalogDoc,
   CatalogState,
   ContextRepo,
+  DocUsage,
   ProjectContextStore,
   ReplaceCatalogInput,
 } from '../src/modules/project-context/types.js';
 import { MockGitClient } from '../src/adapters/mocks.js';
+import { ContextUnavailableError } from '../src/modules/project-context/types.js';
 import { NotFoundError, ConflictError } from '../src/platform/errors.js';
 import { REFRESH_JOB_KIND } from '../src/modules/repo-intel/constants.js';
 import { CONTEXT_SCAN_JOB_KIND, STALE_SCAN_MS } from '../src/modules/project-context/constants.js';
@@ -51,6 +53,13 @@ class FakeStore implements ProjectContextStore {
   }
   async getDoc(_r: string, path: string) {
     return this.docs.find((d) => d.path === path) ?? null;
+  }
+  usage = new Map<string, DocUsage>();
+  async getDocs(_r: string, paths: string[]) {
+    return this.docs.filter((d) => paths.includes(d.path));
+  }
+  async listUsage() {
+    return this.usage;
   }
   async markScanning(repoId: string, _ws: string, startedAt: Date) {
     this.state = { ...(this.state ?? blankState(repoId)), status: 'scanning', scanStartedAt: startedAt };
@@ -135,7 +144,7 @@ describe('ProjectContextService', () => {
     expect(second.scanned_sha).toBe('aaaaaaa1');
     expect(second.branch).toBe('develop');
     expect(second.files.map((f) => f.path)).toEqual(['README.md', 'docs/a.md']);
-    expect(second.files[0]).toMatchObject({ est_tokens: 50, used_by: null, status: 'ok' });
+    expect(second.files[0]).toMatchObject({ est_tokens: 50, used_by: { agents: [], skills: [] }, status: 'ok' });
     expect(counter.calls).toBe(2);
   });
 
@@ -367,5 +376,132 @@ describe('ProjectContextService', () => {
 
   it('has no LLM dependency: the constructor takes exactly store, git, tokenizer, jobs', () => {
     expect(ProjectContextService.length).toBe(4);
+  });
+
+  it('getCatalog fills used_by from direct attachments; unused documents get empty arrays (AC-38, EC-15)', async () => {
+    const store = new FakeStore();
+    await setup({ store }).service.getCatalog('w1', 'r1');
+    await settle();
+    store.usage.set('README.md', {
+      agents: [{ id: 'a1', name: 'Agent' }],
+      skills: [{ id: 's1', name: 'Skill' }],
+    });
+    const { service } = setup({ store });
+    const c = await service.getCatalog('w1', 'r1');
+    expect(c.files.find((f) => f.path === 'README.md')!.used_by).toEqual({
+      agents: [{ id: 'a1', name: 'Agent' }],
+      skills: [{ id: 's1', name: 'Skill' }],
+    });
+    expect(c.files.find((f) => f.path === 'docs/a.md')!.used_by).toEqual({ agents: [], skills: [] });
+  });
+
+  describe('resolveDocs', () => {
+    async function scanned(gitOpts: Parameters<typeof setup>[0] = {}) {
+      const ctx = setup(gitOpts);
+      await ctx.service.rescan('w1', 'r1');
+      await settle();
+      ctx.git.readBlobCalls.length = 0;
+      return ctx;
+    }
+
+    it('reads text by blob oid at the scanned sha, in the order of paths, never from the working tree (AC-18, EC-20)', async () => {
+      const { service, git } = await scanned();
+      const readFile = vi.spyOn(git, 'readFile');
+      const showFileAt = vi.spyOn(git, 'showFileAt');
+      const res = await service.resolveDocs('w1', 'r1', ['docs/a.md', 'README.md']);
+      expect(res).toMatchObject({ sha: 'bbbbbbb2', branch: 'develop' });
+      expect(res.docs.map((d) => [d.path, d.status, d.text])).toEqual([
+        ['docs/a.md', 'ok', 'abc'],
+        ['README.md', 'ok', 'hello'],
+      ]);
+      expect(res.docs[1]).toMatchObject({ estTokens: 50, secretWarning: false });
+      expect(git.readBlobCalls).toEqual([oid('2'), oid('1')]);
+      expect(readFile).not.toHaveBeenCalled();
+      expect(showFileAt).not.toHaveBeenCalled();
+    });
+
+    it('a path outside the catalog is missing and never reaches git (AC-23)', async () => {
+      const { service, git } = await scanned();
+      const res = await service.resolveDocs('w1', 'r1', ['../etc/passwd', 'gone.md']);
+      expect(res.docs.map((d) => [d.path, d.status, d.text, d.category])).toEqual([
+        ['../etc/passwd', 'missing', null, null],
+        ['gone.md', 'missing', null, null],
+      ]);
+      expect(git.readBlobCalls).toEqual([]);
+    });
+
+    it('too_large and unreadable come from the catalog without a read; empty has empty text (AC-23, EC-8)', async () => {
+      const { service, git } = await scanned({
+        git: {
+          tree: [entry('big.md', oid('3'), 70_000), entry('empty.md', oid('4'), 0), entry('bin.md', oid('5'), 2)],
+          blobs: { [oid('5')]: new Uint8Array([0xff, 0xfe]) },
+        },
+      });
+      git.readBlobCalls.length = 0;
+      const res = await service.resolveDocs('w1', 'r1', ['big.md', 'empty.md', 'bin.md']);
+      expect(res.docs.map((d) => [d.status, d.text])).toEqual([
+        ['too_large', null],
+        ['empty', ''],
+        ['unreadable', null],
+      ]);
+      expect(git.readBlobCalls).toEqual([]);
+    });
+
+    it('a blob that fails to read is missing; one that exceeds the limit at read time is too_large', async () => {
+      const { service, git } = await scanned();
+      git.readBlob = async () => {
+        throw new Error('bad object');
+      };
+      expect((await service.resolveDocs('w1', 'r1', ['README.md'])).docs[0]).toMatchObject({
+        status: 'missing',
+        text: null,
+      });
+      const { BlobTooLargeError } = await import('../src/adapters/git/show-file-at-guard.js');
+      git.readBlob = async () => {
+        throw new BlobTooLargeError(oid('1'), '(blob)', 99, 10);
+      };
+      expect((await service.resolveDocs('w1', 'r1', ['README.md'])).docs[0]).toMatchObject({
+        status: 'too_large',
+        text: null,
+      });
+    });
+
+    it('a non-UTF-8 blob is unreadable', async () => {
+      const { service, git } = await scanned();
+      git.readBlob = async () => new Uint8Array([0xc3, 0x28]);
+      expect((await service.resolveDocs('w1', 'r1', ['README.md'])).docs[0]).toMatchObject({
+        status: 'unreadable',
+        text: null,
+      });
+    });
+
+    it('re-reads once when the scan moved between the state and the rows (C19)', async () => {
+      const { service, store } = await scanned();
+      const original = store.state!;
+      const moved: CatalogState = { ...original, scannedSha: 'newsha99' };
+      let reads = 0;
+      store.getCatalogState = async () => (reads++ === 0 ? original : moved);
+      const res = await service.resolveDocs('w1', 'r1', ['README.md']);
+      expect(res.sha).toBe('newsha99');
+      expect(reads).toBeGreaterThan(2);
+    });
+
+    it('throws no_clone for an uncloned repo and no_catalog before the first scan', async () => {
+      const uncloned = setup({ store: new FakeStore({ ...REPO, clonePath: null }) });
+      await expect(uncloned.service.resolveDocs('w1', 'r1', ['README.md'])).rejects.toMatchObject({
+        name: 'ContextUnavailableError',
+        reason: 'no_clone',
+      });
+      const fresh = setup();
+      const err = await fresh.service.resolveDocs('w1', 'r1', ['README.md']).catch((e) => e);
+      expect(err).toBeInstanceOf(ContextUnavailableError);
+      expect(err.reason).toBe('no_catalog');
+      expect(fresh.git.readBlobCalls).toEqual([]);
+    });
+
+    it('404s for a repo outside the workspace', async () => {
+      const { service } = setup();
+      await expect(service.resolveDocs('other', 'r1', [])).rejects.toBeInstanceOf(NotFoundError);
+    });
   });
 });
