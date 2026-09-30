@@ -43,6 +43,7 @@ can block on their own, so a failure there saves the cost of the rest.
 
 `mermaid-diagram` and `engineering-insights` are never routed by a file glob.
 `impl` is a workflow runner (user-invoked `/impl`), not a review skill — never routed.
+[`workflow-retro`](../workflow-retro/SKILL.md) is a post-run retrospective (user-invoked `/workflow-retro`) — never routed.
 `engineering-insights` runs once at the end of a review that surfaced something
 non-obvious; `mermaid-diagram` only when the review itself needs a diagram.
 
