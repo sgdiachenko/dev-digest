@@ -25,6 +25,29 @@ describe("Project Context sidebar entry", () => {
   });
 });
 
+describe("Onboarding Tour sidebar entry", () => {
+  const workspace = NAV.find((g) => g.section === "WORKSPACE");
+  const keys = workspace?.items.map((i) => i.key) ?? [];
+  const item = workspace?.items.find((i) => i.key === "onboarding-tour");
+
+  it("sits between pulls and context with a repo-scoped href", () => {
+    expect(item?.href).toBe("/repos/:repoId/tour");
+    expect(item?.label).toBe("Onboarding Tour");
+    expect(keys.indexOf("onboarding-tour")).toBe(keys.indexOf("pulls") + 1);
+    expect(keys.indexOf("context")).toBe(keys.indexOf("onboarding-tour") + 1);
+    expect(resolveHref(item!.href, "r1")).toBe("/repos/r1/tour");
+  });
+
+  it("is active on the tour route and its sub-paths only", () => {
+    expect(activeKeyFor("/repos/x/tour")).toBe("onboarding-tour");
+    expect(activeKeyFor("/repos/x/tour/")).toBe("onboarding-tour");
+    expect(activeKeyFor("/repos/x/tour/sub")).toBe("onboarding-tour");
+    expect(activeKeyFor("/repos/x/tourist")).toBe("");
+    expect(activeKeyFor("/onboarding")).toBe("");
+    expect(activeKeyFor("/repos/x/context")).toBe("context");
+  });
+});
+
 describe("context.json copy", () => {
   it("has no <tag>-looking text (next-intl parses it as rich text)", () => {
     const strings = collectStrings(contextMessages);

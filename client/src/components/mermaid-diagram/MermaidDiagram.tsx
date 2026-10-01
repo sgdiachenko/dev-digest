@@ -19,9 +19,26 @@ function looksLikeMermaid(src: string): boolean {
  * rendering — mermaid otherwise injects a "Syntax error" bomb graphic into the
  * DOM on bad input instead of throwing. Junk/unparseable input renders nothing.
  */
-export function MermaidDiagram({ chart }: { chart: string }) {
+export function MermaidDiagram({
+  chart,
+  onInvalid,
+  bare = false,
+}: {
+  chart: string;
+  /** Called when the chart turns out not to be a renderable diagram, so the
+   *  caller can show its own fallback. */
+  onInvalid?: () => void;
+  /** Drops the built-in box (background, border, padding) for callers that frame the diagram themselves. */
+  bare?: boolean;
+}) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [state, setState] = React.useState<"pending" | "ok" | "invalid">("pending");
+  const onInvalidRef = React.useRef(onInvalid);
+  onInvalidRef.current = onInvalid;
+
+  React.useEffect(() => {
+    if (state === "invalid") onInvalidRef.current?.();
+  }, [state]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -64,10 +81,14 @@ export function MermaidDiagram({ chart }: { chart: string }) {
       style={{
         display: state === "ok" ? "flex" : "none",
         justifyContent: "center",
-        background: "var(--bg-elevated)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        padding: 12,
+        ...(bare
+          ? {}
+          : {
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: 12,
+            }),
         overflowX: "auto",
       }}
     />

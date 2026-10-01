@@ -51,6 +51,38 @@ export type { ProjectContextTrace } from "@devdigest/shared";
 export type { Review, Finding, Severity, Verdict } from "@devdigest/shared";
 export type { PrBrief, SmartDiff } from "@devdigest/shared";
 
+export type {
+  Onboarding,
+  OnboardingAvailability,
+  OnboardingIndexStatus,
+  OnboardingIndexInfo,
+  CriticalTag,
+  OnboardingStackEntry,
+  OnboardingModule,
+  OnboardingDiagram,
+  OnboardingArchitecture,
+  OnboardingCriticalItem,
+  OnboardingCriticalPaths,
+  OnboardingCommandWarning,
+  OnboardingCommand,
+  OnboardingCommandGroup,
+  OnboardingRunLocally,
+  OnboardingReadingItem,
+  OnboardingReadingPath,
+  OnboardingFirstTask,
+  OnboardingFirstTasks,
+  OnboardingSections,
+  NarrativeStatus,
+  NarrativeFailureReason,
+  NarrativeSectionKey,
+  OnboardingNarrativeFailure,
+  OnboardingNarrativeSections,
+  OnboardingNarrative,
+  OnboardingEstimatedCost,
+  NarrativeGenerateAccepted,
+  NarrativeUnavailable,
+} from "@devdigest/shared";
+
 /** UI-only view model for a PR list row (derives display fields from PrMeta). */
 export interface PrRowView {
   number: number;
