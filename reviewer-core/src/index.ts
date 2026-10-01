@@ -76,3 +76,6 @@ export {
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+
+// LLM provider errors.
+export { NoEligibleProviderError } from './llm/errors.js';

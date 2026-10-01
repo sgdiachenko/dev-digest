@@ -7,6 +7,7 @@ import type {
   StructuredRequest,
   StructuredResult,
 } from '@devdigest/shared';
+import { NoEligibleProviderError } from './errors.js';
 import { toJsonSchema, parseWithRepair } from './structured.js';
 
 /**
@@ -21,6 +22,15 @@ import { toJsonSchema, parseWithRepair } from './structured.js';
  * are stubs. Cost attribution is INJECTED (`estimateCost`) so the engine stays
  * free of a pricing table — the server passes its own, the runner passes none.
  */
+
+// The "no endpoint satisfies the request" shape is not officially documented
+// (reports: 404 "No endpoints found that can handle the requested parameters";
+// errors table: 503 "No available provider matching requirements") — so match
+// on message text, and only within plausible statuses. Unverified against a live call.
+// "requested parameters" alone also appears in ordinary bad-request messages, so it only counts
+// together with endpoint/provider wording.
+const NO_ENDPOINT_RE = /no endpoints found|\b(?:endpoints?|providers?)\b.*\brequested parameters/i;
+const NO_ENDPOINT_STATUSES = new Set([400, 404, 422, 503]);
 
 const NOT_SUPPORTED = 'OpenRouterProvider only implements completeStructured';
 
@@ -68,28 +78,54 @@ export class OpenRouterProvider implements LLMProvider {
     let lastFinish = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await this.client.chat.completions.create({
-        model: req.model,
-        messages,
-        temperature: req.temperature ?? 0,
-        ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
-        },
-        // OpenRouter session grouping — extra body field (spread is exempt from
-        // excess-property checks). Only sent when talking to OpenRouter.
-        ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
-        // OpenRouter usage accounting — ask it to return the REAL generation
-        // cost (USD) in `usage.cost`, instead of estimating from a price book.
-        ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
-      });
+      let res;
+      try {
+        res = await this.client.chat.completions.create(
+          {
+            model: req.model,
+            messages,
+            temperature: req.temperature ?? 0,
+            ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+            response_format: {
+              type: 'json_schema',
+              json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+            },
+            // OpenRouter session grouping — extra body field (spread is exempt from
+            // excess-property checks). Only sent when talking to OpenRouter.
+            ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
+            // OpenRouter usage accounting — ask it to return the REAL generation
+            // cost (USD) in `usage.cost`, instead of estimating from a price book.
+            ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
+            // Restrict routing to endpoints supporting every request parameter
+            // (notably json_schema) rather than falling back to one that doesn't.
+            ...(this.id === 'openrouter' && req.requireStructuredProviders
+              ? { provider: { require_parameters: true } }
+              : {}),
+          },
+          // Per-request overrides; only defined values so default behaviour is unchanged.
+          {
+            ...(req.httpRetries !== undefined ? { maxRetries: req.httpRetries } : {}),
+            ...(req.timeoutMs !== undefined ? { timeout: req.timeoutMs } : {}),
+          },
+        );
+      } catch (err) {
+        if (
+          err instanceof OpenAI.APIError &&
+          typeof err.status === 'number' &&
+          NO_ENDPOINT_STATUSES.has(err.status) &&
+          NO_ENDPOINT_RE.test(err.message)
+        ) {
+          throw new NoEligibleProviderError(req.model);
+        }
+        throw err;
+      }
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
       // error / moderation / free-tier limit in the body) — surface it.
       const choice = res.choices?.[0];
       if (!choice) {
         const errMsg = (res as unknown as { error?: { message?: string } }).error?.message;
+        if (errMsg && NO_ENDPOINT_RE.test(errMsg)) throw new NoEligibleProviderError(req.model);
         throw new Error(`OpenRouter returned no choices for ${req.schemaName}${errMsg ? `: ${errMsg}` : ''}`);
       }
       lastRaw = choice.message?.content ?? '';

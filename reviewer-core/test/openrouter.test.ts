@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import OpenAI from 'openai';
 import { z } from 'zod';
 import { OpenRouterProvider } from '../src/llm/openrouter.js';
 
@@ -51,5 +52,64 @@ describe('OpenRouterProvider.completeStructured', () => {
     await expect(
       provider.completeStructured({ model: 'm', messages: [], schema: Schema, schemaName: 's', maxRetries: 0 }),
     ).rejects.toThrow('finish_reason=unknown, 4 chars');
+  });
+});
+
+describe('OpenRouterProvider.completeStructured routing / retries (T32)', () => {
+  const base = { model: 'm', messages: [], schema: Schema, schemaName: 's', maxRetries: 0 } as const;
+  const ok = { content: '{"verdict":"a","score":1}', finish_reason: 'stop' };
+
+  it('sends provider.require_parameters only with the flag on openrouter', async () => {
+    const a = providerReplying([ok]);
+    await a.provider.completeStructured({ ...base, requireStructuredProviders: true });
+    expect(a.create.mock.calls[0]![0]).toMatchObject({ provider: { require_parameters: true } });
+
+    const b = providerReplying([ok]);
+    await b.provider.completeStructured({ ...base });
+    expect(b.create.mock.calls[0]![0]).not.toHaveProperty('provider');
+  });
+
+  it('passes per-request maxRetries:0 and timeout; omits them by default', async () => {
+    const a = providerReplying([ok]);
+    await a.provider.completeStructured({ ...base, httpRetries: 0, timeoutMs: 60_000 });
+    expect(a.create.mock.calls[0]![1]).toEqual({ maxRetries: 0, timeout: 60_000 });
+
+    const b = providerReplying([ok]);
+    await b.provider.completeStructured({ ...base });
+    expect(b.create.mock.calls[0]![1]).toEqual({});
+  });
+
+  it('maps a no-endpoint APIError to NoEligibleProviderError, but not other errors', async () => {
+    const a = providerReplying([ok]);
+    a.create.mockRejectedValueOnce(
+      OpenAI.APIError.generate(404, { error: { message: 'No endpoints found that can handle the requested parameters' } }, undefined, {}),
+    );
+    await expect(a.provider.completeStructured({ ...base })).rejects.toMatchObject({
+      name: 'NoEligibleProviderError',
+    });
+
+    const b = providerReplying([ok]);
+    b.create.mockRejectedValueOnce(OpenAI.APIError.generate(404, { error: { message: 'model not found' } }, undefined, {}));
+    await expect(b.provider.completeStructured({ ...base })).rejects.not.toMatchObject({
+      name: 'NoEligibleProviderError',
+    });
+  });
+
+  it('does not mistake an ordinary bad-request mentioning "requested parameters" for a missing endpoint', async () => {
+    const a = providerReplying([ok]);
+    a.create.mockRejectedValueOnce(
+      OpenAI.APIError.generate(400, { error: { message: 'Invalid value in the requested parameters: max_tokens' } }, undefined, {}),
+    );
+    await expect(a.provider.completeStructured({ ...base })).rejects.not.toMatchObject({
+      name: 'NoEligibleProviderError',
+    });
+  });
+
+  it('maps an HTTP-200 no-choices body with the no-endpoint message', async () => {
+    const a = providerReplying([ok]);
+    a.create.mockResolvedValueOnce({ error: { message: 'No endpoints found for x' } } as never);
+    await expect(a.provider.completeStructured({ ...base })).rejects.toMatchObject({
+      name: 'NoEligibleProviderError',
+    });
   });
 });
