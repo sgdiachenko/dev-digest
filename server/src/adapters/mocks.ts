@@ -23,6 +23,8 @@ import type {
   BlameLine,
   GitCommit,
   GitTreeEntry,
+  GitGrepMatch,
+  GitGrepOptions,
   CodeIndex,
   CodeMatch,
   CodeSymbol,
@@ -35,6 +37,7 @@ import type {
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
 import {
+  assertSafeGrepArgs,
   assertSafeOid,
   assertSafeRef,
   assertSafeShowFileAtArgs,
@@ -283,6 +286,9 @@ export interface MockGitOptions {
   blobs?: Record<string, string | Uint8Array>;
   readBlobError?: Error;
   listTreeError?: Error;
+  /** `grepAt` hits (any sha/pattern); unset ⇒ `[]`. Honours `maxResults`. */
+  grep?: GitGrepMatch[];
+  grepError?: Error;
   /** `sync()` rejects with this when set. */
   syncError?: Error;
 }
@@ -291,6 +297,7 @@ export class MockGitClient implements GitClient {
   public cloned: { repo: RepoRef; url: string }[] = [];
   public syncs: { repo: RepoRef; branch: string }[] = [];
   public readBlobCalls: string[] = [];
+  public grepCalls: { sha: string; patterns: string[]; opts?: GitGrepOptions }[] = [];
   private syncedHead?: string;
 
   constructor(private opts: MockGitOptions = {}) {}
@@ -355,6 +362,18 @@ export class MockGitClient implements GitClient {
       throw new BlobTooLargeError(oid, '(blob)', bytes.byteLength, maxBytes);
     }
     return bytes;
+  }
+  async grepAt(
+    _repo: RepoRef,
+    sha: string,
+    patterns: string[],
+    opts?: GitGrepOptions,
+  ): Promise<GitGrepMatch[]> {
+    assertSafeGrepArgs(sha, patterns, opts?.pathspecs);
+    this.grepCalls.push({ sha, patterns, ...(opts ? { opts } : {}) });
+    if (this.opts.grepError) throw this.opts.grepError;
+    const hits = this.opts.grep ?? [];
+    return opts?.maxResults != null ? hits.slice(0, Math.max(0, opts.maxResults)) : hits;
   }
 }
 

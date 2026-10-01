@@ -23,6 +23,8 @@ import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
+import { wrapUntrusted } from './prompt.js';
+import { loadPromptTemplate } from './prompts.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
 import { RepoRepository } from '../modules/repos/repository.js';
@@ -37,6 +39,9 @@ import { BlastService } from '../modules/blast/service.js';
 import { PrHistoryService } from '../modules/pr-history/service.js';
 import { ProjectContextRepository } from '../modules/project-context/repository.js';
 import { ProjectContextService } from '../modules/project-context/service.js';
+import { OnboardingRepository } from '../modules/onboarding/repository.js';
+import { OnboardingService } from '../modules/onboarding/service.js';
+import { OnboardingNarrativeService } from '../modules/onboarding/narrative-service.js';
 import { ContextAttachmentsService } from '../modules/context-attachments/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
@@ -96,6 +101,8 @@ export class Container {
   private _prHistoryService?: PrHistoryService;
   private _projectContext?: ProjectContextService;
   private _contextAttachments?: ContextAttachmentsService;
+  private _onboarding?: OnboardingService;
+  private _onboardingNarrative?: OnboardingNarrativeService;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -244,6 +251,39 @@ export class Container {
       this.git,
       this.tokenizer,
       this.jobs,
+    ));
+  }
+
+  /**
+   * Onboarding tour (deterministic facts). Memoized: the facts cache and single-flight map live
+   * in the service. The narrative overlay is a lazy closure: `onboardingNarrative` needs this
+   * service for its facts, so resolving it eagerly here would be a construction cycle.
+   */
+  get onboarding(): OnboardingService {
+    return (this._onboarding ??= new OnboardingService(
+      new OnboardingRepository(this.db),
+      this.repoIntel,
+      this.git,
+      { forTour: (...args) => this.onboardingNarrative.forTour(...args) },
+    ));
+  }
+
+  /**
+   * Onboarding AI narrative. Memoized: its single-flight map and rate-limit windows are
+   * per-instance, so the route and the `GET /tour` overlay must share one.
+   */
+  get onboardingNarrative(): OnboardingNarrativeService {
+    return (this._onboardingNarrative ??= new OnboardingNarrativeService(
+      new OnboardingRepository(this.db),
+      this.onboarding,
+      this.repoIntel,
+      this.git,
+      (provider) => this.llm(provider),
+      (workspaceId) => resolveFeatureModel(this, workspaceId, 'onboarding'),
+      (model, tokensIn, tokensOut) => this.priceBook.estimate(model, tokensIn, tokensOut),
+      (text) => this.tokenizer.count(text),
+      wrapUntrusted,
+      () => loadPromptTemplate('onboarding.system.md'),
     ));
   }
 

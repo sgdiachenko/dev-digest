@@ -34,6 +34,7 @@ import type {
   BlastChangedSymbol,
   BlastResult,
   FileRankRow,
+  GraphFacts,
   IndexResult,
   IndexState,
   RefRow,
@@ -713,6 +714,28 @@ export class RepoIntelService implements RepoIntel {
       paths.push(chain);
     }
     return paths;
+  }
+
+  /**
+   * Whole-repo edges + ranks + file facts (onboarding tour). Flag off → empty
+   * arrays. Reads three tables without a transaction: a concurrent full
+   * reindex is not atomic, so callers must tolerate a momentarily mixed view.
+   */
+  async getGraphFacts(repoId: string): Promise<GraphFacts> {
+    if (!this.deps.config.repoIntelEnabled) return { edges: [], ranks: [], fileFacts: [] };
+    const [edgeRows, ranks, fileFacts] = await Promise.all([
+      this.repo.getEdges(repoId),
+      this.repo.getAllFileRank(repoId),
+      this.repo.getAllFileFacts(repoId),
+    ]);
+    const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    return {
+      edges: edgeRows
+        .map((e) => ({ from: e.fromFile, to: e.toFile }))
+        .sort((a, b) => cmp(a.from, b.from) || cmp(a.to, b.to)),
+      ranks: [...ranks].sort((a, b) => cmp(a.path, b.path)),
+      fileFacts: [...fileFacts].sort((a, b) => cmp(a.path, b.path)),
+    };
   }
 }
 

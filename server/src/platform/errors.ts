@@ -45,3 +45,9 @@ export class ConfigError extends AppError {
     super('config_error', message, 500, details);
   }
 }
+
+export class TooManyRequestsError extends AppError {
+  constructor(message = 'Too many requests', details?: unknown) {
+    super('rate_limited', message, 429, details);
+  }
+}

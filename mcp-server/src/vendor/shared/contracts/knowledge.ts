@@ -26,23 +26,266 @@ export const Conformance = z.object({
 export type Conformance = z.infer<typeof Conformance>;
 
 // ---- Onboarding ----
-export const OnboardingLink = z.object({
-  label: z.string(),
-  path: z.string(),
-});
-export type OnboardingLink = z.infer<typeof OnboardingLink>;
+// Facts tour (deterministic) plus an optional AI narrative overlay.
+export const OnboardingAvailability = z.enum(['available', 'not_cloned', 'not_indexed']);
+export type OnboardingAvailability = z.infer<typeof OnboardingAvailability>;
 
-export const OnboardingSection = z.object({
-  kind: z.string(),
-  title: z.string(),
-  body: z.string(), // markdown
-  diagram: z.string().nullish(), // mermaid
-  links: z.array(OnboardingLink),
+export const OnboardingIndexStatus = z.enum(['full', 'partial', 'degraded', 'failed']);
+export type OnboardingIndexStatus = z.infer<typeof OnboardingIndexStatus>;
+
+export const OnboardingIndexInfo = z.object({
+  status: OnboardingIndexStatus,
+  reason: z.string().nullable(),
+  files_indexed: z.number().int().nonnegative(),
+  files_in_repo: z.number().int().nonnegative().nullable(),
+  graph_available: z.boolean(),
+  files_skipped_by_tour: z.number().int().nonnegative(),
 });
-export type OnboardingSection = z.infer<typeof OnboardingSection>;
+export type OnboardingIndexInfo = z.infer<typeof OnboardingIndexInfo>;
+
+export const CriticalTag = z.enum([
+  'entry_point',
+  'public_surface',
+  'high_fan_in',
+  'security_sensitive',
+  'data_schema',
+  'runtime_config',
+  'docs',
+]);
+export type CriticalTag = z.infer<typeof CriticalTag>;
+
+// architecture
+export const OnboardingStackEntry = z.object({
+  kind: z.enum(['ecosystem', 'package_manager', 'framework']),
+  name: z.string(),
+  evidence_path: z.string(),
+  confidence: z.enum(['verified', 'convention']),
+});
+export type OnboardingStackEntry = z.infer<typeof OnboardingStackEntry>;
+
+export const OnboardingModule = z.object({
+  path: z.string(),
+  file_count: z.number().int().nonnegative(),
+});
+export type OnboardingModule = z.infer<typeof OnboardingModule>;
+
+export const OnboardingDiagram = z.object({
+  nodes: z.array(z.object({ id: z.string(), path: z.string() })),
+  edges: z.array(
+    z.object({
+      from: z.string(),
+      to: z.string(),
+      import_count: z.number().int().nonnegative(),
+    }),
+  ),
+});
+export type OnboardingDiagram = z.infer<typeof OnboardingDiagram>;
+
+export const OnboardingArchitecture = z.object({
+  origin: z.literal('facts'),
+  summary: z.string(),
+  stack: z.array(OnboardingStackEntry),
+  modules: z.array(OnboardingModule),
+  diagram: OnboardingDiagram.nullable(),
+});
+export type OnboardingArchitecture = z.infer<typeof OnboardingArchitecture>;
+
+// critical paths
+export const OnboardingCriticalItem = z.object({
+  path: z.string(),
+  score: z.number(),
+  tags: z.array(CriticalTag),
+  route_count: z.number().int().nonnegative().nullable(),
+  importer_count: z.number().int().nonnegative().nullable(),
+});
+export type OnboardingCriticalItem = z.infer<typeof OnboardingCriticalItem>;
+
+export const OnboardingCriticalPaths = z.object({
+  origin: z.literal('facts'),
+  graph_based: z.boolean(),
+  items: z.array(OnboardingCriticalItem),
+});
+export type OnboardingCriticalPaths = z.infer<typeof OnboardingCriticalPaths>;
+
+// run locally
+export const OnboardingCommandWarning = z.object({
+  kind: z.enum(['lifecycle_hook', 'remote_code']),
+  detail: z.string(),
+});
+export type OnboardingCommandWarning = z.infer<typeof OnboardingCommandWarning>;
+
+export const OnboardingCommand = z.object({
+  id: z.string(),
+  position: z.number().int().nonnegative(),
+  phase: z.enum(['install', 'environment', 'infrastructure', 'dev', 'test']),
+  command: z.string(),
+  source_path: z.string().nullable(),
+  source_key: z.string().nullable(),
+  by_convention: z.boolean(),
+  env_names: z.array(z.string()).nullable(),
+  warnings: z.array(OnboardingCommandWarning),
+});
+export type OnboardingCommand = z.infer<typeof OnboardingCommand>;
+
+export const OnboardingCommandGroup = z.object({
+  package_path: z.string(),
+  ecosystem: z.string().nullable(),
+  commands: z.array(OnboardingCommand),
+});
+export type OnboardingCommandGroup = z.infer<typeof OnboardingCommandGroup>;
+
+export const OnboardingRunLocally = z.object({
+  origin: z.literal('facts'),
+  groups: z.array(OnboardingCommandGroup),
+});
+export type OnboardingRunLocally = z.infer<typeof OnboardingRunLocally>;
+
+// reading path
+export const OnboardingReadingItem = z.object({
+  position: z.number().int().nonnegative(),
+  path: z.string(),
+  reason: z.enum(['entry_point', 'imported_by', 'critical']),
+  imported_by_position: z.number().int().nonnegative().nullable(),
+  tags: z.array(CriticalTag),
+});
+export type OnboardingReadingItem = z.infer<typeof OnboardingReadingItem>;
+
+export const OnboardingReadingPath = z.object({
+  origin: z.literal('facts'),
+  graph_based: z.boolean(),
+  items: z.array(OnboardingReadingItem),
+});
+export type OnboardingReadingPath = z.infer<typeof OnboardingReadingPath>;
+
+// first tasks
+export const OnboardingFirstTask = z.object({
+  id: z.string(),
+  signal: z.enum(['todo_comment', 'missing_test', 'route_without_test', 'readme_missing_setup']),
+  path: z.string(),
+  path_kind: z.enum(['file', 'directory']),
+  line: z.number().int().nonnegative().nullable(),
+  complexity: z.enum(['low', 'medium']),
+});
+export type OnboardingFirstTask = z.infer<typeof OnboardingFirstTask>;
+
+export const OnboardingFirstTasks = z.object({
+  origin: z.literal('facts'),
+  items: z.array(OnboardingFirstTask),
+});
+export type OnboardingFirstTasks = z.infer<typeof OnboardingFirstTasks>;
+
+export const OnboardingSections = z.object({
+  architecture: OnboardingArchitecture,
+  critical_paths: OnboardingCriticalPaths,
+  run_locally: OnboardingRunLocally,
+  reading_path: OnboardingReadingPath,
+  first_tasks: OnboardingFirstTasks,
+});
+export type OnboardingSections = z.infer<typeof OnboardingSections>;
+
+// narrative (AI overlay)
+export const NarrativeStatus = z.enum(['generating', 'ready', 'failed']);
+export type NarrativeStatus = z.infer<typeof NarrativeStatus>;
+
+export const NarrativeFailureReason = z.enum([
+  'llm_timeout',
+  'llm_error',
+  'invalid_output',
+  'missing_key',
+  'no_structured_provider',
+  'interrupted',
+]);
+export type NarrativeFailureReason = z.infer<typeof NarrativeFailureReason>;
+
+export const NarrativeSectionKey = z.enum([
+  'architecture',
+  'critical_paths',
+  'run_locally',
+  'reading_path',
+  'first_tasks',
+]);
+export type NarrativeSectionKey = z.infer<typeof NarrativeSectionKey>;
+
+export const OnboardingNarrativeFailure = z.object({
+  reason: NarrativeFailureReason,
+  at: z.string().datetime(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+});
+export type OnboardingNarrativeFailure = z.infer<typeof OnboardingNarrativeFailure>;
+
+export const OnboardingNarrativeSections = z.object({
+  architecture: z
+    .object({ body_markdown: z.string(), diagram_mermaid: z.string().nullable() })
+    .nullable(),
+  critical_paths: z.array(z.object({ path: z.string(), description: z.string() })).nullable(),
+  run_locally: z
+    .array(
+      z.object({
+        command_id: z.string(),
+        position: z.number().int().nonnegative(),
+        note: z.string().nullable(),
+      }),
+    )
+    .nullable(),
+  reading_path: z.array(z.object({ path: z.string(), description: z.string() })).nullable(),
+  first_tasks: z
+    .array(
+      z.object({
+        task_id: z.string(),
+        title: z.string(),
+        description: z.string(),
+        complexity: z.enum(['low', 'medium']),
+      }),
+    )
+    .nullable(),
+});
+export type OnboardingNarrativeSections = z.infer<typeof OnboardingNarrativeSections>;
+
+export const OnboardingNarrative = z.object({
+  status: NarrativeStatus,
+  generation_id: z.string(),
+  source_sha: z.string().nullable(),
+  outdated: z.boolean(),
+  generated_at: z.string().datetime().nullable(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  input_tokens: z.number().int().nonnegative().nullable(),
+  output_tokens: z.number().int().nonnegative().nullable(),
+  cost_usd: z.number().nullable(),
+  last_failure: OnboardingNarrativeFailure.nullable(),
+  fallback_sections: z.array(NarrativeSectionKey),
+  sections: OnboardingNarrativeSections,
+});
+export type OnboardingNarrative = z.infer<typeof OnboardingNarrative>;
+
+export const OnboardingEstimatedCost = z.object({
+  model: z.string(),
+  approx_usd: z.number().nullable(),
+});
+export type OnboardingEstimatedCost = z.infer<typeof OnboardingEstimatedCost>;
+
+export const NarrativeGenerateAccepted = z.object({
+  status: z.literal('accepted'),
+  generation_id: z.string(),
+  already_running: z.boolean(),
+});
+export type NarrativeGenerateAccepted = z.infer<typeof NarrativeGenerateAccepted>;
+
+export const NarrativeUnavailable = z.object({
+  reason: z.literal('tour_unavailable'),
+});
+export type NarrativeUnavailable = z.infer<typeof NarrativeUnavailable>;
 
 export const Onboarding = z.object({
-  sections: z.array(OnboardingSection),
+  repo_id: z.string(),
+  availability: OnboardingAvailability,
+  source_sha: z.string().nullable(),
+  computed_at: z.string().datetime(),
+  index: OnboardingIndexInfo,
+  sections: OnboardingSections.nullable(),
+  narrative: OnboardingNarrative.nullable(),
+  estimated_cost: OnboardingEstimatedCost.nullable(),
 });
 export type Onboarding = z.infer<typeof Onboarding>;
 

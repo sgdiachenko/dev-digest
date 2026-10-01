@@ -17,7 +17,13 @@ import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import { clampIndexedName } from '../../db/schema/context.js';
-import type { DegradedReason, FileRankRow, IndexState, IndexStatus } from './types.js';
+import type {
+  DegradedReason,
+  FileRankRow,
+  GraphFacts,
+  IndexState,
+  IndexStatus,
+} from './types.js';
 
 /** Chunk size for batched inserts — same value blast already uses. */
 const INSERT_CHUNK_SIZE = 500;
@@ -530,6 +536,31 @@ export class RepoIntelRepository {
           inArray(t.references.toSymbol, names),
         ),
       );
+  }
+
+  /** Every `file_rank` row of a repo as domain `{path, rank}`. */
+  async getAllFileRank(repoId: string): Promise<GraphFacts['ranks']> {
+    return this.db
+      .select({ path: t.fileRank.filePath, rank: t.fileRank.rank })
+      .from(t.fileRank)
+      .where(eq(t.fileRank.repoId, repoId));
+  }
+
+  /** Every `file_facts` row of a repo as domain `{path, endpoints, crons}`. */
+  async getAllFileFacts(repoId: string): Promise<GraphFacts['fileFacts']> {
+    const rows = await this.db
+      .select({
+        path: t.fileFacts.filePath,
+        endpoints: t.fileFacts.endpoints,
+        crons: t.fileFacts.crons,
+      })
+      .from(t.fileFacts)
+      .where(eq(t.fileFacts.repoId, repoId));
+    return rows.map((r) => ({
+      path: r.path,
+      endpoints: (r.endpoints as string[]) ?? [],
+      crons: (r.crons as string[]) ?? [],
+    }));
   }
 
   /** Per-file facts (endpoints/crons) for the given files. */
