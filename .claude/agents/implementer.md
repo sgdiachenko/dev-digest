@@ -83,9 +83,9 @@ its short form.
 | `client/src/lib/**`, `client/src/i18n/**` | frontend-architecture |
 | `client/**/*.test.{ts,tsx}` | react-testing-library |
 | `server/src/modules/*/routes.ts`, `server/src/app.ts` | fastify-best-practices, onion-architecture, security |
-| `server/src/modules/*/service.ts`, `_shared/**`, `platform/**`, `server/src/adapters/**` | onion-architecture |
+| `server/src/modules/*/service.ts`, `server/src/modules/*/*-service.ts`, `server/src/modules/*/facts/**`, `server/src/modules/*/narrative/**`, `_shared/**`, `platform/**`, `server/src/adapters/**` | onion-architecture |
 | `reviewer-core/src/**` | onion-architecture |
-| `server/src/modules/*/repository*`, `server/src/db/**` | drizzle-orm-patterns, onion-architecture |
+| `server/src/modules/*/repository*`, `server/src/modules/*/*-repository.ts`, `server/src/db/**` | drizzle-orm-patterns, onion-architecture |
 | `server/src/db/schema*`, `server/src/db/migrations/**` | postgresql-table-design, drizzle-orm-patterns |
 | `*/src/vendor/shared/**` | zod |
 | a route, DTO, serializer or response shape | response-schema, breaking-change (+ deprecation-policy, semver-discipline when something is removed or renamed) |
