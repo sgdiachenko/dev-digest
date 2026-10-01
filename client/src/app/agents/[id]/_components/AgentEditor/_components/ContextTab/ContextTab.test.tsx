@@ -22,6 +22,7 @@ vi.mock("@/lib/hooks/context", () => ({
     h.catalogRepo = id;
     return h.catalog;
   },
+  useContextDoc: () => ({ data: { path: "a.md", category: "docs", est_tokens: 5, size: 10, status: "ok", content: "# Doc A", secret_warning: false }, isLoading: false, error: null }),
   useAgentContext: () => h.view,
   useSetAgentContext: () => ({ ...h.save, mutate: h.mutate }),
 }));
@@ -96,7 +97,12 @@ describe("Agent ContextTab", () => {
     expect(within(items[1]!).getByRole("checkbox", { name: "b.md" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "c.md" })).not.toBeChecked();
     expect(screen.getByText("≈ 20 / 8,000 tokens")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Preview a.md" })).toHaveAttribute("href", `/repos/${R1}/context?doc=a.md`);
+    // Preview opens a side drawer in place — it must not navigate away.
+    fireEvent.click(screen.getByRole("button", { name: "Preview a.md" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Doc A" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "c.md" }));
     // The other repo's attachment stays in its slot; this repo's new order fills the rest.

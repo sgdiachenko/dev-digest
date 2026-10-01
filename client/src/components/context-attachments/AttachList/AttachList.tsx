@@ -20,7 +20,7 @@ export interface AttachListProps {
   catalogRef: { branch: string | null; sha: string | null };
   onCommit: (orderedRefs: ContextAttachmentRef[]) => void;
   onRetry: () => void;
-  previewHref: (path: string) => string;
+  onPreview: (path: string) => void;
 }
 
 export function AttachList({
@@ -32,7 +32,7 @@ export function AttachList({
   catalogRef,
   onCommit,
   onRetry,
-  previewHref,
+  onPreview,
 }: AttachListProps) {
   const t = useTranslations("context");
   const [filter, setFilter] = React.useState("");
@@ -121,7 +121,7 @@ export function AttachList({
                 canMoveDown={index >= 0 && index < attachedKeys.length - 1}
                 disabled={locked}
                 catalogRef={catalogRef}
-                previewHref={previewHref}
+                onPreview={onPreview}
                 onToggle={(checked) => commit(toggleId(attachedKeys, key, checked))}
                 onMove={(dir) => commit(moveId(attachedKeys, index, dir))}
               />

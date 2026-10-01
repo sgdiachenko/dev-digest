@@ -6,7 +6,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Skeleton } from "@devdigest/ui";
-import { AttachList, BudgetMeter, mergeForPut, ownForRepo, rowsFor } from "@/components/context-attachments";
+import { AttachList, BudgetMeter, ContextDocDrawer, mergeForPut, ownForRepo, rowsFor } from "@/components/context-attachments";
 import { useContextCatalog, useSetSkillContext, useSkillContext } from "@/lib/hooks/context";
 import { useRepos } from "@/lib/hooks/core";
 import { useActiveRepo } from "@/lib/repo-context";
@@ -24,6 +24,7 @@ export function ContextTab({ skillId }: { skillId: string }) {
   const view = useSkillContext(skillId, repoId);
   const mutation = useSetSkillContext(skillId, repoId);
   const [saved, setSaved] = React.useState(false);
+  const [previewPath, setPreviewPath] = React.useState<string | null>(null);
   const failedBody = React.useRef<ContextAttachmentRef[] | null>(null);
 
   const save = (body: ContextAttachmentRef[]) => {
@@ -97,7 +98,7 @@ export function ContextTab({ skillId }: { skillId: string }) {
           catalogRef={{ branch: cat?.branch ?? null, sha: cat?.scanned_sha ?? null }}
           onCommit={(ordered) => save(mergeForPut(own, repoId, ordered))}
           onRetry={() => failedBody.current && save(failedBody.current)}
-          previewHref={(path) => `/repos/${repoId}/context?doc=${encodeURIComponent(path)}`}
+          onPreview={setPreviewPath}
         />
         {view.data && (
           <>
@@ -138,6 +139,7 @@ export function ContextTab({ skillId }: { skillId: string }) {
           onChange={(e) => {
             setPicked(e.target.value);
             setSaved(false);
+            setPreviewPath(null);
             failedBody.current = null;
             mutation.reset();
           }}
@@ -151,6 +153,15 @@ export function ContextTab({ skillId }: { skillId: string }) {
         </select>
       </label>
       {body}
+      {previewPath && (
+        <ContextDocDrawer
+          repoId={repoId}
+          path={previewPath}
+          sha={cat?.scanned_sha ?? null}
+          branch={cat?.branch ?? null}
+          onClose={() => setPreviewPath(null)}
+        />
+      )}
     </div>
   );
 }

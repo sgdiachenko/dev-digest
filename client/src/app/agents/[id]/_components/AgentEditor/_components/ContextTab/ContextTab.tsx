@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, Skeleton } from "@devdigest/ui";
 import { useAgentContext, useContextCatalog, useSetAgentContext } from "@/lib/hooks/context";
 import { useActiveRepo } from "@/lib/repo-context";
 import type { ContextAttachmentRef } from "@/lib/types";
-import { AttachList, BudgetMeter, mergeForPut, rowsFor } from "@/components/context-attachments";
+import { AttachList, BudgetMeter, ContextDocDrawer, mergeForPut, rowsFor } from "@/components/context-attachments";
 import { InheritedSection } from "./_components/InheritedSection";
 import { s } from "./styles";
 
@@ -21,6 +21,7 @@ function RepoContext({ agentId, repoId }: { agentId: string; repoId: string }) {
   const view = useAgentContext(agentId, repoId);
   const save = useSetAgentContext(agentId, repoId);
   const [failedBody, setFailedBody] = React.useState<ContextAttachmentRef[] | null>(null);
+  const [previewPath, setPreviewPath] = React.useState<string | null>(null);
 
   const contextHref = `/repos/${repoId}/context`;
   const contextLink = (
@@ -83,7 +84,7 @@ function RepoContext({ agentId, repoId }: { agentId: string; repoId: string }) {
         catalogRef={{ branch: cat.branch, sha: cat.scanned_sha }}
         onCommit={(ordered) => commit(mergeForPut(ownRefs, repoId, ordered))}
         onRetry={() => failedBody && commit(failedBody)}
-        previewHref={(path) => `${contextHref}?doc=${encodeURIComponent(path)}`}
+        onPreview={setPreviewPath}
       />
       <BudgetMeter
         total={ctx.total_est_tokens}
@@ -94,6 +95,15 @@ function RepoContext({ agentId, repoId }: { agentId: string; repoId: string }) {
       {ownRefs.length >= 20 && <div style={s.muted}>{t("attachments.maxDocs", { max: 20 })}</div>}
       <InheritedSection docs={ctx.inherited} />
       <div style={s.footer}>{t("attachments.footer")}</div>
+      {previewPath && (
+        <ContextDocDrawer
+          repoId={repoId}
+          path={previewPath}
+          sha={cat.scanned_sha}
+          branch={cat.branch}
+          onClose={() => setPreviewPath(null)}
+        />
+      )}
     </>
   );
 }

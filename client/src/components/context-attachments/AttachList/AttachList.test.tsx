@@ -33,7 +33,7 @@ function setup(props: Partial<AttachListProps> = {}) {
     catalogRef: { branch: "main", sha: "abcdef0123456789" },
     onCommit,
     onRetry,
-    previewHref: (p) => `/context?doc=${encodeURIComponent(p)}`,
+    onPreview: vi.fn(),
     ...props,
   };
   const ui = (p: AttachListProps) => (
@@ -79,7 +79,7 @@ describe("AttachList", () => {
     expect(within(items[2]!).getByRole("checkbox", { name: "c.md" })).not.toBeChecked();
     expect(within(items[0]!).getByText("Docs")).toBeInTheDocument();
     expect(within(items[0]!).getByText("≈12")).toBeInTheDocument();
-    expect(within(items[0]!).getByRole("link", { name: "Preview a.md" })).toHaveAttribute("href", "/context?doc=a.md");
+    expect(within(items[0]!).getByRole("button", { name: "Preview a.md" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Move a.md up" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Move a.md down" }));
@@ -128,7 +128,7 @@ describe("AttachList", () => {
       rows: [row("gone.md", { attached: true, status: "missing", category: null, est_tokens: null }), row("b.md", { attached: true })],
     });
     expect(screen.getByText("Not found in main@abcdef0")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Preview gone.md" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Preview gone.md" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Detach gone.md" }));
     expect(onCommit).toHaveBeenCalledWith([{ repo_id: REPO, path: "b.md" }]);
     expect(screen.queryByText("gone.md")).not.toBeInTheDocument();

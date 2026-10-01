@@ -45,6 +45,7 @@ export const s = {
   reason: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
   warn: { fontSize: 12, color: "var(--warn, var(--crit))" } satisfies CSSProperties,
   link: { fontSize: 12, color: "var(--accent)" } satisfies CSSProperties,
+  linkBtn: { background: "none", border: 0, padding: 0, cursor: "pointer" } satisfies CSSProperties,
   iconBtn: {
     minWidth: 24,
     minHeight: 24,

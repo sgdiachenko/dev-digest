@@ -19,7 +19,7 @@ export function AttachRow({
   canMoveDown,
   disabled,
   catalogRef,
-  previewHref,
+  onPreview,
   onToggle,
   onMove,
 }: {
@@ -28,7 +28,7 @@ export function AttachRow({
   canMoveDown: boolean;
   disabled: boolean;
   catalogRef: { branch: string | null; sha: string | null };
-  previewHref: (path: string) => string;
+  onPreview: (path: string) => void;
   onToggle: (checked: boolean) => void;
   onMove: (dir: -1 | 1) => void;
 }) {
@@ -60,9 +60,14 @@ export function AttachRow({
           {row.category && <Badge>{t(`categories.${row.category}`)}</Badge>}
           {!missing && <TokenEstimate tokens={row.est_tokens} />}
           {!missing && (
-            <a href={previewHref(row.path)} style={s.link} aria-label={t("attachments.previewLabel", { path: row.path })}>
+            <button
+              type="button"
+              onClick={() => onPreview(row.path)}
+              style={{ ...s.link, ...s.linkBtn }}
+              aria-label={t("attachments.previewLabel", { path: row.path })}
+            >
               {t("attachments.preview")}
-            </a>
+            </button>
           )}
         </div>
         {blocked && <span style={s.reason}>{t(`attachments.blocked.${blocked}`)}</span>}

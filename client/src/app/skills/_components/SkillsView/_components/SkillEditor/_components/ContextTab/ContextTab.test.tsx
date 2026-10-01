@@ -30,6 +30,11 @@ vi.mock("../../../../../../../../lib/hooks/context", () => ({
     seenRepo.catalog = repoId;
     return catalogFor(repoId);
   },
+  useContextDoc: () => ({
+    data: { path: "a.md", category: "docs", est_tokens: 5, size: 10, status: "ok", content: "# Doc A", secret_warning: false },
+    isLoading: false,
+    error: null,
+  }),
   useSkillContext: (_id: string, repoId: string) => {
     seenRepo.view = repoId;
     return { data: viewData, isLoading: false, isError: false };
@@ -101,6 +106,23 @@ describe("Skill editor › ContextTab", () => {
     fireEvent.change(screen.getByRole("combobox"), { target: { value: R2 } });
     expect(seenRepo.view).toBe(R2);
     expect(seenRepo.catalog).toBe(R2);
+  });
+
+  it("Preview opens the doc drawer, Close dismisses it, and changing repo closes it", () => {
+    mutationState = { isPending: false, isError: false };
+    viewData = view();
+    renderTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview a.md" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Doc A" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview a.md" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: R2 } });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows the empty text instead of a block when nothing is serialized", () => {
