@@ -164,6 +164,88 @@ while the engine's character cap drops from the end, so a very character-dense
 document can show as fitting in the editor yet be dropped at run time (review
 ledger F1, accepted; matches AC-25).
 
+## Onboarding Tour (`modules/onboarding/`)
+
+Builds a five-section tour of a repository from facts, and overlays an optional
+AI narrative. Routes and DTOs: [api-contracts.md](api-contracts.md#onboarding-tour).
+Diagram: [server/README.md](../README.md#tour-read-and-narrative-generation-flow).
+Design records: [facts spec](../../docs/specs/2026-10-01-onboarding-tour-facts.md),
+[narrative spec](../../docs/specs/2026-10-01-onboarding-tour-narrative.md).
+
+- **Two services, narrow ports.** `OnboardingService` (`service.ts`) builds and
+  caches the facts; `OnboardingNarrativeService` (`narrative-service.ts`) reads and
+  generates the narrative. Neither takes the container: they take
+  `TourRepoStore` / `NarrativeStore` (implemented by `OnboardingRepository`, the
+  only file that touches the database, `repository.ts:16`), `RepoIntel`, `GitClient`
+  and injected functions (LLM factory, feature-model resolver, price estimate,
+  token counter, `wrapUntrusted`, prompt loader) (`service.ts:66-72`,
+  `narrative-service.ts:99-111`).
+- **Container wiring.** `container.onboarding` and `container.onboardingNarrative` are
+  memoized getters (`platform/container.ts:257-288`): the facts cache, the
+  single-flight maps and the rate-limit windows are per-instance. The narrative
+  needs the facts service and the facts service needs the narrative as its overlay,
+  so the overlay is passed as a **lazy closure** (`{ forTour: (...a) =>
+  this.onboardingNarrative.forTour(...a) }`) to avoid a construction cycle.
+- **Pure folders.** `facts/` and `narrative/` hold pure functions only. The
+  `pure-folders-are-pure` rule in `.dependency-cruiser.cjs` (new) forbids them
+  from importing `db`, `adapters`, `platform`, a module's service, routes or
+  repository, `fs`, or `fastify` / `drizzle-orm` / `postgres` / `simple-git` /
+  `octokit` / `openai`. Two existing rules were widened so `narrative-service.ts`
+  falls under them (`[a-z-]+-service`): no persistence in a use case, and no
+  container in a service. `repo-intel/types.ts` is imported with `import type` only.
+  Run `pnpm -C server arch:check`.
+- **Facts are read from git objects, never executed.** `listTree` and `readBlob`
+  (existing) plus the new `GitClient.grepAt` (`vendor/shared/adapters.ts`) list and
+  read content at the index SHA. A file over 512 KiB, unreadable or not UTF-8 is
+  skipped and counted in `index.files_skipped_by_tour`, never an error
+  (`service.ts:150-165`). `grepAt` is called with three fixed server-chosen pattern
+  sets (`TODO|FIXME`, `^package main`, `@SpringBootApplication`; `constants.ts:4-9`),
+  each capped at 500 results and 3 per file; a failed grep returns `[]` and counts
+  as one skipped item (`service.ts:167-181`).
+- **Graph facts.** `repoIntel.getGraphFacts(repoId)` (`repo-intel/service.ts:724`) returns
+  edges, ranks and per-file route/cron facts. See
+  [repo-intel README](../src/modules/repo-intel/README.md#facade-repointel).
+- **Cache.** Facts are cached in memory (LRU of 32) under
+  `repoId:indexedSha:indexUpdatedAt`, so a reindex of the same SHA does not serve a
+  stale entry; concurrent computes share one promise. Unavailable results are never
+  cached (`service.ts:100-116, 199-205`, `constants.ts:2`). The cache and the single-flight
+  maps assume one server process (plan R-B6, an inference).
+- **Narrative storage.** The narrative is `jsonb` in the existing `onboarding` table:
+  `{ narrative, generation }` validated by `StoredNarrativeState` on read
+  (`narrative/types.ts`, `repository.ts:32-42`); an invalid stored value reads as
+  absent. No migration was added.
+- **Generation (`requestGeneration` -> `run`).** Order: rate limit (10 per minute
+  per workspace) -> repo lookup -> facts -> join an in-flight run for that repo, or
+  claim the slot synchronously -> write `generating` -> return `202`; the work runs
+  detached (`narrative-service.ts:159-193`, `run` at `:208`). `run` calls
+  `completeStructured` exactly once with `maxRetries: 0`, `httpRetries: 0`,
+  `requireStructuredProviders: true`, a 60 s `withTimeout` and `maxTokens` 8,000.
+  `JobRunner` is deliberately not used because it adds its own timeout and retries.
+  Before each write the row is re-read and a result for a superseded generation id
+  is discarded. A failure writes only `generation`, so the last good narrative
+  survives; `classifyFailure` maps errors to a stored reason by error name
+  (`narrative-service.ts:67-80`).
+- **Untrusted input.** The model input (`narrative/input.ts`) contains only the
+  facts, a 2,000-token repo map and at most 20 excerpts of 8 KiB, each framed with
+  `wrapUntrusted`. `.env*` files are never sent, except example files by name. The
+  system prompt is `src/prompts/onboarding.system.md`, rewritten for this feature.
+- **Grounding of output.** `narrative/ground.ts` keeps only paths, command ids and
+  task ids that exist in the facts, takes facts order over the model's, bounds text
+  lengths, and falls back to the facts version per section (`fallback_sections`).
+  `rewriteLinks` (`markdown-links.ts`) is D4: known paths become `repo:` links and
+  every other link is reduced to text. `checkFlowchart` (`mermaid.ts`) accepts only a
+  `flowchart` / `graph` of at most 20 nodes with no `click` or `%%{` line at line
+  start (the client also renders with mermaid `securityLevel: strict`).
+- **Logs.** Counts, reasons, ids and durations only (`sectionCounts`,
+  `degradationReason`, `source_sha`, tokens, cost); never file text, prompts or model
+  output.
+- **Known limits.** The rate-limit token is taken before the repo lookup, so a join,
+  `404` or `409` counts toward the 10 per minute (ledger F2, accepted). A generation
+  older than 90 s is persisted as `interrupted` and may later flip to `ready` (F3,
+  accepted). `BlobTooLargeError` is imported by value from `adapters/git` (ring 3
+  -> 4); no rule forbids it and `intent/` and `project-context/` do the same (F7,
+  accepted). `test/onboarding.it.test.ts` and `test/onboarding-narrative.it.test.ts` were type-checked but never run.
+
 ## Intent Layer pre-work
 
 `ReviewRunExecutor.executeRuns` derives the PR's intent as shared pre-work,

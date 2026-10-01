@@ -58,6 +58,10 @@ don't write it here.
 
 **2026-09-30** — Two `next dev` servers started from `client/` share ONE `client/.next` (Next has no per-port build dir by default). Running an isolated stack on another port (manual verification, and `scripts/e2e.sh`, which is documented as safe "alongside a dev stack") made the normal dev server on :3000 lose output: `ChunkLoadError … /_next/static/chunks/app/repos/[repoId]/pulls/page.js` (HTTP 404 — only the `[number]` folder was left) and `ENOENT … rename …/.next/cache/webpack` warnings in the other server's log. Fix: stop the dev server, `rm -rf client/.next`, start it again (never delete `.next` under a running server). When you must run a second server, stop the first, or point one of them at another dist dir; the API, DB and ports are isolated, the build cache is not.
 
+**2026-10-01** — A `position: sticky` element inside a flex row whose container has `align-items: flex-start` never sticks: its wrapper shrinks to the sticky element's own height, so there is no room for it to travel. The wrapper needs `align-self: stretch` (the sticky element itself keeps `align-self: flex-start`). jsdom tests cannot see this; it was found only by scrolling the live page (the "On this page" nav of the tour: wrapper 3141 px tall after the fix, nav pinned while content scrolled 1500 px). Evidence: `client/src/app/repos/[repoId]/tour/_components/OnboardingTourView/styles.ts:10-11`, `.../_components/OnThisPage/OnThisPage.tsx:76`, review ledger F12 in `docs/plans/onboarding-tour.impl.md`.
+
+**2026-10-01** — In the browser-automation tab `document.visibilityState` is `hidden`, so Next's streamed Suspense replacement is never swapped in: the hidden copy (`div#S:0`, `display:none`, titled with the raw repo id) stays in the DOM and a DOM probe sees every section id twice. That is an artefact of the hidden tab, not a duplicated-id bug in the page; real browsers swap the copy. Count ids with this in mind before filing a bug. Evidence: Phase 4 notes in `docs/plans/onboarding-tour.reports.md` (manual verification of `/repos/:repoId/tour`).
+
 ## Open Questions
 
 ## Session Notes

@@ -1,6 +1,6 @@
 # Spec: Onboarding Tour — AI narrative and Regenerate
 Spec ID: 2026-10-01-onboarding-tour-narrative
-Status: approved
+Status: implemented
 Supersedes: none
 Modules: server, client
 

@@ -94,6 +94,9 @@ flowchart TB
   subgraph Attachments["Project Context attachments"]
     contextAttachments["context-attachments<br/>GET|PUT /agents/:id/context?repo_id=<br/>GET|PUT /skills/:id/context?repo_id="]
   end
+  subgraph Tour["Onboarding Tour"]
+    onboarding["onboarding<br/>GET /repos/:id/tour<br/>POST /repos/:id/tour/narrative"]
+  end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]
     workspace["workspace<br/>/workspace"]
@@ -164,6 +167,50 @@ sequenceDiagram
     R->>E: reviewPullRequest(specs only if non-empty)
     E-->>R: review
     R->>R: store specs_read + project_context in the trace
+  end
+```
+
+### Onboarding Tour routes
+
+`modules/onboarding/routes.ts:21-61`. Shapes, status codes and the four accepted
+deviations from the specs (D1-D4):
+[docs/api-contracts.md](docs/api-contracts.md#onboarding-tour). Wiring, storage and
+rules: [docs/architecture.md](docs/architecture.md#onboarding-tour-modulesonboarding).
+Design records: [facts spec](../docs/specs/2026-10-01-onboarding-tour-facts.md),
+[narrative spec](../docs/specs/2026-10-01-onboarding-tour-narrative.md).
+
+| Route | Purpose |
+|---|---|
+| `GET /repos/:id/tour` | The deterministic tour (five sections) read from git objects at the indexed SHA, plus the stored AI narrative and a cost estimate. Never calls an LLM. |
+| `POST /repos/:id/tour/narrative` | `202`; starts (or joins) a background generation. `404` unknown repo, `409` tour unavailable, `429` over 10 per minute per workspace. |
+
+No migration: the narrative is stored as `jsonb` in the existing `onboarding`
+table (`modules/onboarding/repository.ts`, `StoredNarrativeState`).
+
+#### Tour read and narrative generation flow
+
+```mermaid
+sequenceDiagram
+  participant UI as Client (tour page)
+  participant S as OnboardingService
+  participant N as OnboardingNarrativeService
+  participant G as Git objects (indexed SHA)
+  participant L as LLM (structured output)
+  UI->>S: GET /repos/:id/tour
+  S->>G: listTree, readBlob, grepAt (fixed patterns)
+  S-->>UI: facts (LRU cache per repo + index version)
+  S->>N: forTour (one row read + price estimate)
+  N-->>UI: narrative view + estimated_cost
+  UI->>N: POST /repos/:id/tour/narrative
+  N-->>UI: 202 accepted (single-flight per repo)
+  N->>L: one completeStructured call (60 s, no retries)
+  alt valid output
+    N->>N: ground paths, ids, links, diagram; store narrative
+  else failure or timeout
+    N->>N: store only generation.last_failure (last good narrative kept)
+  end
+  loop while status is generating
+    UI->>S: GET /repos/:id/tour (poll 1.5 s)
   end
 ```
 

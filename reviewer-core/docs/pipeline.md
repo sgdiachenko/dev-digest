@@ -68,6 +68,28 @@ default. `review/reduce.ts` exists for a map-reduce path over very large
 diffs (`reduceReviews`, `sliceDiff`) but the starter server never calls it —
 it's wired by a later course lesson.
 
+## Structured request options
+
+`StructuredRequest<T>` (`server/src/vendor/shared/adapters.ts:42-70`, a server-side
+port type) carries per-call knobs that `OpenRouterProvider.completeStructured`
+(`llm/openrouter.ts`) honours. Two were added for the Onboarding Tour; both are
+optional and, when unset, the request sent to the provider is unchanged.
+
+| Field | Effect | Source |
+|---|---|---|
+| `timeoutMs` | Now also sent to the OpenAI SDK as the per-request `timeout`, overriding the client default (90 s). | `llm/openrouter.ts:108` |
+| `httpRetries` | Per-request SDK `maxRetries` for 429/5xx. `0` makes a single attempt. Not the same as `maxRetries`, which counts re-prompts after unparseable JSON. | `llm/openrouter.ts:107` |
+| `requireStructuredProviders` | OpenRouter only: sends `provider: { require_parameters: true }` so routing never falls back to an endpoint without `json_schema` support. | `llm/openrouter.ts:100-103` |
+
+When `requireStructuredProviders` is set and no endpoint qualifies, the provider
+throws `NoEligibleProviderError` (`llm/errors.ts`, exported from `src/index.ts`);
+callers classify it by `name`. The server maps it to the stored failure reason
+`no_structured_provider`. OpenRouter's response for this case is undocumented, so
+the mapping matches message text on HTTP 400/404/422/503 and on a 200 body without
+`choices`, and is **unverified against a live call**
+(see [`../INSIGHTS.md`](../INSIGHTS.md)). The openai SDK accepts per-request
+`{ maxRetries, timeout }` (research for plan item R-B2; `maxRetries: 0` is valid).
+
 ## Prompt-assembly telemetry
 
 Every LLM call emits one `prompt.assembled` event (`src/prompt-log.ts`) with

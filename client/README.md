@@ -31,14 +31,21 @@ flowchart TD
   SKILLS["/skills"] --> SKILL["/skills/:id<br/>editor (config · context · preview · stats · versions)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
   CTX["/repos/:repoId/context<br/>Project Context"]
+  TOUR["/repos/:repoId/tour<br/>Onboarding Tour"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
   PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/smart-diff<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
   AGENTS -->|"/agents · /agents/:id · /agents/:id/skills · /agents/:id/context"| API
   SKILLS -->|"/skills · /skills/:id · /skills/:id/stats<br/>/skills/:id/versions · /skills/:id/restore · /skills/import · /skills/:id/context"| API
   CTX -->|"GET /repos/:id/context · /repos/:id/context/file<br/>POST /repos/:id/context/rescan"| API
+  TOUR -->|"GET /repos/:id/tour · /repos/:id/index-state<br/>POST /repos/:id/tour/narrative · /repos/:id/refresh · /repos/:id/resync"| API
   SETTINGS -->|"/settings · /providers"| API
 ```
+
+`/repos/:repoId/tour` (`src/app/repos/[repoId]/tour/`) is the Onboarding Tour:
+five facts-built sections, an "On this page" rail, an optional AI narrative and
+Markdown export. Behaviour: [specs/pages.md](specs/pages.md#reposrepoidtour);
+wiring: [docs/ui-architecture.md](docs/ui-architecture.md#onboarding-tour-hooks-and-view).
 
 `/repos/:repoId/context` (`src/app/repos/[repoId]/context/`) is the read-only
 Project Context page: document list with category chips and a filter, a safe

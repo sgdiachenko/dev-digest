@@ -1,6 +1,6 @@
 # Spec: Onboarding Tour — deterministic facts and page
 Spec ID: 2026-10-01-onboarding-tour-facts
-Status: approved
+Status: implemented
 Supersedes: none
 Modules: server, client, e2e
 
