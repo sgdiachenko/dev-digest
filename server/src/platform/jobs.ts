@@ -97,6 +97,10 @@ export class JobRunner {
       }
     }) as Promise<void>;
 
+    // Fire-and-forget callers never await `done`; the failure is already persisted on the job
+    // row, so an ignored rejection must not take the process down. Awaiters still see it.
+    done.catch(() => {});
+
     return { id: jobId, done };
   }
 
