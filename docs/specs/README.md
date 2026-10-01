@@ -23,3 +23,5 @@ creation date + a kebab-case slug); an ID is never reused.
 |---|---|---|---|---|---|
 | [2026-09-30-project-context-catalog](2026-09-30-project-context-catalog.md) | Project Context — document catalog, preview and token counts | implemented | server, client | none | — |
 | [2026-09-30-project-context-attachments](2026-09-30-project-context-attachments.md) | Project Context — attach documents to agents and skills, inject them into runs, show them in the run trace | implemented | server, client, reviewer-core | none | — |
+| [2026-10-01-onboarding-tour-facts](2026-10-01-onboarding-tour-facts.md) | Onboarding Tour — deterministic facts and page | approved | server, client, e2e | none | — |
+| [2026-10-01-onboarding-tour-narrative](2026-10-01-onboarding-tour-narrative.md) | Onboarding Tour — AI narrative and Regenerate | approved | server, client | none | — |
