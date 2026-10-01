@@ -33,12 +33,12 @@ run on the host, not in a container).
   (Markdown docs + diagrams). Flow: spec-creator (analyze → answers →
   write → user approves) → researcher → [brainstorm → user picks
   option] → implementation-planner (questions + mode → answers → plan) →
-  user approves — these three run by hand — then `/impl <plan>`
-  ([.claude/skills/impl/SKILL.md](.claude/skills/impl/SKILL.md)): implementer
+  user approves — these three run by hand — then `/run-plan <plan>`
+  ([.claude/skills/run-plan/SKILL.md](.claude/skills/run-plan/SKILL.md)): implementer
   (parallel per work package, or one pass) → plan-verifier →
   architecture-reviewer ∥ security-reviewer ∥ `/code-review` → review-fix
   loop → doc-writer → `/pr-self-review`. `test-writer` is on demand only,
-  outside `/impl`
+  outside `/run-plan`
 
 ## Commands
 

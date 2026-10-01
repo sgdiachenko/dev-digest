@@ -19,7 +19,7 @@ user ─► spec-creator (analyze) ─► design gaps + EC# + MC# + UX# + RQ# + 
      ─► brainstorm (optional: ≥2 plausible approaches) ─► Options Comparison ─► user picks O#
      ─► implementation-planner (pass 1) ─► requirements review + Q# + REC# + execution mode ─► user answers
      ─► implementation-planner (pass 2) ─► Implementation Plan ─► user approves
-   ── /impl <plan> from here on (spec-creator and implementation-planner run by hand) ──
+   ── /run-plan <plan> from here on (spec-creator and implementation-planner run by hand) ──
      ─► implementer ─► code + Implementation Report (incl. the plan's T# tests)
           (multi-agent: one implementer per work package W#, in parallel per DAG wave;
            single-agent: one implementer, linear S1..Sn)
@@ -61,11 +61,11 @@ guarantees / design records written after verification). Its write scope —
 implementer's Bash limits.
 
 `spec-creator` and `implementation-planner` are run by hand. From an
-approved plan, `/impl` ([../skills/impl/SKILL.md](../skills/impl/SKILL.md))
+approved plan, `/run-plan` ([../skills/run-plan/SKILL.md](../skills/run-plan/SKILL.md))
 runs the rest from the main session — waves of implementers, verification,
 the review-fix loop, docs and the PR gate — keeping its state in
 `docs/plans/<slug>.impl.md` so it can resume in a fresh chat. `test-writer`
-is not part of `/impl` (token budget): the implementer writes the plan's
+is not part of `/run-plan` (token budget): the implementer writes the plan's
 `T#` tests; `test-writer` stays available on demand for coverage gaps.
 `architecture-reviewer` checks layering only; correctness bugs are
 `/code-review`'s, which runs alongside it.

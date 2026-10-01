@@ -1,11 +1,11 @@
 ---
-name: impl
+name: run-plan
 description: "Runs the implementation half of dev-digest's Spec-Driven Development flow from the main session, starting from an already approved Implementation Plan (spec-creator and implementation-planner are run separately, by hand): waves of implementers → full checks → plan-verifier → architecture/security/correctness review with a bounded review-fix loop → doc-writer → /pr-self-review. Keeps its state in docs/plans/<slug>.impl.md so it can resume in a fresh chat. Use when the user types /impl. Trigger terms: impl, implement the plan, run implementation, resume impl."
 argument-hint: "<plan path | slug> [spec ID | spec path] [--from implement|verify|review|docs|pr] [extra instructions]"
 disable-model-invocation: true
 ---
 
-# /impl — implement an approved plan, spec-driven
+# /run-plan — implement an approved plan, spec-driven
 
 You (the **main session**) orchestrate. The spec (`spec-creator`) and the
 plan (`implementation-planner`) already exist — the user runs those by hand;

@@ -24,7 +24,7 @@ Arguments: `$ARGUMENTS`
 3. **No blame, no praise padding.** The unit of analysis is the *prompt,
    the hand-off and the order*, not the agent's "effort".
 4. **Proposals, not edits.** Changes to `.claude/agents/*.md`, skills or
-   `/impl` go into the report as diffs-in-words; apply only after an
+   `/run-plan` go into the report as diffs-in-words; apply only after an
    `AskUserQuestion`.
 5. **Small context.** Don't read whole transcripts. Read the script output,
    then at most each agent's final hand-back
@@ -91,7 +91,7 @@ is the pattern to copy.
 - The same finding restated across reports, and again by you to the user.
 - Context re-read: a resumed agent with a very high cache-read total
   (compare with a fresh agent of the same type) — the cost of resuming a
-  big context, which `/impl` principle 3 warns about.
+  big context, which `/run-plan` principle 3 warns about.
 
 **E. What was missed**
 - Build a **gap-closure table** from the script's "gaps the agents reported

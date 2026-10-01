@@ -107,7 +107,7 @@ its short form.
    - write the tests the step's `done-when` requires, including every
      *Test plan* `T#` row assigned to this step (`written in: S#`) — they
      are the evidence `plan-verifier` checks each AC against, and no
-     `test-writer` pass follows in `/impl`. Each new test must fail without
+     `test-writer` pass follows in `/run-plan`. Each new test must fail without
      the change it covers (assert behaviour, not `toBeDefined()`); nothing
      beyond the plan's tests (client
      components: `<Name>.test.tsx` beside the component; server DB-backed

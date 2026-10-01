@@ -272,7 +272,7 @@ multi-agent | single-agent — <why>
 - T1: AC-n / EC-n → `path` — <level: unit | component | it | e2e> — written in: S#
   (with a spec: one row per AC/EC whose `verify:` is not `manual`. Every T# belongs to a step and
   appears in that step's `done-when` — the implementer writes them; `test-writer` is not part of
-  the `/impl` flow)
+  the `/run-plan` flow)
 - Commands: <exact commands from the Step 5 table>
 - Multi-agent: implementers run targeted tests + typecheck of their packages; the full table runs once per wave in the main session
 

@@ -49,7 +49,7 @@ case default scope is "all open changes" = `gate.sh base` merge-base plus
 staged, unstaged and untracked changes (the same four kinds
 `pr-self-review/SKILL.md` Step 1 collects).
 
-**Delta re-review** (a review-fix round of `/impl`): the prompt gives
+**Delta re-review** (a review-fix round of `/run-plan`): the prompt gives
 `Re-check:` — the previous findings `F#` with their file:line — and
 `Fix files:` — the files that round changed. Then (1) give each `F#` a
 verdict `fixed | still-open | moved` with the current line quoted, and (2)
