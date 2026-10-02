@@ -49,3 +49,33 @@ describe("MermaidDiagram onInvalid", () => {
     await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 });
+
+describe("MermaidDiagram bare", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mermaid.parse.mockResolvedValue(true);
+    mermaid.render.mockResolvedValue({
+      svg: '<svg viewBox="0 0 640 200" style="max-width: 640px" width="100%"><g class="node"><rect/></g></svg>',
+    });
+  });
+
+  it("adds a per-diagram theme and renders at natural size with rounded nodes", async () => {
+    const { container } = render(<MermaidDiagram chart="flowchart LR; A-->B" bare />);
+    await waitFor(() => expect(container.querySelector("svg")).not.toBeNull());
+    const rendered = mermaid.render.mock.calls[0]![1] as string;
+    expect(rendered.startsWith("%%{init:")).toBe(true);
+    expect(rendered.endsWith("flowchart LR; A-->B")).toBe(true);
+    expect(mermaid.parse.mock.calls[0]![0]).toBe(rendered);
+    const svg = container.querySelector("svg")!;
+    await waitFor(() => expect(svg.style.maxWidth).toBe("none"));
+    expect(svg.querySelector("rect")!.getAttribute("rx")).toBe("8");
+  });
+
+  it("leaves a non-bare diagram exactly as before (no directive, no restyling)", async () => {
+    const { container } = render(<MermaidDiagram chart="flowchart LR; A-->B" />);
+    await waitFor(() => expect(container.querySelector("svg")).not.toBeNull());
+    expect(mermaid.render.mock.calls[0]![1]).toBe("flowchart LR; A-->B");
+    expect(container.querySelector("svg")!.style.maxWidth).toBe("640px");
+  });
+});
+

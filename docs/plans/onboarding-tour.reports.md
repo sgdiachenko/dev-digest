@@ -217,3 +217,10 @@ Environment: the existing dev stack was already running (web :3000, API :3001, P
 - Page (live, screenshot): "AI-written" pill on the section, "Generated just now from commit 0aff2fc · deepseek/deepseek-v4-flash · $0.0005" line, Regenerate button, prose with inline code.
 - Cosmetic, not fixed: the AI mermaid diagram (two subgraphs, LR) is scaled down to fit the box width and its labels are tiny; the mockup uses larger nodes.
 - Still unverified live: failure paths (missing key, timeout, no structured provider), the 429 message, Outdated chip after a resync, polling/announcement with a screen reader.
+
+## Diagram polish (user: "що з діаграмою?") — 2026-10-02
+- Cause of "tiny diagram": mermaid shrinks the svg to the box width, so a wide AI diagram (two LR subgraphs, ≈1300 px natural) became unreadable; default theme did not match the mockup.
+- Change (client only, `bare` mode of MermaidDiagram, used only by ArchitectureSection; other pages unchanged): per-diagram `%%{init}%%` theme built from the app's CSS tokens (works for dark/light, applies to this diagram only because mermaid.initialize is global; prepended after the keyword check, never model-controlled); rounded nodes; svg fitted to the box width but not below scale 0.6 (box scrolls beyond that, recalculated on resize); font 18 px; left-aligned flex line so a wide diagram is not clipped on the left. Tests: bare adds the directive and natural-size styling; non-bare output unchanged (6 tests in MermaidDiagram.test.tsx).
+- Live result on gm-vocabulary: readable dark nodes with blue rounded borders and curved arrows; ≈8 % of this particular diagram is still beyond the right edge (scroll bar), because the floor of 0.6 keeps labels readable.
+- Edgeless facts diagram is still not drawn (A:AC-15 label instead) — unchanged from the earlier decision.
+- Checks: client lint, typecheck, full vitest exit 0.
