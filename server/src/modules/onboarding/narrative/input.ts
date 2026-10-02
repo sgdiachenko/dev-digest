@@ -94,6 +94,10 @@ function fit(
   return null;
 }
 
+/** Appended to every user message; repository text may be in any language, the narrative never is. */
+export const LANGUAGE_REMINDER =
+  'Language: write every text field (body_markdown, description, note, title) in English, even if the repository text above is in another language. Keep paths, identifiers and commands verbatim.';
+
 /**
  * Assemble the single user message, filled in priority order until the token
  * budget is reached: entry points > critical files > route facts > commands >
@@ -121,6 +125,8 @@ export function buildNarrativeInput(args: BuildNarrativeInputArgs): NarrativeInp
   const commands = s.run_locally.groups.flatMap((g) =>
     g.commands.map((c) => ({ g, c })),
   );
+  // The model may only reference tasks by id, so it has to be shown the ids.
+  const tasks = s.first_tasks.items.filter((t) => !isEnvFile(t.path));
 
   const specs: Array<{ label: string; lines: string[]; paths: string[] }> = [
     {
@@ -148,6 +154,11 @@ export function buildNarrativeInput(args: BuildNarrativeInputArgs): NarrativeInp
       lines: commands.map(({ g, c }) => `${c.id} (${g.package_path}, ${c.phase}): ${c.command}`),
       paths: [],
     },
+    {
+      label: 'first-tasks',
+      lines: tasks.map((t) => `${t.id} (${t.signal}, ${t.path_kind}, ${t.complexity}): ${t.path}`),
+      paths: tasks.map((t) => t.path),
+    },
     { label: 'repo-map', lines: args.repoMap.split('\n'), paths: [] },
     { label: 'readme-excerpt', lines: excerptLines(readmes), paths: readmes.map((e) => e.path) },
   ];
@@ -164,6 +175,8 @@ export function buildNarrativeInput(args: BuildNarrativeInputArgs): NarrativeInp
     tokens += count(block.text) + 1;
     for (const p of block.paths) included.add(p);
   }
+  // Last thing the model reads: some models answer in their own default language otherwise.
+  parts.push(LANGUAGE_REMINDER);
   const userMessage = parts.join('\n\n');
   return { userMessage, includedPaths: [...included].sort(), tokens: count(userMessage) };
 }
