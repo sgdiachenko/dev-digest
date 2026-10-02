@@ -47,8 +47,16 @@ Arguments: `$ARGUMENTS`
    - remaining text → extra instructions for this run (recorded in state).
 2. Sanity-check the plan (don't re-plan): every step has `files`, `skills`,
    `done-when`; multi-agent → `W#` with non-overlapping `owns:` per wave;
-   with a spec → every AC/EC/NFR is `covers:`-ed or out of scope. A gap →
-   stop and name it (it's the planner's to fix), unless the user says go.
+   with a spec → every AC/EC/NFR is `covers:`-ed or out of scope; every
+   `depends-on` points to a step/package in an **earlier** wave (a step that
+   uses another step's output — a function, a type, a file — cannot run in
+   the same wave as its producer). A gap → stop and name it (it's the
+   planner's to fix), unless the user says go.
+   - Live checks: if *Review handoff → Manual verification* needs a live call
+     to a paid or credentialed service (e.g. a real LLM key), ask once now
+     (`AskUserQuestion`): is it configured, and what spend is acceptable?
+     Record the answer in the state file. Never ask for, read or print the
+     key itself.
 3. Create/refresh `docs/plans/<slug>.impl.md` (below) and show the route in
    ≤5 lines: mode, waves, packages, what will be skipped.
 
@@ -74,8 +82,10 @@ Reports go to `docs/plans/<slug>.reports.md` (appended, one `##` per report).
 
 - **Single-agent**: one `implementer`, prompt = plan path (+ spec path).
 - **Multi-agent**: per wave, one `implementer` per `W#` of the wave, **all
-  in one message**. Prompt = plan path + `W#` + "read only the Constraints,
-  your W# row and its steps".
+  in one message**. Prompt = plan path + `W#` + "read the Constraints, your
+  W# row and its steps, plus the `SKILL.md` of every skill those steps name
+  (your agent file's rule)" — do not write "read only", it contradicts the
+  agent file and the agents then skip the skills.
 - A parallel batch that fails to launch (e.g. "auto mode classifier gave no
   verdict") is retried once as it was; if it fails again, launch the same
   agents in smaller groups. Record the failure in the state file.
@@ -134,7 +144,10 @@ file:line + issue across sources (highest severity, both sources listed).
 
 **Round 2+ — delta re-review.** Only the reviewers that still have open
 findings, with `Re-check: <their F#>` and `Fix files: <files changed this
-round>` (their *Delta re-review* mode). `/code-review` on the fix files only.
+round>` (their *Delta re-review* mode). `/code-review` on this round's fix **diff**
+(the hunks changed since the previous round), and say "changed lines only" in
+its prompt: handed whole files it reviews them whole and returns findings in
+old code that this round never touched.
 New findings join the ledger with the round number.
 
 **Exit** when no `CRITICAL`/`WARNING` is `open`. After round 3 with open
@@ -155,6 +168,12 @@ screenshot taken right after navigation can be a stale frame. Tab lists
 (`VALID_TABS`) and other registries are checked by reading the page, not by
 mounting the component alone. If the tool fails 3 times, stop and record what
 could not be verified instead of retrying (`INSIGHTS.md` in `client/`).
+
+Two more traps of that tab: DOM probes see every section twice, because Next's
+streamed Suspense copy (`div#S:0`, `display:none`) is never swapped in — query
+the `main` that is not inside `#S:0`. And `resize_window` may not change the
+viewport (check `innerWidth`); to test a narrow layout, embed the same URL in a
+same-origin `iframe` of the target width and probe its `contentDocument`.
 
 ## Phase 5 — Docs
 

@@ -59,12 +59,21 @@ base_sha() {
 # So: hash HEAD, then one canonical `path <worktree-blob>` line per path that
 # differs from HEAD — staged, unstaged or untracked, all spelled the same way.
 # Staging becomes invisible; content does not.
+#
+# Exempt: the /run-plan bookkeeping files `docs/plans/<slug>.impl.md` and
+# `docs/plans/<slug>.reports.md`. They are notes about the run, not reviewed
+# code, and the run appends to them after every phase — without the exemption
+# each note makes the report (and every "re-run only if the fingerprint
+# differs" shortcut) look stale although no code changed. Keep this list
+# narrow: anything else under docs/plans/ still counts.
 fingerprint_inputs() {
   git rev-parse HEAD 2>/dev/null
   { git diff HEAD --name-only 2>/dev/null
     git diff --cached --name-only 2>/dev/null
     git ls-files --others --exclude-standard 2>/dev/null
-  } | LC_ALL=C sort -u | while IFS= read -r f; do
+  } | LC_ALL=C sort -u \
+    | awk '!/^docs\/plans\/[^\/]+\.(impl|reports)\.md$/' \
+    | while IFS= read -r f; do
         [ -n "$f" ] || continue
         if [ -f "$f" ]; then
           printf '%s %s\n' "$f" "$(git hash-object -- "$f" 2>/dev/null || printf 'unreadable')"

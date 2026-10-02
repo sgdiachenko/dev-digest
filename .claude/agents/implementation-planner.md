@@ -214,6 +214,8 @@ Recommended: <multi-agent | single-agent> — because <size / coupling>.
      Maximise the number of packages in each wave. A file every package
      needs (e.g. a DI container, an index/barrel, `messages/*.json`) goes to
      exactly one owner, and the others depend on it.
+     A step that uses another step's output (a function, a type, a file) goes
+     in a package of a **later** wave than the producer — never the same wave.
    - *Single-agent*: one linear `S1..Sn` order; no work packages.
 7. **Write the plan** in the format below. Steps are small, ordered, and each
    one is independently verifiable.
@@ -242,6 +244,7 @@ multi-agent | single-agent — <why>
 | W1 — contracts | S1, S2 | `server/src/vendor/shared/contracts/x.ts`, `client/src/vendor/shared/contracts/x.ts` | — | 1 |
 | W2 — server | S3, S4 | `server/src/modules/x/**` | W1 | 2 |
 - Overlap check: no path owned by two packages in the same wave.
+- Dependency check: every `depends-on` is in an earlier wave.
 
 ## Context
 <why; INSIGHTS entries that shaped the plan, cited as `pkg/INSIGHTS.md:line`>
