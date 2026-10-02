@@ -1,714 +1,719 @@
-# План реалізації: PR Brief — Why + Risk brief на вкладці Overview
+# Implementation Plan: PR Brief — Why + Risk brief on the Overview tab
 
-## Мета та обсяг
-- **В обсязі:**
-  - Новий серверний модуль `server/src/modules/brief/` з двома роутами:
-    - `GET /pulls/:id/brief` — читає збережений бриф;
-    - `POST /pulls/:id/brief` — синхронна генерація: single-flight на PR, rate limit 10 запитів/хв на workspace, рівно один виклик `completeStructured`.
-  - Вхід моделі зібраний детерміновано, бюджет ≤ 8 000 токенів `cl100k_base`.
-  - Валідація відповіді за allow-list шляхів. Кеш у наявній таблиці `pr_brief` (jsonb + `schema_version`).
-  - Зміна контракту `PrBrief` і нові `PrBriefRecord` / `ReviewFocusItem` / `BriefMissingInput` у трьох копіях `brief.ts`.
-  - Адаптери OpenAI/Anthropic враховують `httpRetries: 0` (Q1).
-  - Новий метод `ContextAttachmentsService.resolveForRepo` (REC1).
-  - Клієнт:
-    - хуки `usePrBrief` / `useGenerateBrief`;
-    - нова розкладка Overview: банер вердикту, підсумок, Intent + Risk areas | Blast radius, Review focus;
-    - перехід з Review focus і з ризику на Files changed з `?tab=diff&file=&line=`: розгортання групи й картки, скрол, підсвітка, фокус;
-    - нові ключі у `client/messages/en/brief.json`.
-- **Поза обсягом:**
-  - Усе з *Non-goals* спеки: історія PR у брифі, автогенерація, фонова генерація / polling, тіла hunks у моделі, пейджинг файлів GitHub понад 100, MCP-інструмент, «Next focus item».
-  - E2E-флоу над seeded брифом (`e2e/specs/*.flow.json`) — це робота `test-writer`, на вимогу.
-  - Документація роутів — `doc-writer` після верифікації.
-  - Відхилених REC немає.
+## Goal and scope
+- **In scope:**
+  - A new server module `server/src/modules/brief/` with two routes:
+    - `GET /pulls/:id/brief` — reads the stored brief;
+    - `POST /pulls/:id/brief` — synchronous generation: single-flight per PR, rate limit 10/min per workspace, exactly one `completeStructured` call, overall request deadline 75 s.
+  - The model input is assembled deterministically, with a guaranteed ≤ 8 000 `cl100k_base` tokens: an explicit terminal policy plus a final guard.
+  - One blast projection is used identically for the prompt, for storage and for the path allow-list.
+  - Cache in the existing `pr_brief` (jsonb + `schema_version`).
+  - Contract: a change to `PrBrief`, new `PrBriefRecord` / `ReviewFocusItem` / `BriefMissingInput` in the three copies of `brief.ts`.
+  - The OpenAI/Anthropic adapters honor `httpRetries: 0` (Q1).
+  - A new method `ContextAttachmentsService.resolveForRepo` with a defined reason priority (REC1).
+  - Client:
+    - hooks `usePrBrief` / `useGenerateBrief`;
+    - new Overview layout: verdict banner → summary → [Intent block with Risk areas **inside** | Blast radius] → Review focus;
+    - `IntentCard` gets a `children` slot and an `id="intent"` anchor;
+    - navigation from Review focus and from a risk to Files changed via `?tab=diff&file=&line=`;
+    - new keys in `client/messages/en/brief.json`.
+- **Out of scope:**
+  - Everything from the spec's *Non-goals*.
+  - E2E flow over a seeded brief — `test-writer`, on demand.
+  - Documentation — `doc-writer` after verification.
+  - Spec changes: the spec is approved and immutable; questions about wording go to *Risks and open questions*.
+  - There are no rejected RECs.
 
-## Рішення щодо вимог
-- **Спека:** `2026-10-02-pr-brief` (approved) — `docs/specs/2026-10-02-pr-brief.md`.
-- **Q1:** як забезпечити «no HTTP retry» → (a). `OpenAIProvider` і `AnthropicProvider` враховують `httpRetries`: при `0` немає `withRetry` і передається per-request SDK `maxRetries: 0`. Якщо `httpRetries` не задано, поведінка як зараз → S3.
-- **Q2:** що таке «new-side changed line» → (a). Лише додані (`+`) рядки, зібрані в суцільні діапазони. Снеп іде на перший доданий рядок. Файл без доданих рядків дає `line_verified: false` → S6.
-- **Q3:** linked issue → (a). Перше same-repo посилання з `extractReferences` (`server/src/modules/intent/helpers.ts:144`): один виклик `getIssue`, таймаут 5 с → S6, S13.
-- **Q4:** розкладка → (a). Risk areas — окремий блок під незміненим `IntentCard` у лівій колонці → S11.
-- **Q5:** порядок і фільтр specs → (a)+(i). Агенти впорядковані за `created_at, id`; скіли беруться лише `enabled && safe` → S4.
-- **Додаткове рішення (не з Q):** фіксовані капи AC-27/AC-28/AC-29 не дають `over_budget`. `over_budget` пишеться лише при скороченні за бюджетом (AC-25, AC-26).
-- **Додаткове рішення:** allow-list blast-шляхів (AC-49) будується з blast **у тому вигляді, як його надіслали** моделі. Збережений `blast` (AC-60) — та сама версія.
-- Прийняті рекомендації:
+## Requirements decisions
+- **Spec:** `2026-10-02-pr-brief` (approved) — `docs/specs/2026-10-02-pr-brief.md`.
+- **Q1 (unchanged):** "no HTTP retry" → (a). Adapters honor `httpRetries: 0`: no `withRetry`, per-request `maxRetries: 0`; an unset value behaves as it does now → S3.
+- **Q2 (unchanged):** "new-side changed line" → (a). Only added (`+`) lines in contiguous ranges; snap to the first one; no added lines → `line_verified: false` → S6.
+- **Q3 (unchanged):** linked issue → (a). The first same-repo reference from `extractReferences`, one `getIssue`, 5 s → S6, S13.
+- **Q4 (changed):** layout → **(b)**. `IntentCard` gets a `children` slot. Risk areas render inside the Intent block (the same `<section>` with `id="intent"`, under the intent card, in every IntentCard state). This matches AC-69 → S19, S11.
+- **Q5 (unchanged):** specs → (a)+(i). Agents by `created_at, id`; skills `enabled && safe` → S4.
+- **Specs reason priority (new, AC-41/AC-42):** `not_cloned` > `no_catalog` > `none_attached`; `unavailable` — for an error / timeout at any stage. Reason: without a clone or a catalog a document cannot be attached, so the root cause is shown → S4.
+- **Fixed caps vs budget:** fixed caps (AC-27/28/29, title ≤ 300 characters, blast summary ≤ 1 000 characters) do not write `over_budget`. `over_budget` is written only on budget reduction (AC-25/26), including the terminal steps.
+- **Terminal budget policy (new):** after the 5 steps of AC-25 (specs → linked issue → description → blast callers → diff-stat) there are two more:
+  - (6) trimming the blast changed symbols list from the end (summary stays);
+  - (7) shortening the intent text to a fixed ceiling `INTENT_FLOOR_TOKENS = 1000` (scope items from the end first, then sentences with "…").
 
-  | REC | Що | Кроки |
+  Title and intent are never removed, intent is only shortened. Then the final guard: if the input is still > 8 000 — the LLM is not called, the response is 500 `details.reason = input_over_budget`. A test proves that with the fixed caps the guard is unreachable → S7, S13.
+- **Line < 1 (new):** the output schema stays strict-safe (`z.number().int()`). Normalization happens on the server:
+  - ranges exist → snap;
+  - no patch / added lines → `line = 1`, `line_verified: false`.
+
+  Before saving, `StoredBrief.safeParse`; failure → `invalid_output` → S6, S13.
+- **Blast projection (new):** `projectBlast()` returns a `BlastRadius` with a summary (≤ 1 000 characters), `changed_symbols` (name, file, kind) and `downstream[].callers` of only the sent callers. `endpoints_affected` / `crons_affected` equal `[]`, because they are not sent. This one object — after budget reduction — is rendered into the prompt, stored as `blast` (AC-60) and yields the allow-list (`changed_symbols.file ∪ callers.file`, AC-49) → S6, S7, S13.
+- **Request deadline (new):** `REQUEST_DEADLINE_MS = 75 000` for the whole `run`. LLM timeout = `min(60 s, remainder)`. Exceeding it → 502 `llm_timeout`, and the `abandoned` flag forbids any write after the deadline (AC-48) → S13.
+- **Accepted RECs:**
+
+  | REC | What | Steps |
   |---|---|---|
   | REC1 | `resolveForRepo` | S4, S13 |
-  | REC2 | вузькі порти через контейнер | S13, S14 |
-  | REC3 | rate limit усередині сервісу | S13 |
-  | REC4 | чистий парсер діапазонів | S6 |
-  | REC5 | strict-safe схема виходу | S7 |
-  | REC6 | URL-ціль і `push` | S15, S18 |
-  | REC7 | diff-viewer без нового namespace | S16, S17 |
-  | REC8 | i18n у W1, P3 останнім | S2, S10 / S11 |
+  | REC2 | narrow ports | S13, S14 |
+  | REC3 | rate limit in the service | S13 |
+  | REC4 | pure range parser | S6 |
+  | REC5 | strict-safe schema | S7 |
+  | REC6 | URL target and `push` | S15, S18 |
+  | REC7 | diff-viewer without namespace | S16, S17 |
+  | REC8 | i18n in W1 | S2 |
 
-## Режим виконання
-multi-agent — дві пакети плюс копія контракту в mcp-server, незалежні зрізи, один малий спільний контракт. W3 не залежить від контракту, тому перенесено у хвилю 1 (більше паралелізму, ніж у пропозиції pass 1).
+## Execution mode
+multi-agent — two packages plus a contract copy in mcp-server, independent slices, one small shared contract. W3 does not depend on the contract, so it sits in wave 1.
 
-## Пакети робіт
-| WP | Кроки | owns | depends-on | wave |
+## Work packages
+| WP | Steps | owns | depends-on | wave |
 |---|---|---|---|---|
-| W1 — контракти + i18n | S1, S2 | `server/src/vendor/shared/contracts/brief.ts`, `client/src/vendor/shared/contracts/brief.ts`, `mcp-server/src/vendor/shared/contracts/brief.ts`, `client/messages/en/brief.json`, `server/test/brief-contracts.test.ts` | — | 1 |
-| W3 — адаптери LLM + attachments | S3, S4 | `server/src/adapters/llm/openai.ts`, `server/src/adapters/llm/anthropic.ts`, `server/test/llm-http-retries.test.ts`, `server/src/modules/context-attachments/service.ts`, `server/src/modules/context-attachments/types.ts`, `server/src/modules/agents/repository.ts`, `server/test/context-attachments-service.test.ts` | — | 1 |
-| W2 — brief: чиста логіка | S5, S6, S7 | `server/src/modules/brief/constants.ts`, `server/src/modules/brief/helpers.ts`, `server/src/modules/brief/prompt.ts`, `server/test/brief-helpers.test.ts`, `server/test/brief-prompt.test.ts` | W1 | 2 |
-| W5 — клієнт: дані + Overview | S8, S9, S10, S11 | `client/src/lib/hooks/brief.ts`, `client/src/lib/hooks/index.ts`, `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/**` | W1 | 2 |
-| W4 — brief: I/O, сервіс, роути, DI | S12, S13, S14 | `server/src/modules/brief/repository.ts`, `server/src/modules/brief/service.ts`, `server/src/modules/brief/routes.ts`, `server/src/modules/index.ts`, `server/src/platform/container.ts`, `server/test/brief-service.test.ts`, `server/test/brief.it.test.ts` | W1, W2, W3 | 3 |
-| W6 — клієнт: навігація на Files changed | S15, S16, S17, S18 | `client/src/app/repos/[repoId]/pulls/[number]/page.tsx`, `client/src/app/repos/[repoId]/pulls/[number]/file-target.ts`, `client/src/app/repos/[repoId]/pulls/[number]/file-target.test.ts`, `client/src/app/repos/[repoId]/pulls/[number]/use-pr-file-navigation.ts`, `client/src/app/repos/[repoId]/pulls/[number]/use-pr-file-navigation.test.ts`, `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/**`, `client/src/components/diff-viewer/**` | W1, W5 | 3 |
+| W1 — contracts + i18n | S1, S2 | `server/src/vendor/shared/contracts/brief.ts`, `client/src/vendor/shared/contracts/brief.ts`, `mcp-server/src/vendor/shared/contracts/brief.ts`, `client/messages/en/brief.json`, `server/test/brief-contracts.test.ts` | — | 1 |
+| W3 — LLM adapters + attachments | S3, S4 | `server/src/adapters/llm/openai.ts`, `server/src/adapters/llm/anthropic.ts`, `server/test/llm-http-retries.test.ts`, `server/src/modules/context-attachments/service.ts`, `server/src/modules/context-attachments/types.ts`, `server/src/modules/agents/repository.ts`, `server/test/context-attachments-service.test.ts` | — | 1 |
+| W2 — brief: pure logic | S5, S6, S7 | `server/src/modules/brief/constants.ts`, `server/src/modules/brief/helpers.ts`, `server/src/modules/brief/prompt.ts`, `server/test/brief-helpers.test.ts`, `server/test/brief-prompt.test.ts` | W1 | 2 |
+| W5 — client: data + Overview + IntentCard | S8, S9, S10, S19, S11 | `client/src/lib/hooks/brief.ts`, `client/src/lib/hooks/index.ts`, `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/**`, `client/src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/**` | W1 | 2 |
+| W4 — brief: I/O, service, routes, DI | S12, S13, S14 | `server/src/modules/brief/repository.ts`, `server/src/modules/brief/service.ts`, `server/src/modules/brief/routes.ts`, `server/src/modules/index.ts`, `server/src/platform/container.ts`, `server/test/brief-service.test.ts`, `server/test/brief.it.test.ts` | W1, W2, W3 | 3 |
+| W6 — client: navigation + props finalization | S15, S16, S17, S18 | `client/src/app/repos/[repoId]/pulls/[number]/page.tsx`, `client/src/app/repos/[repoId]/pulls/[number]/file-target.ts`, `client/src/app/repos/[repoId]/pulls/[number]/file-target.test.ts`, `client/src/app/repos/[repoId]/pulls/[number]/use-pr-file-navigation.ts`, `client/src/app/repos/[repoId]/pulls/[number]/use-pr-file-navigation.test.ts`, `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/**`, `client/src/components/diff-viewer/**`, `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx` (S18 only: props become required) | W1, W5 | 3 |
 
-- **Перевірка перетинів.**
-  - Хвиля 1: W1 і W3 — немає спільних шляхів.
-  - Хвиля 2: W2 і W5 — немає.
-  - Хвиля 3: W4 і W6 — немає.
-  - `server/src/modules/brief/*` поділено пофайлово (W2: constants/helpers/prompt; W4: repository/service/routes).
-  - `container.ts` і `modules/index.ts` мають одного власника — W4.
-  - `brief.json` має одного власника — W1.
-- **Перевірка залежностей.** Кожен `depends-on` — з ранішої хвилі: W2←W1; W5←W1; W4←W1, W2, W3; W6←W1, W5.
+- **Overlap check.**
+  - Wave 1: W1 and W3 — no shared paths.
+  - Wave 2: W2 and W5 — no shared paths.
+  - Wave 3: W4 and W6 — no shared paths.
+  - `OverviewTab/OverviewTab.tsx` belongs to W5 (wave 2) and W6 (wave 3). These packages never run at the same time; W6 starts only after W5 finishes.
+  - `container.ts` and `modules/index.ts` belong only to W4; `brief.json` — only to W1.
+- **Dependency check.** Every `depends-on` is from an earlier wave: W2←W1; W5←W1; W4←W1, W2, W3; W6←W1, W5.
 
 DAG:
 ```
 wave 1:  W1 ──┬──────────────► W2 ──┐
-              │                     ├──► W4   (wave 3)
+              │                     ├──► W4 ──► [gate: brief.it.test.ts, main session]
          W3 ──┼─────────────────────┘
-              └──────────────► W5 ──────► W6   (wave 3)
+              └──────────────► W5 ──────► W6
+                                   (wave 2)  (wave 3)
 ```
 
-## Контекст
-Спека вимагає один обмежений виклик моделі над уже порахованими фактами, без коду hunks. Модель-вихід валідується, а бриф кешується з SHA. INSIGHTS, що вплинули на план:
-- `server/INSIGHTS.md:47` — сервіс зі станом у пам'яті (single-flight, вікна rate limit) мусить бути мемоізований у контейнері, інакше single-flight не працює між викликачами → C3.
+## Context
+The spec requires one bounded model call over already computed facts, without hunk code, with response validation and a cache keyed by SHA. INSIGHTS that influenced the plan:
+- `server/INSIGHTS.md:47` — a service with in-memory state must be memoized in the container → C3.
 - `server/INSIGHTS.md:49,53,55`:
-  - `no-sideways-module-imports` ловить і `import type` з `service|routes|repository` іншого модуля;
-  - імпорт з `helpers.ts` / `classify.ts` дозволений → використовуємо `extractReferences` і `classifyFile`, а не сервіси;
-  - порти оголошуються в споживачі.
-- `server/INSIGHTS.md:57` — GitHub лише через лінивий `() => this.github()`, щоб ротація токена працювала.
-- `server/INSIGHTS.md:59` — `test/**` не покривається `typecheck`. Нові тести треба обов'язково прогнати. Фейки портів, що змінюються (`AgentContextStore`), оновити разом.
-- `server/INSIGHTS.md:23` — вартість `null` ≠ `0` → AC-77 «cost not reported».
-- `client/INSIGHTS.md:41`:
-  - новий `useTranslations` у широко змонтованому дереві ламає провайдери інших тестів;
-  - через це diff-viewer отримує готові рядки пропсами → C17;
-  - тестам Overview потрібні namespaces `brief` і `prReview` (VerdictBanner).
-- `client/INSIGHTS.md:39` — у повідомленнях next-intl не можна кутових дужок → C14.
-- `client/INSIGHTS.md:45` — вимірювання DOM лише через callback ref; `page.tsx` не має тестів → логіка навігації винесена в хук із тестом.
-- `client/INSIGHTS.md:47` — `@testing-library/user-event` не встановлено, тому `fireEvent`.
-- `client/INSIGHTS.md:27` — імпорт `messages/*.json` з тестів потребує на один `../` більше.
-- `client/INSIGHTS.md:61` — sticky / скрол не видно в jsdom → ручна перевірка.
+  - `no-sideways-module-imports` catches `import type` from `service|routes|repository` too;
+  - helpers and classify are allowed;
+  - ports are declared in the consumer.
+- `server/INSIGHTS.md:57` — GitHub only through the lazy `() => this.github()`.
+- `server/INSIGHTS.md:59` — `test/**` is not covered by `typecheck`; new tests must be run, fakes of changed ports must be updated.
+- `server/INSIGHTS.md:61` — deciding "the write is dead" from a single read plus an in-memory flag is unreliable. Therefore the `abandoned` flag is checked immediately before `replace`.
+- `server/INSIGHTS.md:23` — cost `null` ≠ `0` → AC-77.
+- `client/INSIGHTS.md:41` — a new `useTranslations` in a widely mounted tree breaks test providers → C17. Overview / IntentCard tests need the namespaces `brief` and `prReview`.
+- `client/INSIGHTS.md:39` — no angle brackets in messages → C14.
+- `client/INSIGHTS.md:45` — DOM measurement via a callback ref; `page.tsx` has no tests, so the logic is extracted into a hook.
+- `client/INSIGHTS.md:47` — tests via `fireEvent`.
+- `client/INSIGHTS.md:27` — `messages/*.json` from tests is one `../` deeper.
+- `client/INSIGHTS.md:61` — sticky / scroll is not visible in jsdom → manual verification.
 
-## Зачеплені модулі
-| Пакет | Lanes (routing.md) | Пакетний менеджер | Перевірки |
+## Affected modules
+| Package | Lanes (routing.md) | Package manager | Checks |
 |---|---|---|---|
-| `server/` | 2 contracts, 4 backend-http, 5 backend-service, 6 backend-data, 8 backend-adapters, 13 types, 14 security, 17–20 api-compat | pnpm | `pnpm -C server lint` · `pnpm -C server typecheck` · `pnpm -C server arch:check` · `pnpm -C server exec vitest run --exclude '**/*.it.test.ts'` |
-| `client/` | 2 contracts, 9 frontend-routes, 10 frontend-components, 11 frontend-lib, 12 frontend-tests, 13 types | pnpm | `pnpm -C client lint` · `pnpm -C client typecheck` · `pnpm -C client test` |
-| `mcp-server/` | 21 mcp-server (лише байтова копія `brief.ts`) | pnpm | `pnpm -C mcp-server typecheck` · `pnpm -C mcp-server test` |
-| спільне | 2 contracts | — | `./scripts/check-shared-sync.sh` |
+| `server/` | 2, 4, 5, 6, 8, 13, 14, 17–20 | pnpm | `pnpm -C server lint` · `pnpm -C server typecheck` · `pnpm -C server arch:check` · `pnpm -C server exec vitest run --exclude '**/*.it.test.ts'`; gate: `pnpm -C server exec vitest run .it.test` (main session) |
+| `client/` | 2, 9, 10, 11, 12, 13 | pnpm | `pnpm -C client lint` · `pnpm -C client typecheck` · `pnpm -C client test` |
+| `mcp-server/` | 21 (byte copy of `brief.ts`) | pnpm | `pnpm -C mcp-server typecheck` · `pnpm -C mcp-server test` |
+| shared | 2 | — | `./scripts/check-shared-sync.sh` |
 
-## Обмеження
-- **C1** — Поля контракту в `snake_case`. Zod-константа і тип мають одне PascalCase-ім'я. Значення enum — `lower_snake_case`. Три копії `brief.ts` байт-в-байт однакові; перевіряється `./scripts/check-shared-sync.sh`. — джерело: root `AGENTS.md` (Naming, Non-default conventions)
-- **C2** — `service.ts` приймає лише порти (інтерфейси, оголошені в самому `service.ts`), ніколи `Container`. Не імпортує `drizzle-orm`, `db/*`, `adapters/**`, а також `service|routes|repository` іншого модуля. Дозволено `../intent/helpers.js`, `../smart-diff/classify.js`, `../context-attachments/types.js`, `@devdigest/reviewer-core`, `platform/errors|resilience`. — джерело: onion-architecture; `server/INSIGHTS.md:49,55`
-- **C3** — `briefService()` у контейнері мемоізований (`this._briefService ??= …`). `new` на конкретних класах — лише в `container.ts`. — джерело: onion-architecture (container); `server/INSIGHTS.md:47`
-- **C4** — Роут тонкий: Zod `params` / `response` через `fastify-type-provider-zod`, один виклик сервісу, жодних бізнес-правил. Невалідний id дає `422` до хендлера. — джерело: fastify-best-practices; `server/AGENTS.md`
-- **C5** — Помилки лише через `AppError`-підкласи з `details.reason`:
-  - `NotFoundError` → 404;
-  - `TooManyRequestsError` → 429;
-  - `ConflictError(msg, { reason: 'no_diff_data' })` → 409;
-  - `ConflictError(msg, { reason: 'missing_key', provider })` → 409;
-  - `ExternalServiceError(msg, { reason: 'llm_timeout' | 'llm_error' | 'invalid_output' })` → 502.
+## Constraints
+- **C1** — Contract fields are `snake_case`; a Zod constant and a type share one PascalCase name; enums are `lower_snake_case`; the three copies of `brief.ts` are byte-for-byte identical (`./scripts/check-shared-sync.sh`). — root `AGENTS.md`
+- **C2** — `service.ts` accepts only ports declared in itself; never `Container`. No `drizzle-orm` / `db/*` / `adapters/**` and no `service|routes|repository` of other modules. Allowed: `../intent/helpers.js`, `../smart-diff/classify.js`, `../context-attachments/types.js`, `@devdigest/reviewer-core`, `platform/errors|resilience`. — onion-architecture; `server/INSIGHTS.md:49,55`
+- **C3** — `briefService()` is memoized (`??=`); `new` of concrete classes only in `container.ts`. — onion-architecture; `server/INSIGHTS.md:47`
+- **C4** — Thin route: Zod `params` / `response`, one service call; invalid id → `422`. — fastify-best-practices; `server/AGENTS.md`
+- **C5** — Errors only through `AppError` subclasses with `details.reason`:
 
-  Повідомлення не містять тексту PR чи моделі. — джерело: `server/src/platform/errors.ts:7-53`; spec *Contracts*
-- **C6** — У логах лише метадані: outcome, reason, provider, model, токени, cost, оцінка токенів, бюджет, скорочені / відсутні секції, лічильники відкинутого, тривалість. Ніколи prompt, опис PR, issue, spec-текст чи вихід моделі. — джерело: AC-106, AC-107; security A09
-- **C7** — Увесь PR-, repo- і model-текст (title, description, issue, intent, spec, шляхи, імена символів) потрапляє лише в user message і лише через `wrapUntrusted(label, content)` з `reviewer-core/src/prompt.ts:48`. Системний prompt статичний. — джерело: AC-30; security ASI01
-- **C8** — Схема виходу моделі `BriefModelOutput`:
-  - без `.optional()` (OpenAI strict `json_schema`, `server/src/adapters/llm/openai.ts:103-104`);
-  - `kind: z.string()`, а не enum;
-  - `line: z.number().int()`.
+  | Class | Status | `details` |
+  |---|---|---|
+  | `NotFoundError` | 404 | — |
+  | `TooManyRequestsError` | 429 | — |
+  | `ConflictError` | 409 | `{ reason: 'no_diff_data' }` or `{ reason: 'missing_key', provider }` |
+  | `ExternalServiceError` | 502 | `{ reason: 'llm_timeout' \| 'llm_error' \| 'invalid_output' }` |
+  | `AppError('input_over_budget', …, 500, …)` | 500 | `{ reason: 'input_over_budget' }` (guard; unreachable under the caps) |
 
-  Обрізання, дедуплікація і коерсія `kind` — після парсингу, не в схемі. — джерело: zod; REC5
-- **C9** — Діапазони нових рядків рахує чиста функція в `brief/helpers.ts`. `adapters/git/diff-parser.ts` не імпортується. — джерело: onion-architecture; REC4
-- **C10** — GitHub, LLM і модель приходять в'язаними замиканнями з контейнера: `() => this.github()`, `(p) => this.llm(p)`, `(ws) => resolveFeatureModel(this, ws, 'risk_brief')`. Жодного `process.env`. — джерело: `server/AGENTS.md`; `server/INSIGHTS.md:57`
-- **C11** — Без міграцій і без `db:generate`. Збережений документ — `pr_brief.json` з `schema_version: 1`. Запис — один upsert по `pr_id`, лише після успіху. — джерело: NFR-8; `server/AGENTS.md`
-- **C12** — Клієнтські дані — лише через `src/lib/hooks/*` → `src/lib/api.ts`. Жодних `fetch` у компонентах. — джерело: `client/AGENTS.md`
-- **C13** — Один компонент на файл у `_components/<Name>/<Name>.tsx` (+ `index.ts`), ≤ 200 рядків, ≤ 7 пропсів. Бізнес-логіка — у чистому `helpers.ts`. Без render-factory. Без `useEffect` для похідного стану. — джерело: react-best-practices; frontend-architecture; root `AGENTS.md`
-- **C14** — Кожен новий рядок UI береться з `client/messages/en/brief.json` під новими ключами, наявні ключі `brief.*` не змінюються. У текстах повідомлень немає `<…>`. — джерело: AC-104, NFR-9; `client/INSIGHTS.md:39`
-- **C15** — Модельний текст рендериться лише як текст JSX: ні `dangerouslySetInnerHTML`, ні `react-markdown`. Шляхи — текст, а не URL. — джерело: AC-80; security A05
-- **C16** — Тести клієнта:
-  - `fireEvent` з `@testing-library/react`, а не `user-event`;
-  - `fetch` мокається;
-  - `NextIntlClientProvider` містить усі використані namespaces (`brief`, `prReview`, `shell`).
+  Messages contain no PR or model text. — `server/src/platform/errors.ts:7-53`
+- **C6** — Logs contain metadata only: outcome, reason, provider, model, tokens, cost, estimate, budget, trimmed / missing sections, counts of dropped items, `durationMs`. Never the prompt, description, issue, spec or model output. — AC-106, AC-107
+- **C7** — All untrusted text goes only into the user message and only through `wrapUntrusted` (`reviewer-core/src/prompt.ts:48`); the system prompt is static. — AC-30
+- **C8** — `BriefModelOutput`: no `.optional()`, `kind: z.string()`, `line: z.number().int()`. Normalization, truncation, dedup and coercion happen after parsing, on the server. — zod; REC5; `server/src/adapters/llm/openai.ts:103-104`
+- **C9** — Ranges are computed by a pure function in `brief/helpers.ts`; no import of `adapters/git/diff-parser.ts`. — REC4
+- **C10** — GitHub, LLM and model — via closures from the container; no `process.env`. — `server/AGENTS.md`; `server/INSIGHTS.md:57`
+- **C11** — No migrations and no `db:generate`. `pr_brief.json` with `schema_version: 1`; one upsert only after success. The document passes `StoredBrief.safeParse` before being written. — NFR-8
+- **C12** — Client data only through `src/lib/hooks/*` → `src/lib/api.ts`. — `client/AGENTS.md`
+- **C13** — One component per file in `_components/<Name>/`, ≤ 200 lines, ≤ 7 props, logic in `helpers.ts`, no `useEffect` for derived state. — react-best-practices; frontend-architecture
+- **C14** — All new strings come from `brief.json` under new keys; existing ones are not changed; no `<…>`. — AC-104; `client/INSIGHTS.md:39`
+- **C15** — Model text only as JSX text: no `dangerouslySetInnerHTML` and no `react-markdown`. — AC-80
+- **C16** — Client tests: `fireEvent`, mocked `fetch`, a provider with all namespaces (`brief`, `prReview`, `shell`). — `client/INSIGHTS.md:41,47`
+- **C17** — `client/src/components/diff-viewer/**` without a new `useTranslations`; the target strings are passed as props. — REC7
+- **C18** — DOM measurement / scroll — a callback ref in `useState`; offset from `headerHeight`. — `client/INSIGHTS.md:45`
+- **C19** — DB tests are named `*.it.test.ts`. The implementer writes them but does not run them; the main session runs them as a gate before `plan-verifier`. — `server/AGENTS.md`
+- **C20** — No new dependencies and no lockfile changes. — root `AGENTS.md`
+- **C21** — Without `httpRetries` the adapters behave as before. — Q1
+- **C22** — The API is additive only; `tab` / `trace` unchanged; `file` / `line` optional. — NFR-8
+- **C23** — The `children` slot in `IntentCard` is optional; without it the render is identical to the current one (other places, if any appear, are not affected). — react-best-practices (composition)
 
-  — джерело: react-testing-library; `client/INSIGHTS.md:41,47`
-- **C17** — `client/src/components/diff-viewer/**` не отримує нового `useTranslations`. Рядки цілі («Line n isn't part of this diff») передаються пропсами з `DiffTab`. — джерело: REC7; `client/INSIGHTS.md:41`
-- **C18** — Будь-яке вимірювання чи скрол DOM робиться через callback ref у `useState`, а не `useRef` + `[]`. Відступ під sticky-заголовки береться з `headerHeight`. — джерело: `client/INSIGHTS.md:45`
-- **C19** — DB-тести мають назву `*.it.test.ts`. Implementer їх пише, але не запускає. — джерело: `server/AGENTS.md`
-- **C20** — Нових залежностей немає. Lockfile-и не змінюються. — джерело: root `AGENTS.md` (Do-not-touch)
-- **C21** — Зміна адаптерів зворотно сумісна: при `httpRetries === undefined` поведінка ідентична нинішній (рев'ю, intent, narrative не змінюються). — джерело: onion-architecture (adapters); Q1
-- **C22** — Публічний API лише адитивний: два нові роути. Наявні ендпоінти й параметри URL `tab` / `trace` не змінюються. `file` / `line` — опційні. — джерело: NFR-8; breaking-change / response-schema
+## Steps
 
-## Кроки
-
-### S1 — Контракт `brief.ts` у трьох копіях
+### S1 — Contract `brief.ts` in three copies
 - package: W1
 - files:
   - modify `server/src/vendor/shared/contracts/brief.ts`:
-    - додати `ReviewFocusItem` `{ file: string, line: int ≥ 1, reason: string, line_verified: boolean }`;
-    - додати `BriefMissingInputName` (enum `intent | blast | linked_issue | description | specs | diff_stats`);
-    - додати `BriefMissingReason` (enum з 16 значень за spec *Contracts*);
-    - додати `BriefMissingInput` `{ input, reason }`;
-    - додати `BriefSpecUsed` `{ path: string, est_tokens: int }`;
-    - змінити `PrBrief`: `summary: string`, `review_focus: ReviewFocusItem[]`, `intent: Intent.nullable()`, `blast: BlastRadius.nullable()`, `risks: Risks`, `history: PrHistory.nullable()`;
-    - додати `PrBriefRecord = PrBrief.extend({ pr_id, head_sha, stale, generated_at, provider, model, tokens_in: int|null, tokens_out: int|null, cost_usd: number|null, input_tokens_est: int, missing_inputs: BriefMissingInput[], specs_sha: string|null, specs_used: BriefSpecUsed[] })`;
-    - оновити коментар-заголовок блоку `PrBrief`.
-  - modify `client/src/vendor/shared/contracts/brief.ts`, `mcp-server/src/vendor/shared/contracts/brief.ts` — байтова копія (`./scripts/check-shared-sync.sh --fix` або вручну).
-  - create `server/test/brief-contracts.test.ts` — `PrBriefRecord` парсить валідний запис. Відкидає `line: 0`, невідомий `reason`, відсутній `summary`. Приймає `intent: null`, `blast: null`, `history: null`.
-- skills: zod — схеми й типи (lane 2); typescript-expert — змінений експортований тип (lane 13); response-schema — новий тип відповіді (lane 18)
+    - `ReviewFocusItem` `{ file: string, line: z.number().int().min(1), reason: string, line_verified: boolean }`;
+    - `BriefMissingInputName` (`intent | blast | linked_issue | description | specs | diff_stats`);
+    - `BriefMissingReason` (16 values per the spec *Contracts*);
+    - `BriefMissingInput` `{ input, reason }`;
+    - `BriefSpecUsed` `{ path, est_tokens: int }`;
+    - `PrBrief`: `summary`, `review_focus`, `intent: Intent.nullable()`, `blast: BlastRadius.nullable()`, `risks: Risks`, `history: PrHistory.nullable()`;
+    - `PrBriefRecord = PrBrief.extend({ pr_id, head_sha, stale, generated_at, provider, model, tokens_in: int|null, tokens_out: int|null, cost_usd: number|null, input_tokens_est: int, missing_inputs, specs_sha: string|null, specs_used })`;
+    - update the block comment.
+  - modify `client/src/vendor/shared/contracts/brief.ts`, `mcp-server/src/vendor/shared/contracts/brief.ts` — byte copy.
+  - create `server/test/brief-contracts.test.ts`:
+    - accepts a valid record;
+    - rejects `line: 0`, `line: -1`, an unknown `reason`, a missing `summary`;
+    - accepts `intent` / `blast` / `history: null`.
+- skills: zod (lane 2); typescript-expert (lane 13); response-schema (lane 18)
 - constraints: C1, C22
-- covers: NFR-8, AC-1, AC-13, AC-44 (форма полів)
-- reuse: `server/src/vendor/shared/contracts/brief.ts:9-14,73-78,116-135` — `Intent`, `BlastRadius`, `Risks`, `PrHistory`; `server/src/vendor/shared/index.ts:21` уже реекспортує `brief.js` (barrel не змінюється)
-- done-when: `./scripts/check-shared-sync.sh` exit 0; `pnpm -C server typecheck`, `pnpm -C client typecheck`, `pnpm -C mcp-server typecheck` проходять; `pnpm -C server exec vitest run test/brief-contracts.test.ts` зелений (T1).
+- covers: NFR-8, AC-1, AC-13, AC-44 (shape)
+- reuse: `server/src/vendor/shared/contracts/brief.ts:9-14,73-78,116-135`; barrel `server/src/vendor/shared/index.ts:21` unchanged
+- done-when: `./scripts/check-shared-sync.sh` exit 0; `typecheck` server / client / mcp-server green; T1 green.
 - depends-on: —
 
-### S2 — Нові i18n-ключі PR Brief
+### S2 — New PR Brief i18n keys
 - package: W1
-- files: modify `client/messages/en/brief.json` — додати об'єкт `card` (наявні ключі не чіпати):
-  - `title` «PR Brief», `aiLabel` «AI-generated»;
-  - `empty.title` «No brief yet», `empty.body` (одне речення: підсумок, ризики, з чого почати), `modelHint` «Model: {model}»;
-  - `generate` «Generate brief», `regenerate` «Regenerate», `generating` «Generating…»;
-  - `provenance` «Generated {when} for commit {sha} · {model} · {cost}», `costNotReported` «cost not reported»;
-  - `outdated` «Outdated — the PR has new commits since this brief»;
-  - `riskAreas` «Risk areas», `noRisks` «No notable risks flagged.»;
-  - `severity.{high,medium,low}`, `expandRisk`, `collapseRisk`;
-  - `reviewFocus.title` «Review focus — read these first», `reviewFocus.empty` «No specific lines to start from — read the diff in Smart order.»;
-  - `notInDiff` «not in this PR's diff», `fileNotInDiff` «File not in this PR's diff», `lineNotInDiff` «Line {line} isn't part of this diff»;
-  - `missing.title` «Generated without:», `missing.input.{intent,blast,linked_issue,description,specs,diff_stats}`, `missing.reason.{…16 значень}`, `missing.fix.intent`, `missing.fix.specs`;
-  - `error.llm_timeout`, `error.llm_error`, `error.invalid_output`, `error.no_diff_data`, `error.missingKey` «Add an API key for {provider} in Settings», `error.apiKeysLink`, `error.modelsLink`, `error.rateLimited` «Too many brief requests — try again in a minute», `error.loadFailed` «Couldn't load the brief», `retry` «Retry»;
+- files: modify `client/messages/en/brief.json` — the `card` object (do not touch existing keys):
+  - `title`, `aiLabel`, `empty.title`, `empty.body`, `modelHint` "Model: {model}";
+  - `generate`, `regenerate`, `generating`;
+  - `provenance` "Generated {when} for commit {sha} · {model} · {cost}", `costNotReported`, `outdated`;
+  - `riskAreas`, `noRisks`, `severity.{high,medium,low}`, `expandRisk`, `collapseRisk`;
+  - `reviewFocus.title` "Review focus — read these first", `reviewFocus.empty`;
+  - `notInDiff`, `fileNotInDiff`, `lineNotInDiff` "Line {line} isn't part of this diff";
+  - `missing.title`, `missing.input.{6}`, `missing.reason.{16}`, `missing.fix.intent`, `missing.fix.specs`;
+  - `error.llm_timeout`, `error.llm_error`, `error.invalid_output`, `error.no_diff_data`, `error.input_over_budget`, `error.generic`, `error.missingKey` "Add an API key for {provider} in Settings", `error.apiKeysLink`, `error.modelsLink`, `error.rateLimited`, `error.loadFailed`, `retry`;
   - `status.generating`, `status.generated`, `status.failed`.
-- skills: next-best-practices — повідомлення next-intl (lane 9 / 11); frontend-architecture — i18n живе в `messages/` (lane 11)
+
+  Texts — verbatim from the spec (AC-61, AC-64, AC-71, AC-73, AC-74, AC-76, AC-77, AC-83, AC-84, AC-86, AC-94, AC-95, AC-96).
+- skills: next-best-practices (lane 9 / 11); frontend-architecture (lane 11)
 - constraints: C14
 - covers: AC-104, NFR-9
-- reuse: `client/messages/en/brief.json:1-48` — наявна структура namespace `brief`
-- done-when: JSON валідний (`pnpm -C client typecheck` + `pnpm -C client test` зелені); `git diff` показує лише додані рядки в `brief.json`; жоден рядок не містить `<`.
+- reuse: `client/messages/en/brief.json:1-48`
+- done-when: JSON is valid; `pnpm -C client typecheck` + `test` green; `git diff` — only added lines; no `<`.
 - depends-on: —
 
-### S3 — Адаптери LLM враховують `httpRetries: 0`
+### S3 — LLM adapters honor `httpRetries: 0`
 - package: W3
 - files:
-  - modify `server/src/adapters/llm/openai.ts` — у `completeStructured`, коли `req.httpRetries === 0`:
-    - не обгортати виклик у `withRetry`;
-    - передавати `{ maxRetries: 0 }` другим аргументом (request options) у `chat.completions.create`.
+  - modify `server/src/adapters/llm/openai.ts`. If `req.httpRetries === 0`:
+    - do not wrap in `withRetry`;
+    - pass `{ maxRetries: 0 }` as request options to `chat.completions.create`.
 
-    Коли `httpRetries` має інше значення > 0, передавати його як `maxRetries`. Коли не задано — без змін.
-  - modify `server/src/adapters/llm/anthropic.ts` — те саме для `messages.create`.
-  - create `server/test/llm-http-retries.test.ts` — фейковий SDK-клієнт (підміна `provider['client']`), що кидає 429 / 5xx:
-    - при `httpRetries: 0, maxRetries: 0` рівно 1 виклик create, request options містять `maxRetries: 0`;
-    - без `httpRetries` поведінка `withRetry` збережена.
-- skills: onion-architecture — адаптер за портом `LLMProvider` (lane 8); typescript-expert — типи SDK request options (lane 13)
+    `> 0` → pass as `maxRetries`; unset — unchanged.
+  - modify `server/src/adapters/llm/anthropic.ts` — the same for `messages.create`.
+  - create `server/test/llm-http-retries.test.ts` — a fake SDK client (`provider['client']`) that throws 429 / 5xx:
+    - with `httpRetries: 0, maxRetries: 0` exactly 1 call and options with `maxRetries: 0`;
+    - without `httpRetries` the `withRetry` behavior is preserved.
+- skills: onion-architecture (lane 8); typescript-expert (lane 13)
 - constraints: C21, C20
 - covers: AC-9, EC-7, NFR-2
-- reuse: `server/src/vendor/shared/adapters.ts:50-55` (поле `httpRetries` уже в порті); `reviewer-core/src/llm/openrouter.ts:107` (зразок)
-- done-when: T2 зелений; `pnpm -C server typecheck` і `pnpm -C server exec vitest run --exclude '**/*.it.test.ts'` проходять (наявні тести рев'ю / intent не змінились).
+- reuse: `server/src/vendor/shared/adapters.ts:50-55`; `reviewer-core/src/llm/openrouter.ts:107`
+- done-when: T2 green; server `typecheck` and the unit suite green.
 - depends-on: —
 
-### S4 — `ContextAttachmentsService.resolveForRepo`
+### S4 — `ContextAttachmentsService.resolveForRepo` with reason priority
 - package: W3
 - files:
-  - modify `server/src/modules/agents/repository.ts` — новий метод `listEnabledIdsOrdered(workspaceId): Promise<{ id: string }[]>`: `enabled = true`, `ORDER BY created_at, id`. `listEnabled` не чіпати.
+  - modify `server/src/modules/agents/repository.ts` — `listEnabledIdsOrdered(workspaceId): Promise<{ id: string }[]>`: `enabled = true`, `ORDER BY created_at, id`. Do not touch `listEnabled`.
   - modify `server/src/modules/context-attachments/types.ts`:
-    - додати до `AgentContextStore` метод `listEnabledIdsOrdered`;
-    - новий порт `ProjectContextForRepo { resolveForRepo(workspaceId, repoId, logger?): Promise<RepoContextResult> }`;
-    - `RepoContextResult = { kind: 'none' } | { kind: 'unavailable'; reason: ProjectContextUnavailableReason } | { kind: 'resolved'; sha: string; docs: { path: string; text: string; estTokens: number | null }[] }`.
+    - `AgentContextStore.listEnabledIdsOrdered`;
+    - a new port `ProjectContextForRepo { resolveForRepo(workspaceId, repoId, logger?): Promise<RepoContextResult> }`;
+    - `RepoContextResult = { kind: 'none' } | { kind: 'unavailable'; reason: 'no_clone' | 'no_catalog' | 'timeout' | 'error' } | { kind: 'resolved'; sha; docs: { path; text; estTokens: number | null }[] }`.
 
-    `ProjectContextForRun` не змінюється.
-  - modify `server/src/modules/context-attachments/service.ts` — `resolveForRepo`:
-    - агенти в порядку `listEnabledIdsOrdered`;
-    - для кожного: власні документи цього repo (`listContextDocs`), далі документи linked-скілів з `linkedForAgentWithState`, відфільтрованих `enabled && safe`, у порядку `order`;
-    - дедуп за першою позицією;
-    - `catalog.resolveDocs`;
-    - лише читабельні документи (`isReadable`), без бюджету;
-    - `withTimeout(RESOLVE_TIMEOUT_MS)`;
-    - помилки → `unavailable` (як `resolveForRun`, `service.ts:205-213`).
+    `ProjectContextForRun` does not change.
+  - modify `server/src/modules/context-attachments/service.ts` — `resolveForRepo`, all under `withTimeout(RESOLVE_TIMEOUT_MS)`, errors → `unavailable` (`timeout` / `error`):
+    1. Candidates: agents in the order of `listEnabledIdsOrdered`; for each, its own documents of this repo (`listContextDocs`), then the documents of linked skills from `linkedForAgentWithState` (`enabled && safe`, by `order`); dedup by first position.
+    2. **Priority:** `catalog.resolveDocs(ws, repoId, paths)` is called **always**, even with empty `paths`. It checks the clone and the catalog first (`server/src/modules/project-context/service.ts:143-146`) and throws `ContextUnavailableError('no_clone' | 'no_catalog')` → `unavailable` with that reason. Hence `not_cloned` > `no_catalog` > `none_attached`.
+    3. Only if the repo state is fine and there are 0 candidates → `{ kind: 'none' }`.
+    4. Otherwise `resolved` with the readable documents (`isReadable`), without a budget, `sha = resolved.sha`.
 
-    Клас декларує `implements ProjectContextForRun, ProjectContextForRepo`.
-  - modify `server/test/context-attachments-service.test.ts` — фейк `AgentContextStore` отримує `listEnabledIdsOrdered`. Нові кейси: порядок агентів, порядок own→skills, дедуп, вимкнений / unsafe скіл виключено, `none`, `no_clone`, `no_catalog`, `timeout`.
-- skills: onion-architecture — порт у споживачі, без рядків через межу (lane 5 / 6); drizzle-orm-patterns — `orderBy(asc(createdAt), asc(id))` (lane 6)
+    Class: `implements ProjectContextForRun, ProjectContextForRepo`.
+  - modify `server/test/context-attachments-service.test.ts`:
+    - the fake gets `listEnabledIdsOrdered`;
+    - cases: agent order, own→skills, dedup, a disabled / unsafe skill excluded;
+    - **no catalog + no attachments → `no_catalog`**;
+    - **no clone + no attachments → `no_clone`**;
+    - catalog exists + no attachments → `none`;
+    - timeout → `timeout`.
+- skills: onion-architecture (lane 5 / 6); drizzle-orm-patterns — `orderBy(asc(createdAt), asc(id))` (lane 6)
 - constraints: C2, C19
-- covers: AC-38, AC-39, AC-41, AC-42 (джерело даних)
-- reuse: `server/src/modules/context-attachments/helpers.ts:22` (`orderRunCandidates`); `server/src/modules/context-attachments/service.ts:205-283`; `server/src/modules/project-context/service.ts:142-157` (`resolveDocs` → `sha`); `server/src/modules/skills/repository.ts:231-243`
-- done-when: T3 зелений; `pnpm -C server arch:check`, `typecheck`, unit-набір зелені; `test/run-executor-project-context.test.ts` не змінювався і проходить.
+- covers: AC-38, AC-39, AC-41, AC-42
+- reuse: `server/src/modules/context-attachments/helpers.ts:22`; `server/src/modules/context-attachments/service.ts:205-283`; `server/src/modules/project-context/service.ts:142-157`; `server/src/modules/skills/repository.ts:231-243`
+- done-when: T3 green; `arch:check`, `typecheck`, unit suite green; `test/run-executor-project-context.test.ts` unchanged and green.
 - depends-on: —
 
-### S5 — Константи модуля brief
+### S5 — Brief module constants
 - package: W2
 - files: create `server/src/modules/brief/constants.ts`:
-  - бюджет і ліміти входу: `INPUT_BUDGET_TOKENS = 8000`, `MAX_DESCRIPTION_CHARS = 4000`, `MAX_ISSUE_CHARS = 2000`, `MAX_DIFF_STAT_ENTRIES = 300`;
-  - таймаути: `BLAST_TIMEOUT_MS = 10_000`, `ISSUE_TIMEOUT_MS = 5_000`, `SPECS_TIMEOUT_MS = 5_000`, `LLM_TIMEOUT_MS = 60_000`;
-  - виклик моделі: `MAX_OUTPUT_TOKENS = 2000`, `TEMPERATURE = 0.2`;
-  - обмеження виходу: `MAX_RISKS = 6`, `MAX_REFS_PER_RISK = 3`, `MAX_FOCUS_ITEMS = 8`, `MAX_SUMMARY_CHARS = 600`, `MAX_RISK_TITLE_CHARS = 80`, `MAX_EXPLANATION_CHARS = 600`, `MAX_REASON_CHARS = 160`;
-  - `RISK_KINDS = ['security','db_migration','breaking_api','perf','deps','config','other'] as const`;
-  - `RATE_LIMIT = { max: 10, windowMs: 60_000 }`;
-  - `STORED_SCHEMA_VERSION = 1`;
-  - `REDUCE_ORDER = ['specs','linked_issue','description','blast_callers','diff_stats'] as const`;
+  - input budget and limits: `INPUT_BUDGET_TOKENS = 8000`, `MAX_TITLE_CHARS = 300`, `MAX_DESCRIPTION_CHARS = 4000`, `MAX_ISSUE_CHARS = 2000`, `MAX_DIFF_STAT_ENTRIES = 300`, `MAX_BLAST_SUMMARY_CHARS = 1000`, `INTENT_FLOOR_TOKENS = 1000`, `MAX_SYSTEM_PROMPT_TOKENS = 1000`;
+  - timeouts: `BLAST_TIMEOUT_MS = 10_000`, `ISSUE_TIMEOUT_MS = 5_000`, `SPECS_TIMEOUT_MS = 5_000`, `LLM_TIMEOUT_MS = 60_000`, `REQUEST_DEADLINE_MS = 75_000`;
+  - model call: `MAX_OUTPUT_TOKENS = 2000`, `TEMPERATURE = 0.2`;
+  - output limits: `MAX_RISKS = 6`, `MAX_REFS_PER_RISK = 3`, `MAX_FOCUS_ITEMS = 8`, `MAX_SUMMARY_CHARS = 600`, `MAX_RISK_TITLE_CHARS = 80`, `MAX_EXPLANATION_CHARS = 600`, `MAX_REASON_CHARS = 160`;
+  - `RISK_KINDS`, `RATE_LIMIT = { max: 10, windowMs: 60_000 }`, `STORED_SCHEMA_VERSION = 1`;
+  - `REDUCE_ORDER = ['specs','linked_issue','description','blast_callers','diff_stats','blast_symbols','intent_text'] as const` (the first five — AC-25, the last two — terminal policy);
   - `SCHEMA_NAME = 'PrBriefOutput'`.
-- skills: onion-architecture — ring 3, без I/O (lane 5)
+- skills: onion-architecture (lane 5)
 - constraints: C2
-- covers: NFR-3
-- reuse: `server/src/modules/intent/constants.ts:60` (форма rate limit), `server/src/modules/onboarding/narrative-service.ts:196-206`
-- done-when: `pnpm -C server typecheck` проходить.
+- covers: NFR-1 (deadline), NFR-3
+- reuse: `server/src/modules/intent/constants.ts:60`; `server/src/modules/onboarding/narrative-service.ts:196-206`
+- done-when: `pnpm -C server typecheck` passes.
 - depends-on: S1
 
-### S6 — Чисті хелпери: діапазони, валідація виходу, збережений документ, класифікація збоїв
+### S6 — Pure helpers: ranges, blast projection, validation, stored document, classification
 - package: W2
 - files:
-  - create `server/src/modules/brief/helpers.ts` з функціями:
-    - `addedLineRanges(patch: string | null): { start: number; end: number }[]` — лише `+`-рядки нової сторони, з парсингу заголовків `@@`; per-file patch без `diff --git` (Q2). `null` / бінарний / лише видалення → `[]`.
-    - `pickLinkedIssueNumber(pull, repo): number | null` — перше same-repo число з `extractReferences` (`../intent/helpers.js`) (Q3).
-    - `blastMissingReason(...)` — мапінг `BlastRadiusResponse.degraded/reason` → `BriefMissingReason`.
-    - `specsMissingReason(...)` — мапінг `RepoContextResult` → `none_attached | not_cloned | no_catalog | unavailable`.
-    - `validateBriefOutput(output, ctx)`, де `ctx = { prPaths: Set, blastPaths: Set, rangesByPath: Map }`; повертає `{ summary, risks, review_focus, dropped: { risks, refs, focus } }`. Правила:
-      - path-частина `file_ref` (до `:<n>` або `:<a>-<b>`) має бути в `prPaths ∪ blastPaths`, інакше ref видаляється;
-      - ризик без ref-ів відкидається;
-      - невідомий `kind` → `other`;
-      - сортування ризиків high > medium > low зі збереженням порядку моделі, далі кап 6;
-      - кап 3 ref-и на ризик;
-      - focus з файлом поза `prPaths` відкидається;
-      - якщо файл має діапазони: рядок поза ними снепиться на `ranges[0].start`, `line_verified: true`;
-      - якщо файл діапазонів не має: рядок лишається, `line_verified: false`;
-      - дедуп `file:line` (перший виграє), далі кап 8;
-      - обрізання з «…»: 600 / 80 / 600 / 160;
-      - якщо порожньо — все одно повертається з summary.
-    - `StoredBrief = PrBriefRecord.omit({ pr_id: true, stale: true }).extend({ schema_version: z.literal(STORED_SCHEMA_VERSION) })` + `parseStoredBrief(json: unknown): StoredBrief | null` (`safeParse`, `null` при невдачі).
-    - `toBriefRecord(prId, stored, currentHeadSha): PrBriefRecord` (`stale = stored.head_sha !== currentHeadSha`).
-    - `classifyBriefFailure(err): 'llm_timeout' | 'llm_error' | 'invalid_output'` — за `name`:
-      - `TimeoutError` / `AbortError` / `APIConnectionTimeoutError` → timeout;
-      - `ZodError` / `SyntaxError` / `InvalidBriefOutputError` або повідомлення `/schema|no choices|empty (response|output)/i` → invalid_output;
-      - інше → llm_error.
-    - `InvalidBriefOutputError`.
-  - create `server/test/brief-helpers.test.ts` — усі правила вище, включно з EC-8 (старий шлях перейменованого файлу), EC-9, EC-10, EC-19, EC-20, EC-21 (стара `schema_version` / зіпсований JSON → `null`), EC-22.
-- skills: onion-architecture — чиста логіка ring 3, лише дозволені cross-module імпорти helpers (lane 5); zod — `omit` / `extend` / `safeParse` (lane 2); typescript-expert — експортовані сигнатури (lane 13)
-- constraints: C2, C8, C9
-- covers: AC-6, AC-5 (обчислення `stale`), AC-21 (діапазони), AC-33, AC-34, AC-36, AC-41, AC-42 (мапінг причин), AC-45, AC-46, AC-47 (класифікація), AC-49, AC-50, AC-51, AC-52, AC-53, AC-54, AC-55, AC-56, AC-57, AC-58, AC-59, EC-8, EC-9, EC-10, EC-19, EC-20, EC-21, EC-22, NFR-5
-- reuse: `server/src/modules/intent/helpers.ts:144` (`extractReferences`); `server/src/modules/onboarding/narrative-service.ts:65-76` (схема класифікації — шаблон, не імпорт); `server/src/vendor/shared/contracts/brief.ts:83-100`
-- done-when: T4 зелений; `pnpm -C server arch:check` 0 помилок.
+  - create `server/src/modules/brief/helpers.ts`:
+    - `addedLineRanges(patch: string | null)` — only `+` lines; per-file patch without `diff --git`; `null` / binary / deletions only → `[]` (Q2).
+    - `pickLinkedIssueNumber(pull, repo)` — the first same-repo number from `extractReferences` (Q3).
+    - `projectBlast(response: BlastRadiusResponse): BlastRadius`:
+      - summary truncated to `MAX_BLAST_SUMMARY_CHARS`;
+      - `changed_symbols` (name, file, kind);
+      - `downstream[]` — `{ symbol, callers: [{ name, file, line, endpoints_affected: [], crons_affected: [] }], endpoints_affected: [], crons_affected: [] }`.
+
+      This is the single blast type that the prompt, storage and the allow-list work with.
+    - `blastPathsOf(projection)` — `changed_symbols.file ∪ downstream[].callers[].file`.
+    - `blastMissingReason(...)`, `specsMissingReason(...)` — mapping: `no_clone` → `not_cloned`, `no_catalog` → `no_catalog`, `timeout` / `error` → `unavailable`, `none` → `none_attached`.
+    - `validateBriefOutput(output, ctx)`, where `ctx = { prPaths, blastPaths, rangesByPath }`, returns `{ summary, risks, review_focus, dropped }`. Rules:
+      - the path part of `file_ref` must be in `prPaths ∪ blastPaths`, otherwise the ref is removed;
+      - a risk without refs is dropped;
+      - an unknown `kind` → `other`;
+      - severity sort preserving the model's order, cap 6;
+      - cap of 3 refs per risk;
+      - a focus item with a file outside `prPaths` is dropped;
+      - the file has ranges: a line outside them (including `line < 1`) snaps to `ranges[0].start`, `line_verified: true`;
+      - the file has no ranges: `line ≥ 1` stays, `line < 1` → `1`; `line_verified: false`;
+      - dedup `file:line`, cap 8;
+      - truncation with "…": 600 / 80 / 600 / 160;
+      - an empty result is still returned with the summary.
+    - `StoredBrief = PrBriefRecord.omit({ pr_id, stale }).extend({ schema_version: z.literal(1) })`, `parseStoredBrief(json): StoredBrief | null`.
+    - `toBriefRecord(prId, stored, currentHeadSha)`.
+    - `classifyBriefFailure(err)` — timeout names → `llm_timeout`; `ZodError` / `SyntaxError` / `InvalidBriefOutputError` or `/schema|no choices|empty (response|output)/i` → `invalid_output`; otherwise → `llm_error`.
+    - `InvalidBriefOutputError`, `BriefInputOverBudgetError`.
+  - create `server/test/brief-helpers.test.ts`:
+    - all the rules above;
+    - EC-8, EC-9, EC-10, EC-19, EC-20, EC-21, EC-22;
+    - **focus `line: 0` and `line: -5` for a file without a patch → `line: 1, line_verified: false`, and the result passes `StoredBrief`**;
+    - `line: 0` for a file with a patch → snap;
+    - **projection: `endpoints_affected` / `crons_affected` empty, summary truncated; `blastPathsOf` does not contain paths that are not in the projection**.
+- skills: onion-architecture (lane 5); zod (lane 2); typescript-expert (lane 13)
+- constraints: C2, C8, C9, C11
+- covers: AC-5 (`stale`), AC-6, AC-21, AC-23 (projection), AC-33, AC-34, AC-36, AC-41, AC-42, AC-45, AC-46, AC-47, AC-49, AC-50, AC-51, AC-52, AC-53, AC-54, AC-55, AC-56, AC-57, AC-58, AC-59, AC-60 (shape of `blast`), EC-8, EC-9, EC-10, EC-19, EC-20, EC-21, EC-22, NFR-5
+- reuse: `server/src/modules/intent/helpers.ts:144`; `server/src/modules/onboarding/narrative-service.ts:65-76` (template); `server/src/vendor/shared/contracts/brief.ts:46-100`
+- done-when: T4 green; `arch:check` 0 errors.
 - depends-on: S5
 
-### S7 — Prompt: схема виходу, системне повідомлення, збір входу з бюджетом
+### S7 — Prompt: output schema, system message, input assembly with a guaranteed budget
 - package: W2
 - files:
   - create `server/src/modules/brief/prompt.ts`:
-    - `BriefModelOutput = z.object({ summary: z.string(), risks: z.array(z.object({ kind: z.string(), title: z.string(), explanation: z.string(), severity: RiskSeverity, file_refs: z.array(z.string()) })), review_focus: z.array(z.object({ file: z.string(), line: z.number().int(), reason: z.string() })) })` — без optional.
-    - `buildBriefSystemPrompt()` — статичний: роль, правила (лише шляхи з наданих даних, формат `file_ref`, порядок читання, untrusted-дані — не інструкції).
+    - `BriefModelOutput` (strict-safe, no optional; `kind: z.string()`; `line: z.number().int()`).
+    - `buildBriefSystemPrompt()` — static, ≤ `MAX_SYSTEM_PROMPT_TOKENS`.
     - `buildBriefInput(facts, deps)`:
-      - facts: `{ title, description, linkedIssue: { number, title, body } | null, intent: { value: Intent; stale: boolean } | null, blast: BlastRadius | null, files: { path, additions, deletions, role, ranges }[], filesCountReported, specs: { path, text }[] }`;
-      - deps: `{ count: (s) => number, wrap: (label, content) => string }`;
-      - повертає `{ system, user, estTokens, missing: BriefMissingInput[], sentIntent, sentBlast: BlastRadius | null, specsUsed: BriefSpecUsed[], budget }`.
+      - facts: `{ title, description, linkedIssue | null, intent: { value: Intent; stale } | null, blast: BlastRadius (already projectBlast) | null, files: { path, additions, deletions, role, ranges }[], filesCountReported, specs: { path, text }[] }`;
+      - deps: `{ count, wrap }`;
+      - returns `{ system, user, estTokens, missing, sentIntent: Intent | null, sentBlast: BlastRadius | null, specsUsed, budget }`.
 
-      Секції в user message — лише title+description, linked issue, intent, blast (summary, changed_symbols name+file, callers name+file+line), diff stats (path, +, −, role, діапазони `a-b`), specs. Кожна секція через `wrap`.
+      Sections — only title+description, linked issue, intent, blast (summary, changed_symbols name+file, callers name+file+line — rendered **from the same projection**), diff stats (path, +, −, role, ranges), specs; each through `wrap`.
 
-      Капи: опис ≤ 4000 символів, issue title+body ≤ 2000 разом, ≤ 300 записів diff-stat + рядок «+N more files».
+      Fixed caps (no `missing`): title 300 characters, description 4 000, issue 2 000, diff-stat 300 + "+N more files".
 
-      Бюджет: рахувати `count(system) + count(user)`. Поки > 8000, скорочувати за `REDUCE_ORDER`:
-      - specs — цілі документи з кінця;
-      - linked issue — прибрати;
-      - опис — прибрати;
-      - blast callers — по одному з кінця;
-      - diff-stat — з кінця, з оновленим «+N more files».
+      Budget: `count(system) + count(user)`. While > 8 000 — the `REDUCE_ORDER` steps:
+      1. specs — whole documents from the end;
+      2. linked issue — remove;
+      3. description — remove;
+      4. blast callers — from the end;
+      5. diff-stat — from the end, with an updated "+N more files";
+      6. blast changed symbols — from the end (summary stays);
+      7. intent — scope items from the end first, then sentences with "…", down to the ceiling `INTENT_FLOOR_TOKENS`; intent is never removed.
 
-      Title та intent не чіпаються ніколи. Кожна скорочена секція → `missing { reason: 'over_budget' }` (один запис на секцію; blast_callers → input `blast`).
+      Title is never shortened below the fixed cap. Every trimmed section → `missing { reason: 'over_budget' }`: `blast_callers` / `blast_symbols` → input `blast`, `intent_text` → `intent`.
 
-      Specs: документ, що не вміщується в залишок бюджету, пропускається цілком, наступний пробується (AC-40); `specsUsed` — шлях + `count(wrapped)`.
+      **Final guard:** if after step 7 > 8 000 → `throw new BriefInputOverBudgetError(estTokens)`.
 
-      Порожній опис → `missing description/empty`. Немає issue-посилання → секції немає, без `missing`. `sentBlast` — blast після скорочення callers.
+      Specs: a document that does not fit in the remainder is skipped entirely, the next one is tried (AC-40). `specsUsed` = path + `count(wrapped)`.
+
+      Empty description → `description/empty`; no issue link → no section and no `missing`. `sentBlast` / `sentIntent` — the values **after** trimming, exactly those that landed in `user`.
   - create `server/test/brief-prompt.test.ts`:
-    - лише дозволені секції;
-    - нуль рядків hunk-контенту (вхідні патчі з `+secret()` / `-old` / контекстом — жоден не в `user`);
-    - усе недовірене лише в user і в обгортці, з екранованим `</untrusted>`;
-    - капи 4000 / 2000 / 300 + «+N more files»;
-    - порядок редукції і `over_budget` на фейковому лічильнику (1 токен = 1 символ);
-    - title + intent ніколи не прибрані;
-    - пропуск цілого spec-документа;
-    - `specsUsed`;
-    - `≤ 8000` на справжньому `TiktokenTokenizer` для великого PR (EC-17);
-    - EC-26 (ін'єкційний текст лишається в обгортці).
-- skills: onion-architecture — чисто, ring 3 (lane 5, файл `prompt.ts`); zod — strict-safe схема (lane 2); security — обробка недовірених вхідних (lane 14)
+    - only the allowed sections; zero lines of hunk content;
+    - untrusted text only in user and in a wrapper with an escaped `</untrusted>`;
+    - caps + "+N more files";
+    - reduction order and `over_budget` on a fake counter;
+    - title and intent are never removed;
+    - skipping a whole spec document; `specsUsed`;
+    - ≤ 8 000 on `TiktokenTokenizer` for a large PR (EC-17);
+    - **terminal case:** intent of 20 000 characters, 2 000 changed symbols, 300 diff-stat, empty specs → result ≤ 8 000, `missing` contains `blast/over_budget` and `intent/over_budget`, intent is present and shortened;
+    - **worst case with the fixed caps on a real tokenizer** (maximum title 300, summary 1 000, intent at the ceiling, everything else trimmed) ≤ 8 000 — the guard is unreachable;
+    - **guard:** a fake `count` that always returns 9 000 → `BriefInputOverBudgetError`;
+    - `buildBriefSystemPrompt()` ≤ 1 000 tokens;
+    - **projection:** a caller trimmed at step 4 is absent from both `user` and `sentBlast`, so `blastPathsOf(sentBlast)` does not contain it;
+    - EC-26.
+- skills: onion-architecture (lane 5); zod (lane 2); security (lane 14)
 - constraints: C7, C8, C2
-- covers: AC-20, AC-21, AC-22, AC-23, AC-24, AC-25, AC-26, AC-27, AC-28, AC-29, AC-30, AC-36, AC-37, AC-40, AC-44, AC-60 (`sentIntent` / `sentBlast`), EC-17, EC-26, NFR-3, NFR-5
-- reuse: `reviewer-core/src/prompt.ts:48` (`wrapUntrusted` — передається як `wrap`); `server/src/adapters/tokenizer/index.ts:33` (`cl100k_base`, у тесті через `TiktokenTokenizer`); `server/src/modules/intent/prompt.ts` (шаблон системного prompt); `server/src/modules/onboarding/narrative/input.ts` (шаблон бюджетного збирання)
-- done-when: T5 зелений; `pnpm -C server arch:check` і `typecheck` проходять.
+- covers: AC-20, AC-21, AC-22, AC-23, AC-24, AC-25, AC-26, AC-27, AC-28, AC-29, AC-30, AC-36, AC-37, AC-40, AC-44, AC-49 (source of blast paths), AC-60, EC-17, EC-26, NFR-3, NFR-5
+- reuse: `reviewer-core/src/prompt.ts:48`; `server/src/adapters/tokenizer/index.ts:33`; `server/src/modules/intent/prompt.ts`; `server/src/modules/onboarding/narrative/input.ts`
+- done-when: T5 green; `arch:check` and `typecheck` pass.
 - depends-on: S6
 
-### S8 — Хуки `usePrBrief` / `useGenerateBrief`
+### S8 — Hooks `usePrBrief` / `useGenerateBrief`
 - package: W5
 - files:
   - create `client/src/lib/hooks/brief.ts`:
-    - `usePrBrief(prId)` — `useQuery(["pr-brief", prId], GET /pulls/:id/brief)`, `enabled: !!prId`;
-    - `useGenerateBrief(prId)` — `useMutation(POST /pulls/:id/brief)`, `onSuccess` → `setQueryData(["pr-brief", prId], record)`; при помилці кеш не змінюється, тост не показується (помилка inline);
-    - експорт `briefErrorOf(err): { kind: 'reason'; reason } | { kind: 'missing_key'; provider } | { kind: 'rate_limited' } | { kind: 'other'; message }` — з `ApiError.status` / `details.reason` / `details.provider`.
+    - `usePrBrief(prId)` — `useQuery(["pr-brief", prId])`, `enabled: !!prId`;
+    - `useGenerateBrief(prId)` — `useMutation(POST)`, `onSuccess` → `setQueryData`; on error the cache is unchanged, no toast;
+    - `briefErrorOf(err)` → `reason` (including `input_over_budget`) | `missing_key` + `provider` | `rate_limited` (429) | `other` (generic).
   - modify `client/src/lib/hooks/index.ts` — `export * from "./brief";`.
-- skills: frontend-architecture — дані лише через `lib/hooks` (lane 11); react-best-practices — TanStack Query (lane 11)
+- skills: frontend-architecture (lane 11); react-best-practices (lane 11)
 - constraints: C12
-- covers: AC-63, AC-66, AC-67, AC-81 (кеш не чіпається при збої)
-- reuse: `client/src/lib/hooks/intent.ts:13-36` (шаблон query + mutation); `client/src/lib/api.ts:8-62` (`ApiError.status` / `details`)
-- done-when: `pnpm -C client typecheck` проходить; хуки покриті через T6 (OverviewTab).
+- covers: AC-63, AC-66, AC-67, AC-81
+- reuse: `client/src/lib/hooks/intent.ts:13-36`; `client/src/lib/api.ts:8-62`
+- done-when: `pnpm -C client typecheck`; covered by T6.
 - depends-on: S1
 
-### S9 — Чисті хелпери Overview-брифу
+### S9 — Pure helpers of the Overview brief
 - package: W5
 - files:
   - create `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/helpers.ts`:
-    - `middleTruncate(path, max)`;
-    - `shortSha(sha)`;
-    - `formatBriefCost(cost: number | null): string | null`;
-    - `relativeTime(iso, now)`;
-    - `riskModelLabel(settings)` — `risk_brief` з `settings.feature_models` або default з `client/src/lib/feature-models.ts`;
-    - `latestReview(reviews)` — найновіший `kind === 'review'` за `created_at`;
-    - `missingFixHref(input, repoId)` — intent → якір `#intent`; specs → `/repos/:repoId/context`;
-    - `parseFileRef(ref)` → `{ path, line | null }`;
-    - `SEVERITY_META` (іконка + колір; текстова мітка з i18n).
-  - create `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/helpers.test.ts` — кожна функція (обрізання посередині, `null` cost, вибір найновішого рев'ю серед кількох агентів (EC-31), `parseFileRef` для `a.ts`, `a.ts:12`, `a.ts:3-9`).
-- skills: frontend-architecture — логіка на найнижчому шарі (lane 9 / 10); react-testing-library — unit для утиліт (lane 12)
+    - `middleTruncate`, `shortSha`, `formatBriefCost`, `relativeTime`;
+    - `riskModelLabel(settings)`;
+    - `latestReview(reviews)`;
+    - `missingFixHref(input, repoId)` — intent → `"#intent"` (anchor from S19); specs → `/repos/:repoId/context`;
+    - `parseFileRef`, `SEVERITY_META`.
+  - create `.../OverviewTab/helpers.test.ts` — every function, EC-31, `parseFileRef` for three forms, `missingFixHref('intent') === '#intent'`.
+- skills: frontend-architecture (lane 9 / 10); react-testing-library (lane 12)
 - constraints: C13, C16
 - covers: AC-77, AC-78, AC-102, AC-105, AC-108, EC-28, EC-31
-- reuse: `client/src/lib/feature-models.ts:13-40`; `client/src/lib/hooks/core.ts:21` (`useSettings`); `client/INSIGHTS.md:19` (локальні форматери)
-- done-when: T7 зелений.
+- reuse: `client/src/lib/feature-models.ts:13-40`; `client/src/lib/hooks/core.ts:21`; `client/INSIGHTS.md:19`
+- done-when: T7 green.
 - depends-on: S1
 
-### S10 — Компоненти блоків брифу
+### S10 — Brief block components
 - package: W5
-- files: create під `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/`, кожен `<Name>/<Name>.tsx` + `index.ts`:
+- files: create under `.../OverviewTab/_components/`, each `<Name>/<Name>.tsx` + `index.ts`:
   - `BriefHeader`:
-    - нема брифу: «No brief yet» + пояснення + primary «Generate brief» + назва моделі;
-    - є бриф: «Regenerate» (enabled), provenance-рядок, «Outdated …» при `stale`;
-    - pending: кнопка disabled «Generating…»;
-    - inline-помилки за `briefErrorOf`: текст причини + Retry; `missing_key` з лінками `/settings/api-keys` і `/settings/models`; 429 — текст, кнопка лишається enabled;
-    - `role="status" aria-live="polite"` для generating / generated / failed;
-    - цілі ≥ 24×24.
-  - `BriefSummary` — мітка «AI-generated» + summary як текст.
-  - `BriefMissingInputs` — «Generated without:» + вхід + причина словами + лінк-фікс AC-105.
-  - `RiskAreas` + `RiskItem`:
-    - іконка severity + текстова мітка + назва + file_ref-и;
-    - кнопка розгортання `aria-expanded` → explanation;
-    - порожньо → «No notable risks flagged.».
-  - `BriefFileRef`:
-    - шлях обрізаний посередині, `title` і `aria-label` — повний шлях;
-    - якщо файл у змінених — кнопка, що викликає `onOpenFile(path, line)`;
-    - інакше — текст + «not in this PR's diff».
-  - `ReviewFocus`:
-    - заголовок «Review focus — read these first»;
-    - нумерований список `file:line — reason` у збереженому порядку, кожен пункт — кнопка `onOpenFile(file, line)`;
-    - порожньо → empty-текст.
-  - `BriefSkeleton` — скелет для risk / focus.
+    - no brief: "No brief yet" + explanation + "Generate brief" + model;
+    - brief exists: "Regenerate", provenance, "Outdated …";
+    - pending: disabled "Generating…";
+    - inline errors + Retry; `missing_key` with links `/settings/api-keys`, `/settings/models`; 429 — button enabled; `input_over_budget` / `other` — generic + Retry;
+    - `role="status" aria-live="polite"`; targets ≥ 24×24.
+  - `BriefSummary` — AI label + text.
+  - `BriefMissingInputs` — "Generated without:" + reason + fix link AC-105: intent → `<a href="#intent">`, specs → Project Context.
+  - `RiskAreas` + `RiskItem` — icon + textual severity + title + refs; `aria-expanded` → explanation; empty text.
+  - `BriefFileRef` — middle truncation, `title` / `aria-label` with the full path; an `onOpenFile` button or text + "not in this PR's diff".
+  - `ReviewFocus` — heading, numbered `file:line — reason`, buttons; empty text.
+  - `BriefSkeleton`.
 
-  Тести: `RiskAreas/RiskAreas.test.tsx`, `ReviewFocus/ReviewFocus.test.tsx`, `BriefHeader/BriefHeader.test.tsx` (стани empty / pending / помилки / 429 / outdated / provenance / cost null).
-- skills: react-best-practices — компоненти, a11y, умовний рендер (lane 10); frontend-architecture — розміщення в `_components` (lane 10); react-testing-library — тести (lane 12)
+  Tests: `RiskAreas.test.tsx`, `ReviewFocus.test.tsx`, `BriefHeader.test.tsx`, `BriefMissingInputs.test.tsx` (the intent link has `href="#intent"`, specs — `/repos/r1/context`).
+- skills: react-best-practices (lane 10); frontend-architecture (lane 10); react-testing-library (lane 12)
 - constraints: C13, C14, C15, C16
-- covers: AC-61, AC-62, AC-64, AC-65, AC-68, AC-70, AC-71, AC-72, AC-73, AC-74, AC-75, AC-76, AC-77, AC-78, AC-79, AC-80, AC-82, AC-83, AC-84, AC-85, AC-96, AC-100, AC-101 (виклик `onOpenFile`), AC-105, AC-108, EC-22, EC-27, NFR-6 (клавіатура, не лише колір, статуси)
-- reuse: `@devdigest/ui` (`Button`, `Skeleton`, `SectionLabel`, `Icon`, `Badge`); `client/src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/IntentCard.tsx` (стиль карток / станів); `client/src/app/repos/[repoId]/pulls/[number]/_components/BlastRadiusCard/BlastRadiusCard.test.tsx` (налаштування провайдера + mock fetch)
-- done-when: T8 зелений (`pnpm -C client exec vitest run <ці тести>`); кожен компонент ≤ 200 рядків.
+- covers: AC-61, AC-62, AC-64, AC-65, AC-68, AC-70, AC-71, AC-72, AC-73, AC-74, AC-75, AC-76, AC-77, AC-78, AC-79, AC-80, AC-82, AC-83, AC-84, AC-85, AC-96, AC-100, AC-101 (`onOpenFile` call), AC-105, AC-108, EC-22, EC-27, NFR-6
+- reuse: `@devdigest/ui`; `.../IntentCard/IntentCard.tsx`; `.../BlastRadiusCard/BlastRadiusCard.test.tsx`
+- done-when: T8 green; every component ≤ 200 lines.
 - depends-on: S8, S9, S2
 
-### S11 — Композиція `OverviewTab` і розкладка
+### S19 — `IntentCard`: `children` slot and `id="intent"` anchor (new, Q4 b)
 - package: W5
 - files:
-  - modify `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx`. Нові пропси: `changedFiles: string[]`, `latestReview: ReviewRecord | null`, `onOpenFile: (path: string, line: number | null) => void` (зберегти `prId`, `repoId`, `prBody`, `repoFullName`, `headSha`). Порядок:
-    1. `VerdictBanner` — лише коли є `latestReview` з `verdict` (`summary={null}`, score / findings / blockers з рев'ю);
-    2. картка брифу: `BriefHeader` + (`BriefSkeleton` під час завантаження | помилка завантаження «Couldn't load the brief» + Retry | `BriefSummary` + `BriefMissingInputs`);
-    3. дві колонки: ліва — `IntentCard` (без змін) + `RiskAreas` (або скелет під час pending); права — `BlastRadiusCard`;
-    4. `ReviewFocus` (або скелет);
-    5. Description, як зараз.
+  - modify `client/src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/IntentCard.tsx`:
+    - signature `IntentCard({ prId, children }: { prId; children?: React.ReactNode })`;
+    - every render branch (loading, error, empty, derived) returns `<section id="intent" tabIndex={-1} aria-labelledby=…>` with the existing card and **`{children}` after it**, so that Risk areas are in the Intent block in all intent states;
+    - without `children` the output is identical to the current one, except for the `id` attribute.
+  - modify `.../IntentCard/styles.ts` — spacing between the card and the slot.
+  - create `.../IntentCard/IntentCard.test.tsx` (mocked `fetch`, `brief` provider):
+    - in the empty and derived states `children` renders inside `section#intent`;
+    - without `children` nothing extra;
+    - an element with `id="intent"` exists in every state.
+- skills: react-best-practices — composition via `children` (lane 10); react-testing-library (lane 12); frontend-architecture (lane 10)
+- constraints: C13, C16, C23
+- covers: AC-69, AC-105 (anchor target)
+- reuse: `client/src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/IntentCard.tsx:14-155`; `client/src/lib/hooks/intent.ts:13-19`
+- done-when: T14 green; `pnpm -C client test` for `BlastRadiusCard` and others unchanged and green.
+- depends-on: S2
 
-    `IntentCard` / `BlastRadiusCard` видимі завжди, зокрема при помилці брифу. Сітка: `display: grid; gridTemplateColumns: repeat(auto-fit, minmax(min(100%, 420px), 1fr))` (перенос в одну колонку на 320px / 200%).
-  - modify `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/styles.ts` — стилі сітки.
-  - create `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.test.tsx` (mock fetch + `NextIntlClientProvider` з `brief`, `prReview`, `shell`). Флоу:
-    - (a) GET → `null`: empty-стан, без POST; клік Generate → рівно 1 POST, disabled «Generating…», скелет; успіх → бриф без reload;
-    - (b) GET → запис: показано одразу, жодного POST, summary над блоками;
-    - (c) помилка Regenerate 502 → попередній бриф лишається + повідомлення + Retry;
-    - (d) 409 `missing_key` → лінки Settings;
-    - (e) 429 → текст, кнопка enabled;
-    - (f) GET падає → «Couldn't load the brief», Intent / Blast на місці;
-    - (g) є рев'ю → банер; немає → без банера;
-    - (h) клік по focus → `onOpenFile(path, line)`;
-    - (i) HTML у summary відображається літерально.
-- skills: react-best-practices — container / presentational, ранні повернення (lane 10); frontend-architecture (lane 10); react-testing-library (lane 12); next-best-practices — `'use client'` біля листя (lane 10)
+### S11 — `OverviewTab` composition and layout
+- package: W5
+- files:
+  - modify `.../OverviewTab/OverviewTab.tsx`:
+    - new props `changedFiles: string[]`, `latestReview: ReviewRecord | null`, `onOpenFile(path, line | null)`;
+    - **in W5 temporarily optional with no-op defaults; S18 makes them required**.
+
+    Order:
+    1. `VerdictBanner`, if there is a `latestReview` with a `verdict`;
+    2. brief card: `BriefHeader` + (skeleton | "Couldn't load the brief" + Retry | `BriefSummary` + `BriefMissingInputs`);
+    3. a two-column grid: left — `<IntentCard prId>{RiskAreas | BriefSkeleton}</IntentCard>` (Risk areas **inside** the Intent block); right — `BlastRadiusCard`;
+    4. `ReviewFocus` (or skeleton);
+    5. Description.
+
+    IntentCard / BlastRadiusCard are always visible. Grid `repeat(auto-fit, minmax(min(100%, 420px), 1fr))`.
+  - modify `.../OverviewTab/styles.ts`.
+  - create `.../OverviewTab/OverviewTab.test.tsx` — provider `brief`, `prReview`, `shell`; **always passes all three new props explicitly**. Flows:
+    - (a) empty → Generate → 1 POST, disabled, skeleton → brief without reload;
+    - (b) a stored brief without POST, summary above the blocks;
+    - (c) 502 → previous brief + message + Retry;
+    - (d) `missing_key` → links;
+    - (e) 429 → button enabled;
+    - (f) GET error → Intent / Blast in place;
+    - (g) banner present / absent;
+    - (h) click on focus → `onOpenFile`;
+    - (i) HTML literally;
+    - (j) **Risk areas are inside `section#intent`** (`within(document.getElementById('intent'))` finds the "Risk areas" heading);
+    - (k) **the "Generated without: intent" link has `href="#intent"`, and an element with this id is present in the document**.
+- skills: react-best-practices (lane 10); frontend-architecture (lane 10); react-testing-library (lane 12); next-best-practices (lane 10)
 - constraints: C12, C13, C15, C16
-- covers: AC-61, AC-62, AC-63, AC-64, AC-65, AC-66, AC-67, AC-68, AC-69 (unit-частина), AC-81, AC-86, AC-87 (виклик), AC-102, AC-103, EC-1 (кнопка disabled), EC-2, EC-5, EC-20, EC-21, EC-27, NFR-6 (reflow), NFR-9
-- reuse: `client/src/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner/VerdictBanner.tsx:12-26`; `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx:17-30`
-- done-when: T6 зелений; `pnpm -C client typecheck` проходить. Поки W6 не оновить `page.tsx`, typecheck може падати через нові обов'язкові пропси. Тому W5 робить їх **опційними** з безпечними дефолтами (`changedFiles = []`, `latestReview = null`, `onOpenFile` — no-op), і хвиля 2 лишається зеленою.
-- depends-on: S10
+- covers: AC-61, AC-62, AC-63, AC-64, AC-65, AC-66, AC-67, AC-68, AC-69 (unit), AC-81, AC-86, AC-87 (call), AC-102, AC-103, AC-105, EC-1, EC-2, EC-5, EC-20, EC-21, EC-27, NFR-6 (reflow), NFR-9
+- reuse: `.../VerdictBanner/VerdictBanner.tsx:12-26`; `.../OverviewTab/OverviewTab.tsx:17-30`
+- done-when: T6 green; `pnpm -C client typecheck` green.
+- depends-on: S10, S19
 
 ### S12 — `BriefRepository`
 - package: W4
-- files: create `server/src/modules/brief/repository.ts` — `class BriefRepository { constructor(db: Db) }`:
-  - `get(prId): Promise<StoredBrief | null>` — select `pr_brief.json`, далі `parseStoredBrief`;
-  - `replace(prId, doc: StoredBrief): Promise<void>` — один `insert … onConflictDoUpdate({ target: prBrief.prId, set: { json } })`.
-- skills: drizzle-orm-patterns — upsert (lane 6); onion-architecture — мапінг рядка в домен на межі (lane 6)
+- files: create `server/src/modules/brief/repository.ts`:
+  - `get(prId): Promise<StoredBrief | null>` — via `parseStoredBrief`;
+  - `replace(prId, doc)` — one `insert … onConflictDoUpdate`.
+- skills: drizzle-orm-patterns (lane 6); onion-architecture (lane 6)
 - constraints: C11, C2
-- covers: AC-6, AC-11, AC-48 (запис лише через `replace`)
-- reuse: `server/src/db/schema/reviews.ts:86-91`; `server/src/modules/intent/repository.ts` (шаблон upsert)
-- done-when: `pnpm -C server typecheck` і `arch:check` проходять; покрито T10 (it).
+- covers: AC-6, AC-11, AC-48
+- reuse: `server/src/db/schema/reviews.ts:86-91`; `server/src/modules/intent/repository.ts`
+- done-when: `typecheck`, `arch:check` green; covered by T10.
 - depends-on: S6
 
-### S13 — `BriefService`
+### S13 — `BriefService` (with the request deadline and guards)
 - package: W4
 - files:
   - create `server/src/modules/brief/service.ts`.
 
-    Порти, оголошені тут:
-    - `BriefStore` (`get` / `replace`);
-    - `BriefPullStore`: `findPull(ws, prId)` → `{ id, repoId, number, title, body, branch, headSha, filesCount }`; `findRepo(ws, repoId)` → `{ owner, name }`; `listFiles(prId)` → `{ path, additions, deletions, patch }`;
-    - `BriefIntentReader { getIntent(ws, prId): Promise<PrIntentRecord | null> }`;
-    - `BriefBlastReader { getBlast(ws, prId): Promise<BlastRadiusResponse> }`;
-    - `ProjectContextForRepo` (тип з `../context-attachments/types.js` — це порт-поверхня);
-    - `githubFor`, `llmFor`, `modelFor`, `count`, `wrap`, `now`;
-    - опційні `limits` (таймаути — для тестів).
+    Ports: `BriefStore`, `BriefPullStore` (`findPull`, `findRepo`, `listFiles`), `BriefIntentReader { getIntent }`, `BriefBlastReader { getBlast }`, `ProjectContextForRepo`, `githubFor`, `llmFor`, `modelFor`, `count`, `wrap`, `now`, optional `limits` (all timeouts and the deadline).
 
-    `getBrief(ws, prId)`: `findPull` → 404; `get` → `null` або `toBriefRecord(prId, doc, pull.headSha)`. Без LLM / GitHub / git.
+    `getBrief`: `findPull` → 404; `get` → `null` or `toBriefRecord`. No LLM / GitHub / git.
 
     `generate(ws, prId, logger?)`:
     1. `findPull` → 404;
-    2. `takeToken(ws)` → `TooManyRequestsError`;
-    3. single-flight `Map<ws:prId, Promise<PrBriefRecord>>` — наявний → повернути той самий promise;
-    4. `run`:
-       - `files.length === 0` → `ConflictError({ reason: 'no_diff_data' })`;
-       - `choice = modelFor(ws)`; `llmFor(choice.provider)` → `ConfigError` → `ConflictError({ reason: 'missing_key', provider })`;
-       - `headSha` з початку;
-       - паралельно (`Promise.all`):
-         - intent (немає → `not_derived`, `stale` → `stale`);
-         - blast під `withTimeout(10 s)` (throw → `unavailable`, `TimeoutError` → `timeout`, degraded → причина);
-         - issue: `pickLinkedIssueNumber` → `githubFor()` + `getIssue` під `withTimeout(5 s)`, будь-яка помилка / ConfigError → `github_unavailable`;
-         - specs: `resolveForRepo` під `withTimeout(5 s)` → мапінг причин;
-       - `filesCount > files.length` → `diff_stats/truncated`;
-       - ролі через `classifyFile`, діапазони через `addedLineRanges`;
-       - `buildBriefInput`;
-       - рівно один `llm.completeStructured({ model, schema: BriefModelOutput, schemaName, messages: [system, user], temperature, maxTokens: 2000, timeoutMs: 60 000, maxRetries: 0, httpRetries: 0 })` у `withTimeout(60 s)`;
-       - порожній summary → `InvalidBriefOutputError`;
-       - `validateBriefOutput` з `prPaths` + шляхами `sentBlast`;
-       - `replace(prId, doc)` з `head_sha`, `generated_at`, `provider`, `model`, `tokens_in` / `out`, `cost_usd`, `input_tokens_est`, `missing_inputs`, `specs_sha`, `specs_used`, `intent: sentIntent`, `blast: sentBlast`, `history: null`, `schema_version`;
-       - перечитати `findPull` для `stale`;
-       - повернути запис;
-       - збій LLM → `ExternalServiceError({ reason: classifyBriefFailure(err) })`, без запису.
+    2. `takeToken` → 429;
+    3. single-flight `Map<ws:prId, Promise>`: an existing one → the same promise;
+    4. `run` under an overall `withTimeout(REQUEST_DEADLINE_MS)` with a shared object `{ abandoned: false, deadlineAt }`:
+       - `files.length === 0` → `no_diff_data`;
+       - `modelFor` + `llmFor` → `ConfigError` → `missing_key` + `provider`;
+       - `headSha` from the start;
+       - in parallel intent / blast (10 s) / issue (5 s) / specs (5 s) with reason mapping;
+       - blast → `projectBlast` (S6);
+       - `truncated`;
+       - roles (`classifyFile`), ranges (`addedLineRanges`);
+       - `buildBriefInput` → `BriefInputOverBudgetError` → `AppError('input_over_budget', …, 500, { reason: 'input_over_budget' })` without an LLM call;
+       - exactly one `completeStructured(… maxRetries: 0, httpRetries: 0, timeoutMs: min(LLM_TIMEOUT_MS, deadlineAt − now) )` inside `withTimeout` with the same value;
+       - empty summary → `InvalidBriefOutputError`;
+       - `validateBriefOutput(output, { prPaths, blastPaths: blastPathsOf(sentBlast), rangesByPath })`;
+       - assembling the document (with `intent: sentIntent`, `blast: sentBlast`, `history: null`) → `StoredBrief.safeParse`; failure → `InvalidBriefOutputError`;
+       - **before `replace` check `abandoned`**: if the deadline has passed — do not write;
+       - `replace`; re-read `findPull` for `stale`.
 
-    Генерація не прив'язана до request / abort (AC-16). Один структурований лог-рядок на завершення: успіх або збій, лише метадані.
-  - create `server/test/brief-service.test.ts` (unit, фейкові порти). Кейси:
-    - get: `null` / запис / `stale` / 404, 0 викликів llm / github;
-    - один виклик `completeStructured` з `maxRetries: 0, httpRetries: 0`;
-    - модель з `modelFor` (override і default);
-    - single-flight: два паралельні `generate` → 1 виклик, однаковий результат / помилка;
-    - rate limit: 11-й за хвилину → 429 без виклику;
-    - `no_diff_data` і `missing_key` без виклику llm;
-    - таймаут LLM (мала `limits.llmTimeoutMs`) → `llm_timeout`;
-    - помилка провайдера → `llm_error`;
-    - невалідний / порожній вихід → `invalid_output`;
-    - при будь-якому збої `replace` не викликано;
-    - intent `not_derived` / `stale`; intent не деривується (`getIntent` — єдиний метод порту);
-    - blast throw / timeout / degraded → `missing` + allow-list лише PR;
-    - issue: без посилання / помилка / таймаут / без токена;
-    - specs: `none_attached` / `not_cloned` / `no_catalog` / `unavailable` + `specs_sha`;
-    - `truncated`;
-    - `headSha` зміниться під час генерації → запис зі старим SHA і `stale: true` (EC-4);
-    - лог: один запис, жодних полів із текстом (перевірка, що в `JSON.stringify(logCalls)` немає title / body / summary фікстури);
-    - клієнт «відключився» — promise усе одно завершується і пише.
-- skills: onion-architecture — use case на портах (lane 5); security — недовірене, логи, rate limit (lane 14); typescript-expert (lane 13)
+       Deadline passed → `abandoned = true`, response 502 `llm_timeout`. LLM failure → `ExternalServiceError({ reason: classifyBriefFailure(err) })`.
+
+    Generation is not tied to the request. One log line per completion (C6), including `durationMs` and `reason`.
+  - create `server/test/brief-service.test.ts` (unit, fakes). All the previous cases (get, one call with `maxRetries` / `httpRetries` 0, model, single-flight, rate limit, `no_diff_data`, `missing_key`, `llm_timeout`, `llm_error`, `invalid_output`, no `replace` on failures, intent / blast / issue / specs, `truncated`, EC-4, log without text, promise-level "disconnect") plus new ones:
+    - **deadline:** a fake blast that hangs and an LLM that responds after `limits.requestDeadlineMs` → 502 `llm_timeout`, `replace` not called even after a late resolve;
+    - **the LLM timeout is taken from the deadline remainder**;
+    - **budget guard:** `count` always 9 000 → 500 `input_over_budget`, 0 LLM calls, `replace` not called;
+    - **line < 1 without a patch:** model output with `line: 0` for a file with `patch: null` → stored `line: 1, line_verified: false`;
+    - **projection:** a caller trimmed by the budget does not pass as a `file_ref` (the ref is removed), and the stored `blast` does not contain this caller.
+- skills: onion-architecture (lane 5); security (lane 14); typescript-expert (lane 13)
 - constraints: C2, C5, C6, C7, C10, C11
-- covers: AC-1, AC-2, AC-3, AC-4, AC-5, AC-7, AC-8, AC-9, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-31, AC-32, AC-33, AC-34, AC-35, AC-38, AC-39, AC-41, AC-42, AC-43, AC-45, AC-46, AC-47, AC-48, AC-60, AC-106, AC-107, EC-1, EC-2, EC-3, EC-4, EC-5, EC-6, EC-7, EC-12, EC-13, EC-14, EC-15, EC-16, EC-18, EC-23, EC-24, EC-28, EC-29, NFR-2, NFR-4, NFR-7
-- reuse: `server/src/modules/intent/service.ts:169-175,201-224` (`getIntent`, single-flight); `server/src/modules/onboarding/narrative-service.ts:196-206,234-252` (вікно rate limit, один виклик); `server/src/modules/blast/service.ts:37-48`; `server/src/modules/smart-diff/classify.ts:18`; `server/src/platform/resilience.ts:13` (`withTimeout`)
-- done-when: T9 зелений; `pnpm -C server arch:check` 0 помилок; `typecheck` і unit-набір зелені.
+- covers: AC-1, AC-2, AC-3, AC-4, AC-5, AC-7, AC-8, AC-9, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-24 (guard), AC-31, AC-32, AC-33, AC-34, AC-35, AC-38, AC-39, AC-41, AC-42, AC-43, AC-45, AC-46, AC-47, AC-48, AC-49, AC-54, AC-60, AC-106, AC-107, EC-1, EC-2, EC-3, EC-4, EC-5, EC-6, EC-7, EC-12, EC-13, EC-14, EC-15, EC-16, EC-18, EC-23, EC-24, EC-28, EC-29, NFR-1 (deadline), NFR-2, NFR-4, NFR-7
+- reuse: `server/src/modules/intent/service.ts:169-175,201-224`; `server/src/modules/onboarding/narrative-service.ts:196-206,234-252`; `server/src/modules/blast/service.ts:37-48`; `server/src/modules/smart-diff/classify.ts:18`; `server/src/platform/resilience.ts:13`
+- done-when: T9 green; `arch:check` 0 errors; `typecheck` and unit suite green.
 - depends-on: S12, S7, S4, S3
 
-### S14 — Роути, реєстрація модуля, DI
+### S14 — Routes, registration, DI, integration tests
 - package: W4
 - files:
   - create `server/src/modules/brief/routes.ts`:
-    - `GET /pulls/:id/brief` — `params: IdParams`, `response: { 200: PrBriefRecord.nullable() }`;
-    - `POST /pulls/:id/brief` — `params: IdParams`, `response: { 200: PrBriefRecord }`. `config: { rateLimit: false }` не ставити: глобальний ліміт 120/хв лишається, власний ліміт — у сервісі;
-    - обидва: `getContext` → один виклик сервісу, логер `req.log`.
-  - modify `server/src/modules/index.ts` — імпорт і запис `brief`.
-  - modify `server/src/platform/container.ts`:
-    - `_briefRepo` / `get briefRepo`;
-    - мемоізований `briefService()`, що зв'язує:
-      - `briefRepo`, `pullsRepo`;
-      - `{ getIntent: (ws, id) => this.intentService().getIntent(ws, id) }`;
-      - `{ getBlast: (ws, id) => this.blastService().getBlast(ws, id) }`;
-      - `this.contextAttachments`;
-      - `() => this.github()`, `(p) => this.llm(p)`, `(ws) => resolveFeatureModel(this, ws, 'risk_brief')`;
-      - `(t) => this.tokenizer.count(t)`, `wrapUntrusted`.
-  - create `server/test/brief.it.test.ts` (testcontainers, `MockLLMProvider` з `structuredBySchema.PrBriefOutput`, override `llm.openai`). Кейси:
-    - GET `null` → POST 200 → GET той самий запис;
-    - `calls` — рівно 1 `completeStructured`;
-    - модель `risk_brief` default `openai/gpt-4.1` і override із settings;
-    - чужий workspace / неіснуючий PR → 404 на GET і POST; невалідний id → 422;
-    - PR без файлів → 409 `details.reason = no_diff_data`;
-    - без ключа (немає override, порожні секрети) → 409 `missing_key` + `provider`;
-    - 11 POST за хвилину → 429;
-    - два паралельні POST → 1 виклик, однакові тіла;
-    - невалідна фікстура → 502 `invalid_output`, попередній бриф не змінено;
-    - фейковий LLM, що кидає → 502 `llm_error`;
-    - зміна `head_sha` PR → GET `stale: true`;
-    - зіпсований `json` у `pr_brief` → GET `null`;
-    - `files_count > rows` → `truncated`;
-    - attachments кількох агентів → порядок `specs_used`.
-- skills: fastify-best-practices — роут зі схемами (lane 4); onion-architecture — composition root (lane 8); security — вхід запиту (lane 14); breaking-change, response-schema — нові роути без змін наявних (lanes 17–18)
+    - `GET` — `params: IdParams`, `response: { 200: PrBriefRecord.nullable() }`;
+    - `POST` — `response: { 200: PrBriefRecord }`;
+    - `getContext`, one service call, `req.log`.
+  - modify `server/src/modules/index.ts` — `brief`.
+  - modify `server/src/platform/container.ts` — `briefRepo`, memoized `briefService()` with the same ports as in S13.
+  - create `server/test/brief.it.test.ts` (testcontainers; `MockLLMProvider` with `structuredBySchema.PrBriefOutput`; override `llm.openai`). All the previous cases (GET `null` → POST 200 → GET; 1 call; model default / override; 404 / 422; 409 `no_diff_data` / `missing_key`; 429; parallel POSTs; `invalid_output` / `llm_error` without changing the previous brief; `stale`; corrupted JSON → `null`; `truncated`; `specs_used` order) plus:
+    - **real HTTP disconnect (AC-16):**
+      - `app.listen({ port: 0 })`;
+      - a fake LLM whose `completeStructured` waits on a controlled deferred;
+      - a `node:http` POST, after the call starts `req.destroy()` (socket closed);
+      - then resolve the deferred;
+      - poll `pr_brief` (≤ 5 s) → the row appeared, and `GET` returns the record;
+      - `app.close()` in `finally`.
+    - **stored `blast` = projection:** `endpoints_affected` / `crons_affected` empty.
+- skills: fastify-best-practices (lane 4); onion-architecture (lane 8); security (lane 14); breaking-change, response-schema (lanes 17–18)
 - constraints: C3, C4, C5, C10, C19, C22
-- covers: AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-38, AC-43, AC-46, AC-47, AC-48, NFR-4, NFR-7, NFR-8
-- reuse: `server/src/modules/intent/routes.ts:16-41`; `server/src/platform/container.ts:158-167,218-220,275-288`; `server/src/modules/_shared/schemas.ts` (`IdParams`); `server/src/adapters/mocks.ts:99-108` (`structuredBySchema`)
-- done-when: `pnpm -C server lint`, `typecheck`, `arch:check` і unit-набір зелені; `brief.it.test.ts` написаний (T10), запускається не implementer-ом.
+- covers: AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-38, AC-43, AC-46, AC-47, AC-48, AC-60, NFR-4, NFR-7, NFR-8
+- reuse: `server/src/modules/intent/routes.ts:16-41`; `server/src/platform/container.ts:158-167,218-220,275-288`; `server/src/modules/_shared/schemas.ts`; `server/src/adapters/mocks.ts:99-108`
+- done-when:
+  - `lint`, `typecheck`, `arch:check`, unit suite green;
+  - `brief.it.test.ts` written;
+  - **integration gate:** it is run by the main session in `/run-plan` after wave 3 and **before** `plan-verifier` (see *Test plan → Gate*). A red gate sends W4 back for fixes.
 - depends-on: S13
 
-### S15 — Ціль файлу в URL і хук навігації
+### S15 — File target in the URL and the navigation hook
 - package: W6
 - files:
-  - create `client/src/app/repos/[repoId]/pulls/[number]/file-target.ts`:
-    - `parseFileTarget(search, changedPaths): { file: string; line: number | null; inPr: boolean } | null` — `line` лише ціле > 0, інакше `null`;
-    - `buildDiffHref(base, search, path, line)` — встановлює `tab=diff`, `file`, `line`, зберігає `trace`;
-    - `withoutTarget(search)`.
-  - create `client/src/app/repos/[repoId]/pulls/[number]/file-target.test.ts` — валідація `line` (`"0"`, `"-3"`, `"abc"`, `"1.5"` → ігнор), шлях поза PR → `inPr: false`, href.
-  - create `client/src/app/repos/[repoId]/pulls/[number]/use-pr-file-navigation.ts` — `usePrFileNavigation({ repoId, number, changedPaths })` → `{ openFile(path, line), statusMessage }`:
-    - файл у PR → `router.push(buildDiffHref…)` (нова історія);
-    - не в PR → `statusMessage = 'fileNotInDiff'`, без навігації.
-  - create `client/src/app/repos/[repoId]/pulls/[number]/use-pr-file-navigation.test.ts` — `vi.mock("next/navigation")`: перевірити `push` (не `replace`) з `tab=diff&file=&line=`, і що поза PR немає `push`, а є статус.
-- skills: next-best-practices — `useRouter` / `useSearchParams` (lane 9); frontend-architecture — розміщення поруч з route (lane 9); react-testing-library — `renderHook` (lane 12); security — недовірені параметри URL (lane 14)
+  - create `client/src/app/repos/[repoId]/pulls/[number]/file-target.ts` — `parseFileTarget`, `buildDiffHref`, `withoutTarget`.
+  - create `.../[number]/file-target.test.ts` — `line` validation (`"0"`, `"-3"`, `"abc"`, `"1.5"`), a path outside the PR, href.
+  - create `.../[number]/use-pr-file-navigation.ts` — `openFile(path, line)`: a file in the PR → `router.push`; otherwise `statusMessage`.
+  - create `.../[number]/use-pr-file-navigation.test.ts` — `vi.mock("next/navigation")`: `push` (not `replace`); outside the PR — no `push`, a status is set.
+- skills: next-best-practices (lane 9); frontend-architecture (lane 9); react-testing-library (lane 12); security (lane 14)
 - constraints: C13, C16
 - covers: AC-87, AC-88, AC-95, AC-97, AC-98, EC-25
-- reuse: `client/src/app/repos/[repoId]/pulls/[number]/page.tsx:78-86` (поточний `setParam`)
-- done-when: T11 зелений.
+- reuse: `client/src/app/repos/[repoId]/pulls/[number]/page.tsx:78-86`
+- done-when: T11 green.
 - depends-on: S2
 
-### S16 — diff-viewer: пропси цілі (розгортання, підсвітка, фокус, повідомлення)
+### S16 — diff-viewer: target props
 - package: W6
 - files:
-  - modify `client/src/components/diff-viewer/DiffViewer/DiffViewer.tsx` — опційний проп `target?: { path; line: number | null; key: string; lineNotInDiffLabel: string; onApplied(el: HTMLElement) }`, що передається у `FileCard` лише для відповідного файлу.
-  - modify `client/src/components/diff-viewer/FileCard/FileCard.tsx`, коли отримує `target`:
-    - відкривається (зміна `target.key` розгортає картку навіть понад `AUTO_EXPAND_MAX_LINES`; патерн «adjust state on prop change», без ланцюжка effect-ів);
-    - визначає, чи рендериться рядок (`parsePatch` → `newNo === line`);
-    - якщо так — `CodeLine` отримує `highlighted` і `focusTarget`;
-    - якщо ні — показує `target.lineNotInDiffLabel` біля заголовка і фокусує кнопку заголовка;
-    - викликає `onApplied(елемент)` через callback ref.
-
-    Атрибут `data-diff-file={path}`.
-  - modify `client/src/components/diff-viewer/CodeLine/CodeLine.tsx` — опційні `highlighted`, `focusTarget`:
-    - `data-new-line`;
-    - `tabIndex={-1}` при `focusTarget`;
-    - фон підсвітки; `transition` лише без `prefers-reduced-motion`.
-  - modify `client/src/components/diff-viewer/styles.ts` — стилі підсвітки / повідомлення.
+  - modify `client/src/components/diff-viewer/DiffViewer/DiffViewer.tsx` — optional `target?: { path; line | null; key; lineNotInDiffLabel; onApplied(el) }`.
+  - modify `client/src/components/diff-viewer/FileCard/FileCard.tsx`:
+    - a change of `target.key` expands the card (adjust-on-prop-change);
+    - the line is rendered (`parsePatch`, `newNo === line`) → `CodeLine` with `highlighted` / `focusTarget`; otherwise a label next to the header and focus on the header;
+    - `onApplied` via a callback ref;
+    - attribute `data-diff-file`.
+  - modify `client/src/components/diff-viewer/CodeLine/CodeLine.tsx` — `highlighted`, `focusTarget`, `data-new-line`, `tabIndex={-1}`; transition only without reduced-motion.
+  - modify `client/src/components/diff-viewer/styles.ts`.
   - modify `client/src/components/diff-viewer/DiffViewer/DiffViewer.test.tsx`:
-    - файл > 200 рядків відкривається за ціллю;
-    - рядок у патчі підсвічений і в фокусі;
-    - рядок поза патчем → повідомлення + фокус заголовка;
-    - без `target` поведінка як раніше.
-
-  Новий `useTranslations` у diff-viewer заборонений (C17).
-- skills: react-best-practices — без похідного стану через effect, a11y фокус (lane 10); frontend-architecture — спільний компонент не знає про brief (lane 10); react-testing-library (lane 12)
+    - a card > 200 lines expands;
+    - highlight and focus;
+    - a line outside the patch → label and header focus;
+    - without `target` — as before.
+- skills: react-best-practices (lane 10); frontend-architecture (lane 10); react-testing-library (lane 12)
 - constraints: C13, C16, C17, C18
-- covers: AC-89 (картка), AC-92, AC-93, AC-94, EC-10, EC-11 (картка > 200 рядків)
-- reuse: `client/src/components/diff-viewer/FileCard/FileCard.tsx:53-56` (`open` / `parsePatch`); `client/src/components/diff-viewer/helpers.ts` (`parsePatch`)
-- done-when: T12 зелений; `client/src/test/smoke.test.tsx` не змінювався і проходить.
+- covers: AC-89, AC-92, AC-93, AC-94, EC-10, EC-11
+- reuse: `client/src/components/diff-viewer/FileCard/FileCard.tsx:53-56`; `client/src/components/diff-viewer/helpers.ts`
+- done-when: T12 green; `client/src/test/smoke.test.tsx` unchanged and green.
 - depends-on: S2
 
-### S17 — DiffTab: застосування цілі один раз, розгортання групи, скрол
+### S17 — DiffTab: applying the target once, expanding the group, scroll
 - package: W6
 - files:
-  - modify `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.tsx` — проп `target?: { path; line: number | null; key: string } | null`:
-    - через `useDiffTarget` визначає роль файлу (з `smartDiff.groups`);
-    - відкриває відповідну `RoleGroup` у Smart order;
-    - передає `target` у `DiffViewer`;
-    - текст `lineNotInDiff` з namespace `brief`.
-  - create `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/useDiffTarget.ts`:
-    - ціль застосовується **один раз на `key`** і лише коли `files` є, а smart diff завантажено або впав (AC-99, EC-30);
-    - `onApplied(el)` → `scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' })` з `scroll-margin-top = headerHeight + висота sticky-заголовка RoleGroup`;
-    - знімає `highlighted` через ≤ 2000 мс (таймер з cleanup).
-  - modify `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/_components/RoleGroup/RoleGroup.tsx` — опційний `openKey?: string`: зміна значення розгортає групу (adjust-on-prop-change); передає `target` у `DiffViewer`.
-  - modify `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.test.tsx`:
-    - провайдер отримує `brief` messages;
-    - ціль у згорнутій `docs`-групі розгортає групу і картку в Smart та Original order;
-    - застосування один раз (повторний ререндер не перескроллює; `scrollIntoView` замокано);
-    - ціль до завантаження даних застосовується після;
-    - підсвітка знімається через 2 с (fake timers).
-- skills: react-best-practices — effect з cleanup, без ланцюжків (lane 10); react-testing-library (lane 12); frontend-architecture (lane 10)
+  - modify `.../DiffTab/DiffTab.tsx` — prop `target`, opening the `RoleGroup` by role, label from `brief`.
+  - create `.../DiffTab/useDiffTarget.ts`:
+    - one application per `key`, when the data is ready (AC-99);
+    - `scrollIntoView` with `scroll-margin-top = headerHeight + height of the sticky RoleGroup`;
+    - highlight ≤ 2 000 ms with cleanup.
+  - modify `.../DiffTab/_components/RoleGroup/RoleGroup.tsx` — `openKey`.
+  - modify `.../DiffTab/DiffTab.test.tsx`:
+    - provider with `brief`;
+    - a collapsed `docs` group and a card in Smart / Original order;
+    - once;
+    - a target before the data is applied after it;
+    - the highlight is removed after 2 s.
+- skills: react-best-practices (lane 10); react-testing-library (lane 12); frontend-architecture (lane 10)
 - constraints: C13, C16, C17, C18
-- covers: AC-89, AC-90 (логіка; перевірка вручну), AC-91 (логіка; вручну), AC-92, AC-93, AC-94, AC-99, EC-11, EC-30
-- reuse: `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.tsx:52-137`; `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/constants.ts:25-28` (`COLLAPSED_BY_DEFAULT`); `client/src/app/repos/[repoId]/pulls/[number]/page.tsx:60-76` (`headerHeight`)
-- done-when: T13 зелений.
+- covers: AC-89, AC-90 (logic; manual), AC-91 (logic; manual), AC-92, AC-93, AC-94, AC-99, EC-11, EC-30
+- reuse: `.../DiffTab/DiffTab.tsx:52-137`; `.../DiffTab/constants.ts:25-28`; `.../[number]/page.tsx:60-76`
+- done-when: T13 green.
 - depends-on: S16
 
-### S18 — Підключення в `page.tsx`
+### S18 — Wiring in `page.tsx` and required navigation props
 - package: W6
-- files: modify `client/src/app/repos/[repoId]/pulls/[number]/page.tsx`:
-  - `usePrFileNavigation({ repoId, number, changedPaths: pr.files.map(f => f.path) })`;
-  - `setTab` також видаляє `file` / `line` (`replace`, як і було);
-  - `OverviewTab` отримує `changedFiles`, `latestReview` (з `reviews` через `latestReview` з `OverviewTab/helpers.ts` — допустимий імпорт: `app/` компонує свої `_components`), `onOpenFile={openFile}`;
-  - при `tab=diff` — `parseFileTarget(search, changedPaths)`:
-    - `inPr` → `DiffTab target={{ path, line, key: search.toString() }}`;
-    - інакше статус «File not in this PR's diff» у `role="status"` (вкладка не змінюється), без цілі;
-  - `statusMessage` з хука рендериться в тому ж live-регіоні (рядок з `brief.card.fileNotInDiff`).
-- skills: next-best-practices — тонкий route, `useSearchParams` (lane 9); frontend-architecture — `app/` лише компонує (lane 9); react-best-practices (lane 10)
+- files:
+  - modify `client/src/app/repos/[repoId]/pulls/[number]/page.tsx`:
+    - `usePrFileNavigation`;
+    - `setTab` removes `file` / `line`;
+    - `OverviewTab` receives `changedFiles`, `latestReview`, `onOpenFile={openFile}`;
+    - `tab=diff` + `parseFileTarget`: in the PR → `DiffTab target`; otherwise the status "File not in this PR's diff" in `role="status"`;
+    - the hook's `statusMessage` — in the same live region.
+  - modify `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx` — **make `changedFiles`, `latestReview`, `onOpenFile` required and remove the no-op defaults**. `typecheck` then guarantees that `page.tsx` (and the tests) pass real values; a no-op cannot reach the release.
+- skills: next-best-practices (lane 9); frontend-architecture (lane 9); react-best-practices (lane 10); typescript-expert — required props as a guarantee (lane 13)
 - constraints: C12, C13, C18, C22
 - covers: AC-87, AC-88, AC-95, AC-97, AC-98, AC-101, EC-25
 - reuse: `client/src/app/repos/[repoId]/pulls/[number]/page.tsx:78-86,159-205`
-- done-when: `pnpm -C client lint`, `typecheck`, `test` повністю зелені; у `page.tsx` немає логіки валідації URL (вона в `file-target.ts`).
+- done-when:
+  - `pnpm -C client lint`, `typecheck`, `test` green;
+  - `git grep -n "onOpenFile = \|onOpenFile?:" client/src/app/repos/\[repoId\]/pulls/\[number\]/_components/OverviewTab/OverviewTab.tsx` finds nothing;
+  - there is no URL validation logic in `page.tsx`.
 - depends-on: S15, S17, S11
 
-## План тестування
-- T1: NFR-8, AC-1, AC-13, AC-44 (форма) → `server/test/brief-contracts.test.ts` — unit — S1
-- T2: AC-9, EC-7, NFR-2 (адаптери) → `server/test/llm-http-retries.test.ts` — unit — S3
-- T3: AC-38, AC-39, AC-41, AC-42 (джерело) → `server/test/context-attachments-service.test.ts` — unit — S4
-- T4: AC-6, AC-21 (діапазони), AC-36, AC-49…AC-59, EC-8, EC-9, EC-10, EC-19, EC-20, EC-21, EC-22, NFR-5 → `server/test/brief-helpers.test.ts` — unit — S6
-- T5: AC-20…AC-30, AC-37, AC-40, AC-44, AC-60, EC-17, EC-26, NFR-3 → `server/test/brief-prompt.test.ts` — unit — S7
-- T6: AC-61…AC-69 (unit), AC-81, AC-86, AC-87, AC-102, AC-103, EC-1, EC-2, EC-5, EC-20, EC-21, EC-27, NFR-9 → `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.test.tsx` — component — S11
-- T7: AC-77, AC-78, AC-102, AC-105, AC-108, EC-28, EC-31 → `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/helpers.test.ts` — unit — S9
-- T8: AC-70…AC-80, AC-82…AC-85, AC-96, AC-100, AC-101, AC-108, EC-22, EC-27 → `RiskAreas.test.tsx`, `ReviewFocus.test.tsx`, `BriefHeader.test.tsx` під `OverviewTab/_components/` — component — S10
-- T9: AC-1…AC-5, AC-7, AC-8, AC-10…AC-19, AC-31…AC-35, AC-38, AC-39, AC-41…AC-43, AC-45…AC-48, AC-60, AC-106, AC-107, EC-1…EC-7, EC-12…EC-16, EC-18, EC-23, EC-24, EC-28, EC-29, NFR-2, NFR-4, NFR-7 → `server/test/brief-service.test.ts` — unit (фейкові порти) — S13
-- T10: AC-1…AC-8, AC-11…AC-19, AC-38, AC-43, AC-46…AC-48, NFR-4, NFR-7, NFR-8 → `server/test/brief.it.test.ts` — it (не запускається implementer-ом) — S14
-- T11: AC-87, AC-88, AC-95, AC-97, AC-98, EC-25 → `client/src/app/repos/[repoId]/pulls/[number]/file-target.test.ts`, `client/src/app/repos/[repoId]/pulls/[number]/use-pr-file-navigation.test.ts` — unit / hook — S15
+## Test plan
+- T1: NFR-8, AC-1, AC-13, AC-44 → `server/test/brief-contracts.test.ts` — unit — S1
+- T2: AC-9, EC-7, NFR-2 → `server/test/llm-http-retries.test.ts` — unit — S3
+- T3: AC-38, AC-39, AC-41, AC-42 (including the priority of `no_clone` / `no_catalog` over `none`) → `server/test/context-attachments-service.test.ts` — unit — S4
+- T4: AC-5, AC-6, AC-21, AC-23, AC-36, AC-49…AC-59 (including `line < 1`), AC-60 (shape), EC-8, EC-9, EC-10, EC-19, EC-20, EC-21, EC-22, NFR-5 → `server/test/brief-helpers.test.ts` — unit — S6
+- T5: AC-20…AC-30 (including the terminal policy and guard), AC-37, AC-40, AC-44, AC-49 (path source), AC-60, EC-17, EC-26, NFR-3 → `server/test/brief-prompt.test.ts` — unit — S7
+- T6: AC-61…AC-69 (unit, including "Risk areas inside `#intent`"), AC-81, AC-86, AC-87, AC-102, AC-103, AC-105, EC-1, EC-2, EC-5, EC-20, EC-21, EC-27, NFR-9 → `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.test.tsx` — component — S11
+- T7: AC-77, AC-78, AC-102, AC-105, AC-108, EC-28, EC-31 → `.../OverviewTab/helpers.test.ts` — unit — S9
+- T8: AC-70…AC-80, AC-82…AC-85, AC-96, AC-100, AC-101, AC-105, AC-108, EC-22, EC-27 → `RiskAreas.test.tsx`, `ReviewFocus.test.tsx`, `BriefHeader.test.tsx`, `BriefMissingInputs.test.tsx` — component — S10
+- T9: AC-1…AC-5, AC-7…AC-19, AC-24 (guard), AC-31…AC-35, AC-38, AC-39, AC-41…AC-43, AC-45…AC-49, AC-54, AC-60, AC-106, AC-107, EC-1…EC-7, EC-12…EC-16, EC-18, EC-23, EC-24, EC-28, EC-29, NFR-1 (deadline), NFR-2, NFR-4, NFR-7 → `server/test/brief-service.test.ts` — unit — S13
+- T10: AC-1…AC-8, AC-11…AC-19 (including the real HTTP disconnect for AC-16), AC-38, AC-43, AC-46…AC-48, AC-60, NFR-4, NFR-7, NFR-8 → `server/test/brief.it.test.ts` — it — S14 (run — gate)
+- T11: AC-87, AC-88, AC-95, AC-97, AC-98, EC-25 → `.../[number]/file-target.test.ts`, `.../[number]/use-pr-file-navigation.test.ts` — unit / hook — S15
 - T12: AC-89, AC-92, AC-93, AC-94, EC-10, EC-11 → `client/src/components/diff-viewer/DiffViewer/DiffViewer.test.tsx` — component — S16
-- T13: AC-89, AC-92, AC-93, AC-94, AC-99, EC-11, EC-30 → `client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.test.tsx` — component — S17
-- AC-104 / NFR-9 додатково перевіряються: у компонентах немає захардкоджених рядків (T6 / T8 рендерять через повідомлення `brief.json`).
-- Ручні перевірки (`verify: manual`): AC-69 (візуальна розкладка), AC-90, AC-91, NFR-1, NFR-6 → *Review handoff → Manual verification*.
-- Команди:
+- T13: AC-89, AC-92, AC-93, AC-94, AC-99, EC-11, EC-30 → `.../DiffTab/DiffTab.test.tsx` — component — S17
+- T14: AC-69, AC-105 (anchor) → `client/src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/IntentCard.test.tsx` — component — S19
+- Manual checks: AC-69 (visual), AC-90, AC-91, NFR-1, NFR-6 → *Review handoff → Manual verification*.
+- **Gate (integration):**
+  - Who: the main session in `/run-plan`, after wave 3 completes and the full run of the checks table, **before `plan-verifier` is launched**.
+  - Command: `pnpm -C server exec vitest run .it.test`. Docker must be running (testcontainers); all `*.it.test.ts` run, not only `brief.it.test.ts`, because `container.ts` and `context-attachments` changed.
+  - A red result blocks verification and sends W4 (or W3 for `context-attachments`) back for fixes.
+  - Docker unavailable → verification is marked "unverified: integration" and is not considered complete.
+- Commands:
   - `server/`: `pnpm -C server lint` · `pnpm -C server typecheck` · `pnpm -C server arch:check` · `pnpm -C server exec vitest run --exclude '**/*.it.test.ts'`
   - `client/`: `pnpm -C client lint` · `pnpm -C client typecheck` · `pnpm -C client test`
   - `mcp-server/`: `pnpm -C mcp-server typecheck` · `pnpm -C mcp-server test`
-  - спільне: `./scripts/check-shared-sync.sh`
-  - не запускається implementer-ом: `pnpm -C server exec vitest run .it.test` (CI `server-integration.yml`)
-- Multi-agent: implementer-и запускають цільові тести своїх файлів (`pnpm -C <pkg> exec vitest run <file>`) і `typecheck` своїх пакетів, а для серверних пакетів ще й `arch:check`. Повну таблицю main session запускає раз на хвилю. `test/**` не покривається `typecheck` (`server/INSIGHTS.md:59`), тому нові серверні тест-файли треба обов'язково прогнати.
+  - shared: `./scripts/check-shared-sync.sh`
+  - gate: `pnpm -C server exec vitest run .it.test` (main session)
+- Multi-agent: implementers run the targeted tests of their files, `typecheck` of their packages and `arch:check` for the server packages. The full table — once per wave in the main session. New files in `test/**` must be run (`server/INSIGHTS.md:59`).
 
-## Ризики та відкриті питання
-- `withTimeout` не скасовує роботу. Blast fallback-обхід (`server/src/modules/blast/service.ts:37-48`) і git-читання specs продовжують виконуватися у фоні після 10 / 5 с; навантаження лишається. (inference) — для: user
-- Якщо OpenAI SDK не приймає per-request `maxRetries` у поточній версії пакета, S3 потребує альтернативи (окремий клієнт з `maxRetries: 0`). Перевірити поведінку SDK `openai` / `@anthropic-ai/sdk` щодо per-request `maxRetries`. — для: researcher
-- `MockLLMProvider` кидає `Error("…fixture failed schema…")` (`server/src/adapters/mocks.ts:103-104`); `classifyBriefFailure` має ловити це регекспом `/schema/i`, інакше it-тест AC-47 отримає `llm_error`. — для: user (врахувано в S6)
-- Rate limit і single-flight живуть у пам'яті процесу; перезапуск їх скидає (EC-24 прийнятно за спекою). — для: user
-- Глобальний `@fastify/rate-limit` 120/хв за IP (`server/src/app.ts:95`) лишається поверх сервісного ліміту 10/хв. — для: user
-- Модель може посилатися на файл з blast callers, які були обрізані бюджетом. Такі refs видаляються, бо allow-list будується з надісланого blast (рішення вище). (inference) — для: user
-- Між S11 і S18 обов'язкові пропси `OverviewTab` зроблені опційними, щоб хвиля 2 лишалася зеленою; S18 передає їх реально. — для: user
+## Risks and open questions
+- **AC-25 and the terminal policy:** AC-25 lists five sections to trim and "never removing the PR title or the intent", but does not say what to do when after five steps the input is still larger (large blast summary / changed symbols / intent). The plan adds steps 6–7 (trimming symbols, shortening intent to 1 000 tokens, without removal) and the guard `input_over_budget` (500). Both are within the wording, but are not named in the spec. The code `input_over_budget` is absent from the spec's *Contracts*; we consider it unreachable (proven by T5). If explicit wording is needed — that is a new spec from `spec-creator`; we do not edit this one. — for: user
+- **NFR-1 and background work:** `withTimeout` does not cancel the work. A timed-out blast traversal and git reads of specs (`server/src/modules/blast/service.ts:37-48`) keep running in the background after the response; the 75 s deadline bounds the response and the write, but not the load. — for: user
+- **NFR-1 and GET p95:** p95 ≤ 300 ms is not verified automatically; there is only a manual measurement per the procedure in *Manual verification*. — for: user
+- Whether `openai` / `@anthropic-ai/sdk` accept per-request `maxRetries` in the current versions; if not, S3 needs a separate client with `maxRetries: 0`. — for: researcher
+- `MockLLMProvider` throws `Error("…fixture failed schema…")`; the classifier catches `/schema/i`, otherwise T10 gets `llm_error` (accounted for in S6). — for: user
+- The rate limit, single-flight and `abandoned` live in process memory; a restart resets them (EC-24 acceptable). — for: user
+- The global `@fastify/rate-limit` 120/min per IP (`server/src/app.ts:95`) stays on top of the service one. — for: user
+- The priority `not_cloned` > `no_catalog` > `none_attached` is a plan decision (root cause). The spec does not set a priority between AC-41 and AC-42. — for: user
+- `IntentCard` now has `id="intent"` and a slot; no other consumers of `IntentCard` were found (only `OverviewTab`). — for: user
 
-## Передача на рев'ю
+## Review handoff
 - **Architecture:**
-  - `server/src/modules/brief/service.ts` (порти, без `Container`; дозволені імпорти лише `../intent/helpers.js`, `../smart-diff/classify.js`, `../context-attachments/types.js`);
-  - `server/src/platform/container.ts` (мемоізація `briefService`);
-  - `server/src/modules/context-attachments/service.ts` (`resolveForRepo` не змінює `resolveForRun`);
-  - `server/src/adapters/llm/{openai,anthropic}.ts` (зворотна сумісність);
-  - клієнт: diff-viewer не знає про brief; `page.tsx` лише компонує; один компонент на файл.
+  - `server/src/modules/brief/service.ts` (ports, deadline, `abandoned` before the write);
+  - `server/src/platform/container.ts` (memoization);
+  - `server/src/modules/context-attachments/service.ts` (`resolveForRepo`, reason priority, `resolveForRun` unchanged);
+  - LLM adapters (backward compatibility);
+  - client: the `IntentCard` slot (C23), diff-viewer without brief, required `OverviewTab` props.
 - **Security:**
-  - недовірені PR / issue / spec / шляхи в `wrapUntrusted`, лише в user message (S7);
-  - allow-list шляхів (S6);
-  - логи без тексту (S13);
-  - rate limit на workspace і single-flight (S13);
-  - URL `file` / `line` — лише порівняння зі списком змінених файлів і додатне ціле (S15);
-  - модельний текст лише як JSX-текст (S10);
-  - `getIssue` тільки для same-repo номера.
-- **API compatibility:** нові `GET` і `POST /pulls/:id/brief`. `PrBrief` послаблено (`intent` / `blast` / `history` nullable) і доповнено — на дроті ніхто не споживає (`client/src/lib/types.ts:52` — лише реекспорт типу). URL сторінки отримує адитивні `file` / `line`. Наявні роути не змінюються. Lanes 17–20.
-- **Tests:** опційний e2e-флоу над seeded брифом для PR #482 (Overview → Review focus → Files changed) — для `test-writer`; `e2e/specs/05-pr-diff.flow.json` перевіряє лише `tab=diff`, не зачеплено.
+  - `wrapUntrusted` only in the user message (S7);
+  - allow-list from the blast projection (S6 / S7);
+  - `line` normalization and `StoredBrief.safeParse` before the write (S6 / S13);
+  - logs without text;
+  - rate limit and single-flight;
+  - `file` / `line` from the URL (S15);
+  - plain-text rendering (S10);
+  - `getIssue` only same-repo.
+- **API compatibility:** new `GET` / `POST /pulls/:id/brief`. `PrBrief` is loosened and extended with no consumers on the wire. The new `details.reason = input_over_budget` (500) — only for the unreachable guard. URL `file` / `line` are additive. Lanes 17–20.
+- **Tests:** an optional e2e over a seeded brief for PR #482 — `test-writer`. The integration gate — main session (see *Test plan*).
 - **Docs:**
-  - `server/docs/api-contracts.md` + API-мапа `server/README.md`: два роути, коди 404 / 409 / 429 / 502 і `details.reason`;
-  - `server/docs/architecture.md`: модуль brief (входи, бюджет, single-flight);
-  - `client/docs/ui-architecture.md`: Overview-бриф і URL-ціль `file` / `line`;
-  - запис реалізованої фічі в реєстрі spec — для `doc-writer`.
-- **Manual verification:**
-  - S17 / S18 — скрол до заголовка файлу й рядка під sticky `PrDetailHeader` і sticky-заголовком `RoleGroup` (AC-90, AC-91), включно зі згорнутою `docs`-групою і файлом > 200 рядків в обох порядках; Back повертає Overview (AC-97);
-  - S11 — двоколонкова розкладка і перенос в одну колонку на 320px / 200% (AC-69, NFR-6);
-  - клавіатура / скрінрідер (NFR-6);
-  - `GET /pulls/:id/brief` p95 ≤ 300 мс на seeded БД і генерація ≤ 75 с (NFR-1).
+  - `server/docs/api-contracts.md` + the API map of `server/README.md` (codes, `details.reason`, the 75 s deadline);
+  - `server/docs/architecture.md` (brief module, budget, terminal policy, blast projection, specs reason priority);
+  - `client/docs/ui-architecture.md` (Overview brief, the `IntentCard` slot, `#intent`, URL target).
 
-  Live-браузер, видима вкладка — `client/INSIGHTS.md:51,57`.
+  All for `doc-writer`.
+- **Manual verification** (live browser, visible tab — `client/INSIGHTS.md:51,57`):
+  - S17 / S18 — scroll to the file and line under the sticky `PrDetailHeader` and `RoleGroup` (AC-90, AC-91): a collapsed `docs` group, a file > 200 lines, both orders; Back → Overview (AC-97).
+  - S11 / S19 — Risk areas visually inside the Intent block; two columns and wrapping at 320px / 200% (AC-69, NFR-6); the "intent" link from "Generated without" scrolls to the Intent block (AC-105).
+  - Keyboard and screen reader (NFR-6).
+  - **NFR-1, measurement:** seeded DB, `./scripts/dev.sh`.
+    1. GET p95: `for i in $(seq 1 40); do curl -s -o /dev/null -w '%{time_total}\n' http://localhost:3001/pulls/<prId>/brief; done | sort -n | sed -n 38p` (the 38th of 40 ≈ p95) — expected ≤ 0.300.
+    2. Generation: `curl -s -o /dev/null -w '%{time_total}\n' -X POST http://localhost:3001/pulls/<prId>/brief` three times (a pause longer than the rate limit is not needed; ≤ 10/min) — each ≤ 75 s; compare with `durationMs` in the AC-106 log entry.
 
-## Не знайдено / прогалини
-- Порядок агентів у БД — шукалось: `server/src/db/schema/agents.ts`, `AgentsRepository.list*` — результат: немає колонки порядку і `ORDER BY`; вирішено Q5 (`created_at, id`).
-- Збережений номер linked issue — шукалось: `pr_intent.sources`, `pull_requests` — результат: лише метадані intent; вирішено Q3 (живий `getIssue`).
-- Тести для `OpenAIProvider` / `AnthropicProvider` — шукалось: `grep OpenAIProvider|AnthropicProvider server/test` — результат: немає; S3 створює перший.
-- Тест для `page.tsx` — шукалось: `client/src/app/repos/[repoId]/pulls/[number]/` — результат: немає; логіку винесено в `use-pr-file-navigation.ts` з тестом (S15).
-- Per-repo API для attachments між агентами — шукалось: `server/src/modules/context-attachments/service.ts` — результат: лише `resolveForRun` на одного агента; S4 додає `resolveForRepo`.
+    Record the results in the run-plan report. The constraint about background work — in *Risks*.
+
+## Not found / gaps
+- Agent order in the DB — searched: `server/src/db/schema/agents.ts`, `AgentsRepository.list*` — there is no order column; resolved by Q5.
+- A stored linked issue number — searched: `pr_intent.sources`, `pull_requests` — metadata only; resolved by Q3.
+- OpenAI / Anthropic adapter tests — searched: `grep OpenAIProvider|AnthropicProvider server/test` — none; S3 creates the first.
+- A `page.tsx` test — none; the logic is extracted into `use-pr-file-navigation.ts` (S15).
+- An `IntentCard` test — searched: `client/src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/` — none; S19 creates it.
+- An element with `id="intent"` — searched: `IntentCard.tsx`, `page.tsx` — none; S19 adds it.
+- A per-repo API for attachments — only `resolveForRun`; S4 adds `resolveForRepo`.
+- An explicit AC-41 / AC-42 priority in the spec — none; a plan decision (S4), recorded in *Risks*.
+
+---
