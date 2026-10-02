@@ -201,3 +201,19 @@ Environment: the existing dev stack was already running (web :3000, API :3001, P
 - Labels kept per spec: "Copy link", "Export as Markdown" (the mockup says "Share link").
 - Verified live (existing dev stack): rail sticky + active highlight, header, critical paths, run locally, reading path, first tasks. Not checked live: 900 px width after the restyle, narrative-generated state (needs a key).
 - Checks: all 13 CI-form checks exit 0 (server 557, client 352, reviewer-core 47, mcp-server 26); gate.sh check PASS.
+
+## Live narrative run (user approved; OpenRouter key already configured in Settings) — 2026-10-02
+- Request: one POST /repos/:id/tour/narrative on sgdiachenko/gm-vocabulary via the UI button. generating → ready in ~40 s. provider openrouter, model deepseek/deepseek-v4-flash, 7352 input / 4192 output tokens, actual cost $0.00039875 (page estimate $0.0012 = upper bound), source_sha = facts sha, outdated false.
+- Worked: structured output accepted; grounding held (every item path exists in the facts, none invented); mermaid diagram valid; Outdated/failed states not hit.
+- F14: all model text was Chinese (architecture body 199 CJK chars of 743; all critical/reading descriptions Chinese) although the repo has no Chinese text and the system prompt says English only (once, in the intro). Fix: LANGUAGE rule at the top and a closing reminder in server/src/prompts/onboarding.system.md; `LANGUAGE_REMINDER` appended as the last line of the user message (narrative/input.ts); tests added (T33). Not yet re-run live.
+- F15: no `first-tasks` block in the model input → no task ids → first_tasks always fell back. Fix: block added in input.ts (`t1 (todo_comment, file, low): src/a.ts`); tests added. Not yet re-run live.
+- F16: run_locally also fell back (fallback_sections = [run_locally, first_tasks]); cause unknown. Raw output is not stored (by design, logs carry metadata only). Next step if it persists: one local diagnostic call that writes the raw response to the scratchpad only.
+- Server checks after F14/F15: lint, typecheck, arch:check, unit (559 tests) exit 0. Gate report is stale again.
+
+## Second live narrative run (after F14/F15 fixes) — 2026-10-02
+- Regenerate on sgdiachenko/gm-vocabulary: ready in ~26 s; deepseek/deepseek-v4-flash via OpenRouter; 7127 input / 2174 output tokens; actual cost $0.00048195; fallback_sections = [] (all five sections AI-written).
+- F14 confirmed fixed: 0 CJK characters (architecture body, critical-path and reading-path descriptions are English). F15 confirmed fixed: first_tasks returned 4 grounded tasks. F16 not reproduced: run_locally returned 10 commands with notes ("Install exact dependencies from lockfile."); the first-run cause stays unconfirmed.
+- Grounding held: no item path outside the facts. The server-rewritten link `[eslint.config.js](repo:eslint.config.js)` renders as a GitHub link.
+- Page (live, screenshot): "AI-written" pill on the section, "Generated just now from commit 0aff2fc · deepseek/deepseek-v4-flash · $0.0005" line, Regenerate button, prose with inline code.
+- Cosmetic, not fixed: the AI mermaid diagram (two subgraphs, LR) is scaled down to fit the box width and its labels are tiny; the mockup uses larger nodes.
+- Still unverified live: failure paths (missing key, timeout, no structured provider), the 429 message, Outdated chip after a resync, polling/announcement with a screen reader.
