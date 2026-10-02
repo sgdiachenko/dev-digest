@@ -14,3 +14,4 @@ export * from "./smart-diff";
 export * from "./blast";
 export * from "./pr-history";
 export * from "./tour";
+export * from "./brief";

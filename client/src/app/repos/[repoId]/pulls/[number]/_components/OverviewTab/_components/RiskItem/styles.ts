@@ -1,0 +1,42 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  item: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    width: "fit-content",
+    maxWidth: "100%",
+    padding: "8px 10px",
+    marginBottom: 8,
+    border: "1px solid var(--border)",
+    borderRadius: 7,
+  } satisfies CSSProperties,
+  head: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } satisfies CSSProperties,
+  severity: (color: string, bg: string): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "2px 8px",
+    borderRadius: 5,
+    fontSize: 12,
+    fontWeight: 600,
+    color,
+    background: bg,
+  }),
+  title: { fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", flex: 1, minWidth: 0 } satisfies CSSProperties,
+  toggle: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 24,
+    minHeight: 24,
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "var(--text-secondary)",
+    padding: 0,
+  } satisfies CSSProperties,
+  refs: { display: "flex", flexWrap: "wrap", columnGap: 12, rowGap: 2 } satisfies CSSProperties,
+  explanation: { fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, margin: 0 } satisfies CSSProperties,
+} as const;

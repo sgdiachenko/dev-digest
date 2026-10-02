@@ -174,10 +174,85 @@ export const SmartDiff = z.object({
 export type SmartDiff = z.infer<typeof SmartDiff>;
 
 // ---- Composed PR Brief (pr_brief.json) ----
+/** One "read this first" pointer: a changed file and a 1-based new-side line. */
+export const ReviewFocusItem = z.object({
+  file: z.string(),
+  line: z.number().int().min(1),
+  reason: z.string(),
+  /** false when the server could not check the line against a stored patch. */
+  line_verified: z.boolean(),
+});
+export type ReviewFocusItem = z.infer<typeof ReviewFocusItem>;
+
+export const BriefMissingInputName = z.enum([
+  'intent',
+  'blast',
+  'linked_issue',
+  'description',
+  'specs',
+  'diff_stats',
+]);
+export type BriefMissingInputName = z.infer<typeof BriefMissingInputName>;
+
+export const BriefMissingReason = z.enum([
+  'not_derived',
+  'stale',
+  'unavailable',
+  'timeout',
+  'flag_off',
+  'index_failed',
+  'index_partial',
+  'repo_too_large',
+  'no_data',
+  'github_unavailable',
+  'empty',
+  'no_catalog',
+  'not_cloned',
+  'none_attached',
+  'truncated',
+  'over_budget',
+]);
+export type BriefMissingReason = z.infer<typeof BriefMissingReason>;
+
+/** An input the brief was generated without, and why. */
+export const BriefMissingInput = z.object({
+  input: BriefMissingInputName,
+  reason: BriefMissingReason,
+});
+export type BriefMissingInput = z.infer<typeof BriefMissingInput>;
+
+export const BriefSpecUsed = z.object({
+  path: z.string(),
+  est_tokens: z.number().int(),
+});
+export type BriefSpecUsed = z.infer<typeof BriefSpecUsed>;
+
+/** `intent` / `blast` / `history` are null when that input was not sent
+ *  (see `missing_inputs` on the record). `history` is always null for now. */
 export const PrBrief = z.object({
-  intent: Intent,
-  blast: BlastRadius,
+  summary: z.string(),
+  review_focus: z.array(ReviewFocusItem),
+  intent: Intent.nullable(),
+  blast: BlastRadius.nullable(),
   risks: Risks,
-  history: PrHistory,
+  history: PrHistory.nullable(),
 });
 export type PrBrief = z.infer<typeof PrBrief>;
+
+/** `GET|POST /pulls/:id/brief` response — PrBrief plus provenance. */
+export const PrBriefRecord = PrBrief.extend({
+  pr_id: z.string(),
+  head_sha: z.string(),
+  stale: z.boolean(),
+  generated_at: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  input_tokens_est: z.number().int(),
+  missing_inputs: z.array(BriefMissingInput),
+  specs_sha: z.string().nullable(),
+  specs_used: z.array(BriefSpecUsed),
+});
+export type PrBriefRecord = z.infer<typeof PrBriefRecord>;

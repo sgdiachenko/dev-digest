@@ -7,15 +7,16 @@ export const s = {
     zIndex: 5,
     background: "var(--bg-primary)",
     borderBottom: "1px solid var(--border)",
-    padding: "18px 32px 0",
+    padding: "18px clamp(12px, 3vw, 32px) 0",
   } satisfies CSSProperties,
   titleRow: {
     display: "flex",
     alignItems: "flex-start",
     gap: 18,
+    flexWrap: "wrap",
   } satisfies CSSProperties,
   titleCol: {
-    flex: 1,
+    flex: "1 1 min(100%, 300px)",
     minWidth: 0,
   } satisfies CSSProperties,
   h1: {
@@ -25,6 +26,7 @@ export const s = {
     display: "flex",
     alignItems: "center",
     gap: 12,
+    overflowWrap: "anywhere",
   } satisfies CSSProperties,
   prNumber: {
     fontSize: 18,
@@ -57,7 +59,8 @@ export const s = {
   actions: {
     display: "flex",
     gap: 10,
-    flexShrink: 0,
+    maxWidth: "100%",
+    flexWrap: "wrap",
   } satisfies CSSProperties,
   staleBanner: {
     display: "flex",

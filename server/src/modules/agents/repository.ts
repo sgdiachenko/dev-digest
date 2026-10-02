@@ -145,6 +145,15 @@ export class AgentsRepository {
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.enabled, true)));
   }
 
+  /** Enabled agent ids in a stable order (`created_at`, `id`) — for deterministic attachment merges. */
+  async listEnabledIdsOrdered(workspaceId: string): Promise<{ id: string }[]> {
+    return this.db
+      .select({ id: t.agents.id })
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.enabled, true)))
+      .orderBy(asc(t.agents.createdAt), asc(t.agents.id));
+  }
+
   async getById(workspaceId: string, id: string): Promise<AgentRow | undefined> {
     const [row] = await this.db
       .select()

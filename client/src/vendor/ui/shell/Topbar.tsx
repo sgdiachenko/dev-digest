@@ -46,6 +46,7 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         })}
       </div>
       <button
+        aria-label="Search or jump to…"
         onClick={ctx.onOpenCommandPalette}
         style={{
           marginLeft: "auto",

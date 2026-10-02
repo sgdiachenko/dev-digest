@@ -82,12 +82,17 @@ class FakeCatalog implements ProjectContextCatalog {
 class FakeAgents implements AgentContextStore {
   known = new Set(['agent-1']);
   docs: OrderedDocRef[] = [];
+  enabled: { id: string }[] = [];
+  byAgent: Record<string, OrderedDocRef[]> = {};
   replaced: DocRef[][] = [];
   async getById(_ws: string, id: string) {
     return this.known.has(id) ? { id } : undefined;
   }
-  async listContextDocs() {
-    return this.docs;
+  async listEnabledIdsOrdered() {
+    return this.enabled;
+  }
+  async listContextDocs(agentId: string) {
+    return this.byAgent[agentId] ?? this.docs;
   }
   async replaceContextDocs(_ws: string, _id: string, docs: DocRef[]) {
     this.replaced.push(docs);
@@ -114,8 +119,9 @@ class FakeSkills implements SkillContextStore {
   async replaceContextDocs(_ws: string, skillId: string, docs: DocRef[]) {
     this.docs = docs.map((d, position) => ({ ...d, skillId, position }));
   }
-  async linkedForAgentWithState() {
-    return this.linked;
+  linkedByAgent: Record<string, LinkedSkill[]> = {};
+  async linkedForAgentWithState(agentId?: string) {
+    return (agentId && this.linkedByAgent[agentId]) || this.linked;
   }
 }
 
@@ -423,5 +429,90 @@ describe('resolveForRun (AC-19..AC-24, EC-5, EC-18)', () => {
     await service.getAgentView(WS, 'agent-1', REPO, logger);
     expect(lines.length).toBeGreaterThan(0);
     expect(lines.join('\n')).not.toContain('text of');
+  });
+});
+
+describe('resolveForRepo (AC-38, AC-39, AC-41, AC-42)', () => {
+  it('merges agents in listed order, own before skills, dedup by first position', async () => {
+    const { service, agents, skills, catalog } = setup();
+    agents.enabled = [{ id: 'ag-1' }, { id: 'ag-2' }];
+    agents.byAgent = {
+      'ag-1': [ref('b.md', REPO, 0), ref('x.md', OTHER_REPO, 1)],
+      'ag-2': [ref('a.md', REPO, 0), ref('b.md', REPO, 1)],
+    };
+    skills.linkedByAgent = { 'ag-1': [{ id: 's1', name: 'One', order: 0, enabled: true, safe: true }] };
+    skills.docs = [sref('s1', 'c.md', 0), sref('s1', 'a.md', 1)];
+    const res = await service.resolveForRepo(WS, REPO);
+    expect(catalog.resolveCalls).toEqual([['b.md', 'c.md', 'a.md']]);
+    expect(res.kind === 'resolved' && res.docs.map((d) => d.path)).toEqual(['b.md', 'c.md', 'a.md']);
+    expect(res.kind === 'resolved' && res.sha).toBe('a'.repeat(40));
+  });
+
+  it('excludes disabled and unsafe skills', async () => {
+    const { service, agents, skills, catalog } = setup();
+    agents.enabled = [{ id: 'ag-1' }];
+    agents.byAgent = { 'ag-1': [ref('a.md')] };
+    skills.linkedByAgent = {
+      'ag-1': [
+        { id: 'off', name: 'Off', order: 0, enabled: false, safe: true },
+        { id: 'bad', name: 'Bad', order: 1, enabled: true, safe: false },
+        { id: 'ok', name: 'Ok', order: 2, enabled: true, safe: true },
+      ],
+    };
+    skills.docs = [sref('off', 'b.md', 0), sref('bad', 'c.md', 0), sref('ok', 'empty.md', 0)];
+    const res = await service.resolveForRepo(WS, REPO);
+    expect(catalog.resolveCalls).toEqual([['a.md', 'empty.md']]);
+    expect(skills.listForSkillsCalls).toEqual([['ok']]);
+    expect(res.kind).toBe('resolved');
+  });
+
+  it('drops unreadable documents but keeps readable ones', async () => {
+    const { service, agents, catalog } = setup();
+    agents.enabled = [{ id: 'ag-1' }];
+    agents.byAgent = { 'ag-1': [ref('a.md', REPO, 0), ref('b.md', REPO, 1)] };
+    catalog.resolved = { 'a.md': { status: 'too_large', text: null } };
+    const res = await service.resolveForRepo(WS, REPO);
+    expect(res.kind === 'resolved' && res.docs.map((d) => d.path)).toEqual(['b.md']);
+  });
+
+  it('never returns documents flagged as containing a secret', async () => {
+    const { service, agents, catalog } = setup();
+    agents.enabled = [{ id: 'ag-1' }];
+    agents.byAgent = { 'ag-1': [ref('a.md', REPO, 0), ref('s.md', REPO, 1)] };
+    catalog.resolved = { 's.md': { secretWarning: true } };
+    const res = await service.resolveForRepo(WS, REPO);
+    expect(res.kind === 'resolved' && res.docs.map((d) => d.path)).toEqual(['a.md']);
+  });
+
+  it('no catalog + no attachments -> no_catalog (not none)', async () => {
+    const { service, catalog } = setup();
+    catalog.resolveError = new ContextUnavailableError('no_catalog');
+    expect(await service.resolveForRepo(WS, REPO)).toEqual({ kind: 'unavailable', reason: 'no_catalog' });
+    expect(catalog.resolveCalls).toEqual([[]]);
+  });
+
+  it('no clone + no attachments -> no_clone', async () => {
+    const { service, catalog } = setup();
+    catalog.resolveError = new ContextUnavailableError('no_clone');
+    expect(await service.resolveForRepo(WS, REPO)).toEqual({ kind: 'unavailable', reason: 'no_clone' });
+  });
+
+  it('catalog exists + no attachments -> none', async () => {
+    const { service } = setup();
+    expect(await service.resolveForRepo(WS, REPO)).toEqual({ kind: 'none' });
+  });
+
+  it('unexpected error -> error; hang -> timeout', async () => {
+    vi.useFakeTimers();
+    const { service, agents, catalog } = setup();
+    agents.enabled = [{ id: 'ag-1' }];
+    agents.byAgent = { 'ag-1': [ref('a.md')] };
+    catalog.resolveError = new Error('db down');
+    expect(await service.resolveForRepo(WS, REPO)).toEqual({ kind: 'unavailable', reason: 'error' });
+    catalog.resolveError = null;
+    catalog.resolveHangs = true;
+    const pending = service.resolveForRepo(WS, REPO);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await pending).toEqual({ kind: 'unavailable', reason: 'timeout' });
   });
 });

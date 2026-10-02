@@ -1,9 +1,10 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent, within, act } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord, PrFile, ReviewRecord, SmartDiff } from "@devdigest/shared";
 import prReviewMessages from "../../../../../../../../messages/en/prReview.json";
 import shellMessages from "../../../../../../../../messages/en/shell.json";
+import briefMessages from "../../../../../../../../messages/en/brief.json";
 
 const findingActionMutate = vi.fn();
 let smartDiffResult: { data: SmartDiff | undefined; isLoading: boolean; isError: boolean } = {
@@ -30,12 +31,19 @@ afterEach(() => {
   findingActionMutate.mockClear();
 });
 
-function renderWithIntl(ui: React.ReactElement) {
-  return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: prReviewMessages, shell: shellMessages }}>
+function wrap(ui: React.ReactElement) {
+  return (
+    <NextIntlClientProvider
+      locale="en"
+      messages={{ prReview: prReviewMessages, shell: shellMessages, brief: briefMessages }}
+    >
       {ui}
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
+}
+
+function renderWithIntl(ui: React.ReactElement) {
+  return render(wrap(ui));
 }
 
 // A file whose patch renders an added line at RIGHT:5 (so a CRITICAL finding
@@ -120,7 +128,6 @@ function renderDiffTab(props: Partial<React.ComponentProps<typeof DiffTab>> = {}
   return renderWithIntl(
     <DiffTab
       prId="pr1"
-      filesCount={FILES.length}
       files={FILES}
       canComment
       repoFullName="acme/widgets"
@@ -218,5 +225,85 @@ describe("DiffTab — empty state and Smart Diff fallback", () => {
     renderDiffTab({ headerHeight: 64 });
 
     expect(screen.getByRole("button", { name: /Core/ })).toHaveStyle({ top: "64px" });
+  });
+});
+
+describe("DiffTab — navigation target", () => {
+  const scrollIntoView = vi.fn();
+  beforeEach(() => {
+    scrollIntoView.mockClear();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    reviewsResult = { data: [] };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const target = { path: "README.md", line: 1, key: "README.md#1" };
+  const tab = (props: Partial<React.ComponentProps<typeof DiffTab>> = {}) => (
+    <DiffTab prId="pr1" files={FILES} headerHeight={64} {...props} />
+  );
+
+  it("expands the collapsed docs group, focuses and highlights the target line, and scrolls below the headers (Smart order)", () => {
+    smartDiffResult = { data: SMART_DIFF, isLoading: false, isError: false };
+    renderWithIntl(tab({ target }));
+
+    expect(screen.getByRole("button", { name: /Docs/ })).toHaveAttribute("aria-expanded", "true");
+    const line = screen.getByText("doc").parentElement as HTMLElement;
+    expect(line).toHaveFocus();
+    expect(line.getAttribute("data-new-line")).toBe("1");
+    expect(line.style.outline).toContain("solid");
+    expect(line.style.scrollMarginTop).toBe("64px");
+    const header = screen.getByText("README.md").closest("[data-diff-file]") as HTMLElement;
+    expect(header.style.position).toBe("sticky");
+    expect(header.style.top).toBe("64px");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the file header and labels the line when it is not part of the diff", () => {
+    smartDiffResult = { data: SMART_DIFF, isLoading: false, isError: false };
+    renderWithIntl(tab({ target: { path: "README.md", line: 77, key: "README.md#77" } }));
+
+    expect(screen.getByText("Line 77 isn't part of this diff")).toBeInTheDocument();
+    expect(document.activeElement?.getAttribute("data-diff-file")).toBe("README.md");
+  });
+
+  it("applies the target in Original order too", () => {
+    smartDiffResult = { data: undefined, isLoading: false, isError: true };
+    renderWithIntl(tab({ target }));
+    expect(screen.getByText("doc").parentElement).toHaveFocus();
+  });
+
+  it("holds the target until Smart Diff has loaded, then applies it exactly once", () => {
+    smartDiffResult = { data: undefined, isLoading: true, isError: false };
+    const { rerender } = renderWithIntl(tab({ target }));
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.body);
+
+    smartDiffResult = { data: SMART_DIFF, isLoading: false, isError: false };
+    rerender(wrap(tab({ target })));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("doc").parentElement).toHaveFocus();
+
+    // Later renders (a re-render, a collapse/expand of the group) don't re-apply it.
+    rerender(wrap(tab({ target, headerHeight: 80 })));
+    fireEvent.click(screen.getByRole("button", { name: /Docs/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Docs/ }));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes the highlight after 2 s", () => {
+    vi.useFakeTimers();
+    smartDiffResult = { data: SMART_DIFF, isLoading: false, isError: false };
+    renderWithIntl(tab({ target }));
+    const line = screen.getByText("doc").parentElement as HTMLElement;
+    expect(line.style.outline).toContain("solid");
+
+    act(() => {
+      vi.advanceTimersByTime(1999);
+    });
+    expect(line.style.outline).toContain("solid");
+    act(() => {
+      vi.advanceTimersByTime(2);
+    });
+    expect(line.style.outline).toBe("");
   });
 });

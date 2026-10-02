@@ -35,6 +35,8 @@ export interface LinkedSkill {
 export interface AgentContextStore {
   /** Workspace-scoped existence check (tenancy guard). */
   getById(workspaceId: string, id: string): Promise<{ id: string } | undefined>;
+  /** Enabled agents of the workspace, ordered by `created_at`, `id`. */
+  listEnabledIdsOrdered(workspaceId: string): Promise<{ id: string }[]>;
   listContextDocs(agentId: string): Promise<OrderedDocRef[]>;
   replaceContextDocs(
     workspaceId: string,
@@ -80,4 +82,20 @@ export type RunContextResult =
 export interface ProjectContextForRun {
   /** Never rejects: any failure is reported as `unavailable`. Logs paths/sizes/reasons only. */
   resolveForRun(input: ProjectContextForRunInput, logger?: ScanLogger): Promise<RunContextResult>;
+}
+
+/** The documents attached anywhere in a repo, for a consumer that is not a review run. */
+export type RepoContextResult =
+  | { kind: 'none' }
+  | { kind: 'unavailable'; reason: ProjectContextUnavailableReason }
+  | {
+      kind: 'resolved';
+      sha: string;
+      /** Readable documents in merge order (agents by creation, own before skills), no budget applied. */
+      docs: { path: string; text: string; estTokens: number | null }[];
+    };
+
+export interface ProjectContextForRepo {
+  /** Never rejects: any failure is reported as `unavailable`. Logs paths/counts/reasons only. */
+  resolveForRepo(workspaceId: string, repoId: string, logger?: ScanLogger): Promise<RepoContextResult>;
 }

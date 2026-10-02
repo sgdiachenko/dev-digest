@@ -97,26 +97,31 @@ export class AnthropicProvider implements LLMProvider {
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await withRetry(() =>
+      const call = () =>
         withTimeout(
-          this.client.messages.create({
-            model: req.model,
-            system: system || undefined,
-            messages,
-            max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-            temperature: req.temperature ?? 0,
-            tools: [
-              {
-                name: toolName,
-                description: `Return the result as ${req.schemaName}.`,
-                input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
-              },
-            ],
-            tool_choice: { type: 'tool', name: toolName },
-          }),
+          this.client.messages.create(
+            {
+              model: req.model,
+              system: system || undefined,
+              messages,
+              max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+              temperature: req.temperature ?? 0,
+              tools: [
+                {
+                  name: toolName,
+                  description: `Return the result as ${req.schemaName}.`,
+                  input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
+                },
+              ],
+              tool_choice: { type: 'tool', name: toolName },
+            },
+            // Per-request SDK retries; only when set, so default behaviour is unchanged.
+            req.httpRetries !== undefined ? { maxRetries: req.httpRetries } : undefined,
+          ),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
-      );
+        );
+      // `httpRetries: 0` = one attempt end-to-end: no withRetry wrapper either.
+      const res = req.httpRetries === 0 ? await call() : await withRetry(call);
       tokensIn += res.usage.input_tokens;
       tokensOut += res.usage.output_tokens;
 

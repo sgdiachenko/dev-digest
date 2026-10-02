@@ -94,20 +94,25 @@ export class OpenAIProvider implements LLMProvider {
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await withRetry(() =>
+      const call = () =>
         withTimeout(
-          this.client.chat.completions.create({
-            model: req.model,
-            messages,
-            ...tuningParams(req.model, req.temperature, req.maxTokens),
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+          this.client.chat.completions.create(
+            {
+              model: req.model,
+              messages,
+              ...tuningParams(req.model, req.temperature, req.maxTokens),
+              response_format: {
+                type: 'json_schema',
+                json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+              },
             },
-          }),
+            // Per-request SDK retries; only when set, so default behaviour is unchanged.
+            req.httpRetries !== undefined ? { maxRetries: req.httpRetries } : undefined,
+          ),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
-      );
+        );
+      // `httpRetries: 0` = one attempt end-to-end: no withRetry wrapper either.
+      const res = req.httpRetries === 0 ? await call() : await withRetry(call);
       lastRaw = res.choices?.[0]?.message?.content ?? '';
       tokensIn += res.usage?.prompt_tokens ?? 0;
       tokensOut += res.usage?.completion_tokens ?? 0;

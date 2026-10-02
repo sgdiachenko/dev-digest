@@ -32,8 +32,10 @@ import type {
   DocRef,
   OrderedDocRef,
   ProjectContextForRun,
+  ProjectContextForRepo,
   ProjectContextForRunInput,
   ProjectContextUnavailableReason,
+  RepoContextResult,
   RunContextResult,
   SkillContextStore,
 } from './types.js';
@@ -49,7 +51,7 @@ const unavailableReason = (err: unknown): ProjectContextUnavailableReason => {
   return 'error';
 };
 
-export class ContextAttachmentsService implements ProjectContextForRun {
+export class ContextAttachmentsService implements ProjectContextForRun, ProjectContextForRepo {
   constructor(
     private readonly agents: AgentContextStore,
     private readonly skills: SkillContextStore,
@@ -288,6 +290,63 @@ export class ContextAttachmentsService implements ProjectContextForRun {
       'project context resolved',
     );
     return { kind: 'resolved', sha: resolved.sha, docs, trace, secretPaths, allReadsFailed: readable === 0 };
+  }
+
+  /**
+   * Every readable document attached to any enabled agent (or its active skills) for this repo,
+   * with no budget. `resolveDocs` is always called — even with no candidates — because it checks
+   * the clone and the catalog first, so the reported reason is the root cause:
+   * `no_clone` > `no_catalog` > `none`.
+   */
+  async resolveForRepo(workspaceId: string, repoId: string, logger?: ScanLogger): Promise<RepoContextResult> {
+    try {
+      return await withTimeout(this.resolveRepoUnbounded(workspaceId, repoId, logger), RESOLVE_TIMEOUT_MS);
+    } catch (err) {
+      const reason = unavailableReason(err);
+      logger?.warn({ repoId, reason }, 'repo project context unavailable');
+      return { kind: 'unavailable', reason };
+    }
+  }
+
+  private async resolveRepoUnbounded(
+    workspaceId: string,
+    repoId: string,
+    logger?: ScanLogger,
+  ): Promise<RepoContextResult> {
+    const paths: string[] = [];
+    const seen = new Set<string>();
+    const add = (path: string): void => {
+      if (!seen.has(path)) {
+        seen.add(path);
+        paths.push(path);
+      }
+    };
+    for (const { id: agentId } of await this.agents.listEnabledIdsOrdered(workspaceId)) {
+      for (const d of await this.agents.listContextDocs(agentId)) if (d.repoId === repoId) add(d.path);
+      const active = (await this.skills.linkedForAgentWithState(agentId))
+        .filter((s) => s.enabled && s.safe)
+        .sort((a, b) => a.order - b.order);
+      if (active.length === 0) continue;
+      const skillDocs = await this.skills.listContextDocsForSkills(
+        active.map((s) => s.id),
+        repoId,
+      );
+      for (const skill of active) {
+        skillDocs
+          .filter((d) => d.skillId === skill.id)
+          .sort((a, b) => a.position - b.position)
+          .forEach((d) => add(d.path));
+      }
+    }
+
+    const resolved = await this.catalog.resolveDocs(workspaceId, repoId, paths);
+    if (paths.length === 0) return { kind: 'none' };
+    // Unlike a review run (which records `secretPaths`), the brief sends nothing flagged as a secret.
+    const docs = resolved.docs
+      .filter((d) => isReadable(d.status) && !d.secretWarning)
+      .map((d) => ({ path: d.path, text: d.text ?? '', estTokens: d.estTokens }));
+    logger?.info({ repoId, sha: resolved.sha, candidates: paths.length, readable: docs.length }, 'repo project context resolved');
+    return { kind: 'resolved', sha: resolved.sha, docs };
   }
 
   // ---- internals ------------------------------------------------------------

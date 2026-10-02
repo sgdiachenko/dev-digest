@@ -36,6 +36,8 @@ import { IntentService } from '../modules/intent/service.js';
 import { PullsRepository } from '../modules/pulls/repository.js';
 import { SmartDiffService } from '../modules/smart-diff/service.js';
 import { BlastService } from '../modules/blast/service.js';
+import { BriefRepository } from '../modules/brief/repository.js';
+import { BriefService } from '../modules/brief/service.js';
 import { PrHistoryService } from '../modules/pr-history/service.js';
 import { ProjectContextRepository } from '../modules/project-context/repository.js';
 import { ProjectContextService } from '../modules/project-context/service.js';
@@ -98,6 +100,8 @@ export class Container {
   private _pullsRepo?: PullsRepository;
   private _smartDiffService?: SmartDiffService;
   private _blastService?: BlastService;
+  private _briefRepo?: BriefRepository;
+  private _briefService?: BriefService;
   private _prHistoryService?: PrHistoryService;
   private _projectContext?: ProjectContextService;
   private _contextAttachments?: ContextAttachmentsService;
@@ -217,6 +221,34 @@ export class Container {
    */
   blastService(): BlastService {
     return (this._blastService ??= new BlastService(this.pullsRepo, this.repoIntel));
+  }
+
+  get briefRepo(): BriefRepository {
+    return (this._briefRepo ??= new BriefRepository(this.db));
+  }
+
+  /**
+   * The PR Brief use case. Memoized: its single-flight map and per-workspace
+   * rate-limit windows are per-instance, so the route must always get the same
+   * one. Its ports are satisfied by the memoized repositories / services (no
+   * second instance of anything stateful): `pullsRepo`, `intentService()`,
+   * `blastService()` and the SAME `contextAttachments` the review executor uses.
+   * GitHub is resolved lazily per call (`() => this.github()`), so a token
+   * rotation is picked up.
+   */
+  briefService(): BriefService {
+    return (this._briefService ??= new BriefService(
+      this.briefRepo,
+      this.pullsRepo,
+      this.intentService(),
+      this.blastService(),
+      this.contextAttachments,
+      () => this.github(),
+      (provider) => this.llm(provider),
+      (workspaceId) => resolveFeatureModel(this, workspaceId, 'risk_brief'),
+      (text) => this.tokenizer.count(text),
+      wrapUntrusted,
+    ));
   }
 
   /**

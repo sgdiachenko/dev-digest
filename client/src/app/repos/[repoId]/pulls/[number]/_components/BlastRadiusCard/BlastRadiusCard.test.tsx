@@ -69,6 +69,32 @@ const EMPTY_DOWNSTREAM: BlastRadiusResponse = {
 };
 
 describe("BlastRadiusCard", () => {
+  it("keeps later symbol groups collapsed until the reader opens them", () => {
+    mockedUseBlastRadius.mockReturnValue({
+      data: {
+        ...WITH_DOWNSTREAM,
+        downstream: [
+          ...WITH_DOWNSTREAM.downstream,
+          {
+            symbol: "bucketKey",
+            callers: [{ name: "secondCaller", file: "src/buckets.ts", line: 42, endpoints_affected: [], crons_affected: [] }],
+            endpoints_affected: [],
+            crons_affected: [],
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useBlastRadius>);
+    renderCard();
+
+    expect(screen.getByText("src/api/public/index.ts:23")).toBeInTheDocument();
+    expect(screen.queryByText("src/buckets.ts:42")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /bucketKey/ }));
+    expect(screen.getByText("src/buckets.ts:42")).toBeInTheDocument();
+  });
+
   it("defaults to the Tree view and renders a BlastSymbolGroup per downstream group", () => {
     mockedUseBlastRadius.mockReturnValue({
       data: WITH_DOWNSTREAM,

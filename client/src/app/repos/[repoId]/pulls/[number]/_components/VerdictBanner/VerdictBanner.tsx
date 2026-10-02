@@ -16,6 +16,7 @@ export function VerdictBanner({
   findingsCount,
   blockers,
   agentName,
+  embedded = false,
 }: {
   verdict: Verdict;
   summary: string | null;
@@ -23,12 +24,13 @@ export function VerdictBanner({
   findingsCount: number;
   blockers: number;
   agentName?: string | null;
+  embedded?: boolean;
 }) {
   const t = useTranslations("prReview");
   const m = VERDICT_META[verdict] ?? VERDICT_META.comment;
   const VIcon = Icon[m.icon];
   return (
-    <div style={s.wrap}>
+    <div style={{ ...s.wrap, ...(embedded ? s.embedded : {}) }}>
       <div style={s.iconBox(m.bg, m.c)}>
         <VIcon size={22} />
       </div>

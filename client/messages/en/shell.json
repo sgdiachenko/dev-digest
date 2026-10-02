@@ -1,4 +1,8 @@
 {
+  "navigation": {
+    "open": "Open navigation",
+    "close": "Close navigation"
+  },
   "commandPalette": {
     "goTo": "Go to {label}",
     "goToSettings": "Go to Settings",

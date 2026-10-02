@@ -11,59 +11,80 @@ import { usePrIntent, useDeriveIntent } from "@/lib/hooks/intent";
 import { confidenceColor } from "./helpers";
 import { s } from "./styles";
 
-export function IntentCard({ prId }: { prId: string | null | undefined }) {
+/** Shared card for every Intent state. The Overview places Risk areas beneath
+    the intent content in the same card. */
+function IntentSection({
+  titleId,
+  slot,
+  children,
+}: {
+  titleId: string;
+  slot: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const t = useTranslations("brief");
+  return (
+    <section id="intent" tabIndex={-1} aria-labelledby={titleId}>
+      <Card style={s.card}>
+        <div id={titleId}>
+          <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
+        </div>
+        {children}
+        {slot ? <div style={s.slot}>{slot}</div> : null}
+      </Card>
+    </section>
+  );
+}
+
+export function IntentCard({
+  prId,
+  children,
+}: {
+  prId: string | null | undefined;
+  children?: React.ReactNode;
+}) {
   const t = useTranslations("brief");
   const { data: record, isLoading, isError, refetch } = usePrIntent(prId);
   const deriveMutation = useDeriveIntent(prId);
   const [sourcesOpen, setSourcesOpen] = React.useState(false);
   const sourcesId = React.useId();
+  const titleId = React.useId();
 
   if (isLoading) {
     return (
-      <section>
-        <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
-        <Card>
-          <Skeleton height={60} />
-        </Card>
-      </section>
+      <IntentSection titleId={titleId} slot={children}>
+        <Skeleton height={60} />
+      </IntentSection>
     );
   }
 
   if (isError) {
     return (
-      <section>
-        <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
-        <Card>
-          <ErrorState title={t("intent.error.title")} onRetry={() => refetch()} />
-        </Card>
-      </section>
+      <IntentSection titleId={titleId} slot={children}>
+        <ErrorState title={t("intent.error.title")} onRetry={() => refetch()} />
+      </IntentSection>
     );
   }
 
   if (!record) {
     return (
-      <section>
-        <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
-        <Card>
-          <EmptyState
-            icon="Target"
-            title={t("intent.empty.title")}
-            body={t("intent.empty.body")}
-            cta={t("intent.derive")}
-            onCta={() => deriveMutation.mutate()}
-            ctaLoading={deriveMutation.isPending}
-          />
-        </Card>
-      </section>
+      <IntentSection titleId={titleId} slot={children}>
+        <EmptyState
+          icon="Target"
+          title={t("intent.empty.title")}
+          body={t("intent.empty.body")}
+          cta={t("intent.derive")}
+          onCta={() => deriveMutation.mutate()}
+          ctaLoading={deriveMutation.isPending}
+        />
+      </IntentSection>
     );
   }
 
   const conf = confidenceColor(record.confidence);
 
   return (
-    <section>
-      <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
-      <Card style={s.card}>
+    <IntentSection titleId={titleId} slot={children}>
         <div style={s.header}>
           <div style={s.headerLeft}>
             <Badge color={conf.color} bg={conf.bg}>
@@ -149,7 +170,6 @@ export function IntentCard({ prId }: { prId: string | null | undefined }) {
             </div>
           )}
         </div>
-      </Card>
-    </section>
+    </IntentSection>
   );
 }

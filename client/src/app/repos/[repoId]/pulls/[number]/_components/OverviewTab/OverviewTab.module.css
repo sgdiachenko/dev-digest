@@ -1,0 +1,16 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  --text-muted: #999999;
+  --warn: #ffb13d;
+  --ok: #20d498;
+  --crit: #ff6262;
+}
+
+:global([data-theme="light"]) .root {
+  --text-muted: #666670;
+  --warn: #8a4300;
+  --ok: #006b46;
+  --crit: #b91c1c;
+}
