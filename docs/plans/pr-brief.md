@@ -716,4 +716,15 @@ The spec requires one bounded model call over already computed facts, without hu
 - A per-repo API for attachments — only `resolveForRun`; S4 adds `resolveForRepo`.
 - An explicit AC-41 / AC-42 priority in the spec — none; a plan decision (S4), recorded in *Risks*.
 
+## Post-implementation UI alignment — 2026-10-02
+
+The completed W5 layout was compared with the supplied Overview mockup on the populated local PR #5. This addendum records the visual follow-up; it does not change the approved functional scope or the historical W5 steps above.
+
+- S11: render the PR Brief label above one card containing the verdict banner and brief content. Keep the generated summary, provenance, missing-input notices, and Generate/Regenerate states.
+- S19 / Q4: render Intent and its optional Risk areas slot inside one shared card in every Intent state. This supersedes the earlier placement of the slot after the Intent card; preserve `section#intent` and the optional slot behavior.
+- Existing Blast radius components: place the heading and Tree/Graph control inside the card; initially expand the first downstream symbol and collapse later symbols so a long tree does not push Review focus far below the fold. Every group remains expandable.
+- S10: place the Review focus heading and item count inside its card, with compact unnumbered rows in stored order. This supersedes the numbered-list presentation; file navigation and the empty state remain the same.
+- Verification: client typecheck and 28 focused component tests passed; the populated PR #5 was inspected in the browser. The plan's keyboard and 320px/200% reflow checks remain part of Phase 4.
+- NFR-6 follow-up: scope accessible foreground colours to the PR Brief, keep the Intent focus indicator, and make the app shell/navigation and PR header usable at 320 CSS px and 200% zoom. Live Chrome checks confirmed single-column reflow at both sizes; a spoken screen-reader pass remains in Phase 4. See `pr-brief.verification.md` for measurements and evidence.
+
 ---
