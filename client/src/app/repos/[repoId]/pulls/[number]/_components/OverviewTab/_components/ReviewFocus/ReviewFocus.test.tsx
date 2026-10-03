@@ -33,6 +33,18 @@ describe("ReviewFocus", () => {
     expect(onOpen).toHaveBeenCalledWith("src/a.ts", 1);
   });
 
+  it("middle-truncates a long path and keeps the full path as title and accessible name (AC-108)", () => {
+    const long = "client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/ReviewFocus/ReviewFocus.tsx";
+    const onOpen = renderFocus([{ file: long, line: 12, reason: "Entry point", line_verified: true }]);
+    const button = screen.getByRole("button", { name: `${long}:12` });
+    expect(button).toHaveAttribute("title", `${long}:12`);
+    expect(button.textContent).toContain("…");
+    expect(button.textContent).not.toContain(long);
+    expect(button.textContent!.endsWith(":12")).toBe(true);
+    fireEvent.click(button);
+    expect(onOpen).toHaveBeenCalledWith(long, 12);
+  });
+
   it("shows the empty message with no items", () => {
     renderFocus([]);
     expect(screen.getByText("No specific lines to start from — read the diff in Smart order.")).toBeInTheDocument();

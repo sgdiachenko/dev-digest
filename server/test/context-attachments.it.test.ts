@@ -168,7 +168,7 @@ d('context attachments routes (Testcontainers pg)', () => {
     await app.close();
   });
 
-  it('404 for an agent or skill of another workspace, and for a foreign view repo (AC-8)', async () => {
+  it('404 for an agent or skill of another workspace; a foreign view repo reads as an empty index (AC-8 is a PUT rule, covered by the 422 matrix)', async () => {
     const repo = await insertRepo();
     const [otherWs] = await pg.handle.db.insert(t.workspaces).values({ name: `other-${seq++}` }).returning();
     const [foreignAgent] = await pg.handle.db
@@ -185,7 +185,11 @@ d('context attachments routes (Testcontainers pg)', () => {
     const unknownSkill = '00000000-0000-4000-8000-000000000000';
     expect((await app.inject({ method: 'GET', url: `/skills/${unknownSkill}/context?repo_id=${repo.id}` })).statusCode).toBe(404);
     const foreignView = await app.inject({ method: 'GET', url: `/agents/${agentId}/context?repo_id=${foreignRepo.id}` });
-    expect(foreignView.statusCode).toBe(404);
+    // `loadCatalogs` treats a repo outside the workspace as an empty index (documented in
+    // docs/api-contracts.md: only a PUT with a foreign `repo_id` is rejected, with 422): the view
+    // is empty and leaks nothing of the other workspace.
+    expect(foreignView.statusCode).toBe(200);
+    expect(foreignView.json()).toMatchObject({ repo_id: foreignRepo.id, own: [], inherited: [] });
     await app.close();
   });
 

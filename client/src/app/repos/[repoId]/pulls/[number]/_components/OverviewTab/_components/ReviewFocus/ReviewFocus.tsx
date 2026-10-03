@@ -1,4 +1,4 @@
-/* ReviewFocus — "read these first": numbered `file:line — reason` entries in
+/* ReviewFocus — "read these first": compact unnumbered `file:line — reason` rows in
    stored order. Each entry jumps to the Files changed tab. */
 "use client";
 
