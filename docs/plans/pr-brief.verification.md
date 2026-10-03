@@ -1,21 +1,23 @@
 # Verification Report — PR Brief (final)
 
-- Plan: `docs/plans/pr-brief.md` (current text, with the *Post-implementation UI alignment* addendum and the 2026-10-03 amendments to C23 / S19 / S10) · Spec: `docs/specs/2026-10-02-pr-brief.md` · Run log: `docs/plans/pr-brief.reports.md` (incl. *Phase 4 — manual verification, live*)
-- Produced by the `plan-verifier` agent (read-only) in two passes, recorded here by the main session without softening the verdict:
+- Plan: `docs/plans/pr-brief.md` (current text, with the *Post-implementation UI alignment* addendum and the 2026-10-03 amendments to C23 / S19 / S10) · Spec: `docs/specs/2026-10-02-pr-brief.md` (AC-71 and one design note edited 2026-10-03 at the user's explicit request) · Run log: `docs/plans/pr-brief.reports.md` (incl. *Phase 4 — manual verification, live*)
+- Produced by the `plan-verifier` agent (read-only) in three passes, recorded here by the main session without softening the verdict:
   1. full pass at `gate.sh fingerprint` `f563694d57453e91217f3c45898fab3564bf7a655baf78f1bcf88bf965a84d25`;
-  2. delta re-check of AC-108, S10, T8 at `ffc4159badccac4c934fad18c32b0bad711457c26666fc900f1f4cfc28bef8cc` (after a test and wording fix).
+  2. delta re-check of AC-108, S10, T8 at `ffc4159badccac4c934fad18c32b0bad711457c26666fc900f1f4cfc28bef8cc` (after a test and wording fix);
+  3. re-check of AC-71 and S10 at `d400068d88a0dd6a8fc307e817085f72c5769c60eb1c80d1ef9960f6ee8b8ee4` (spec and plan wording edited; `git status --porcelain` shows only `docs/plans/pr-brief.md` and `docs/specs/2026-10-02-pr-brief.md` modified, so no code changed and the earlier check results stand).
 
 ## Verdict
 
-**verified with gaps — met: 201, partial: 0, unmet: 0, not-verifiable: 3** (204 rows: 108 AC, 31 EC, 9 NFR, 23 C, 19 S, 14 T).
+**verified with gaps — met: 202, partial: 0, unmet: 0, not-verifiable: 2** (204 rows: 108 AC, 31 EC, 9 NFR, 23 C, 19 S, 14 T).
 
-Three rows are still open. None is an unmet or partial requirement; each needs something this run could not do:
+Two rows are still open. Neither is an unmet or partial requirement; each needs something this run could not do:
 
 | Open row | Why it is open | What closes it |
 |---|---|---|
-| **AC-71** | Spec says Review focus entries are "numbered"; the design, the plan addendum and the code are unnumbered. The user decided on 2026-10-03 that the unnumbered design stands. The spec is approved and immutable and is **unchanged**, so the conflict is resolved at plan level only | a `spec-creator` revision of AC-71 (run by hand), or a spec-level waiver by the user |
 | **NFR-1** | Recorded live: GET p95 (38th of 40) = 6.8 ms; POSTs 9.9 s and 37.7 s (failure path 17.8 s). Not recorded: the seeded database (the run used the user's dev stack and a 318-file PR), the comparison with `durationMs` in the `brief.completed` log, a live measurement of the ≤ 10 s input-collection bound | rerun the measurements on the seeded DB via `./scripts/dev.sh` and compare with `durationMs` |
 | **NFR-6** | Covered: focus lands on the target and is not hidden under sticky headers (live), severity icon + word and `role="status"` (unit). Not done: 320 px / 200 % reflow, ≥ 24×24 target sizes, keyboard-only walk, 4.5:1 contrast, spoken screen-reader pass. The 318-file PR stopped loading in the automation tab, so probing was abandoned | manual pass on a visible tab, ideally on a smaller seeded PR (steps below) |
+
+AC-71 is closed by the re-check: the spec (`docs/specs/2026-10-02-pr-brief.md:148`) now reads "compact `file:line — reason` row, without numbering", the plan (`docs/plans/pr-brief.md:406,726`) says unnumbered, and the code and test agree (see the AC-71 row). The plan ↔ spec conflict no longer exists.
 
 Housekeeping, not requirements: the unplanned UI files listed below, and one extra manual step from the plan ("both orders"): the Original diff order was not exercised live (AC-90/91 carry no order qualifier, so they stay met).
 
@@ -68,7 +70,7 @@ Evidence handles: `BS` = `server/test/brief-service.test.ts`, `BH` = `brief-help
 | AC-67, AC-68 | stored brief without POST; summary above the blocks | met | OT:127; live (one GET, no POST after reload) | — |
 | AC-69 | Intent left (Risk areas inside), Blast right, Review focus below | met | unit OT:201; live: label above one card, Intent (Risk areas inside) left, Blast right, Review focus card below | viewport width not recorded |
 | AC-70 | risk title, severity icon + word, refs | met | RA:27; `RiskItem.tsx:26-32` | — |
-| AC-71 | Review focus "numbered" entries | **not-verifiable (plan ↔ spec conflict)** | RF:19 asserts title, `file:line — reason`, order, a `ul`; the code is unnumbered; user decision recorded in the plan; spec unchanged | the "numbered" clause; see *Verdict* |
+| AC-71 | "The Review focus block, titled "Review focus — read these first", shall show each item as a compact `file:line — reason` row, without numbering, in stored order." (spec line 148, current text) | met (re-check) | RF:19 asserts title, `file:line — reason` rows, stored order, rendered as a `ul`; `ReviewFocus.tsx:1-2` unnumbered; plan `pr-brief.md:406,726` agrees; spec text now matches | — |
 | AC-72 | "Generated without:" list | met | BM:18; OT:211 | — |
 | AC-73, AC-74 | empty messages | met | RA:59; RF:36 | — |
 | AC-75, AC-76, AC-77, AC-78 | Regenerate; Outdated; provenance; model hint | met | BHd:43,51; OT:237; live (provenance line seen) | — |
@@ -114,18 +116,18 @@ EC-1 … EC-31: **all met**, each with the evidence listed in the full pass — 
 C1 … C23: **all met** — C1 (sync exit 0; `brief-contracts.test.ts:26-44`), C2 (`service.ts:12-64`; `arch:check`), C3 (`container.ts:239-240` `??=`), C4 (`routes.ts:24-37`; IT:155), C5 (`service.ts:193,244,268,281,331-333`; BS:248,256,266-268,607), C6 (BS:343,360,382), C7 (BP:95), C8 (BP:120; BH:250), C9 (no `diff-parser` import), C10 (no `process.env` in the module), C11 (`service.ts:384,413`), C12 (`hooks/brief.ts`), C13 (all new client files ≤ 179 lines; `OverviewTab` 7 props, `DiffTab` 7; `useDiffTarget` effect is a timer only), C14, C15 (no `dangerouslySetInnerHTML`), C16 (`fireEvent`, providers), C17 (no new `useTranslations` in `diff-viewer`), C18 (`useDiffTarget.ts:37,52,58`), C19 (IT 17/17), C20 (no `package.json`/lockfile change), C21 (LR:58), C22 (`page.tsx:89-92`), **C23 (met per the amended plan text; `IntentCard.tsx:27,32`; IntentCard test:54,63,73,81)**.
 
 ### S rows
-S1 … S19: **all met** — S1 (three byte-identical copies), S2, S3 (`openai.ts:110-115`, `anthropic.ts:119-124`), S4 (`service.ts:301,324`; CA:436-497), S5, S6, S7, S8, S9, S10 (**met after the delta re-check**: plan line 406 and the addendum say unnumbered, `ReviewFocus.tsx:1-2` agrees, a `ul` is rendered), S11 (OT:110-237), S12, S13, S14 (IT 17/17), S15, S16, S17, S18 (`git grep "onOpenFile = \|onOpenFile?:"` → none), **S19 (met per the amended plan text)**.
+S1 … S19: **all met** — S1 (three byte-identical copies), S2, S3 (`openai.ts:110-115`, `anthropic.ts:119-124`), S4 (`service.ts:301,324`; CA:436-497), S5, S6, S7, S8, S9, S10 (**met, re-checked**: plan line 406 and the addendum at line 726 say unnumbered, the spec AC-71 now says the same, `ReviewFocus.tsx:1-2` agrees, a `ul` is rendered; plan, spec and code agree), S11 (OT:110-237), S12, S13, S14 (IT 17/17), S15, S16, S17, S18 (`git grep "onOpenFile = \|onOpenFile?:"` → none), **S19 (met per the amended plan text)**.
 
 ### T rows
-T1 … T14: **all met** — T1 `brief-contracts.test.ts`; T2 `llm-http-retries.test.ts`; T3 CA:436-497; T4 `brief-helpers.test.ts`; T5 `brief-prompt.test.ts`; T6 OT:110-237; T7 helpers test; **T8 met after the delta re-check** (`ReviewFocus.test.tsx` now covers AC-108; AC-71 is tracked in its own row); T9 `brief-service.test.ts`; T10 `brief.it.test.ts` 17/17; T11 FT + NAV; T12 DV:86-160; T13 DT:231-293; T14 IntentCard test:53-81.
+T1 … T14: **all met** — T1 `brief-contracts.test.ts`; T2 `llm-http-retries.test.ts`; T3 CA:436-497; T4 `brief-helpers.test.ts`; T5 `brief-prompt.test.ts`; T6 OT:110-237; T7 helpers test; **T8 met** (`ReviewFocus.test.tsx` covers AC-71 and AC-108); T9 `brief-service.test.ts`; T10 `brief.it.test.ts` 17/17; T11 FT + NAV; T12 DV:86-160; T13 DT:231-293; T14 IntentCard test:53-81.
 
 ## Checks re-run
-Fingerprints matched on both passes, so results were reused (all exit 0): server lint, typecheck, arch:check, unit suite (excl. `*.it.test.ts`); client lint, typecheck, vitest (80 files / 420 tests at `ffc4159b…`); mcp-server typecheck + test; `./scripts/check-shared-sync.sh`; `brief.it.test.ts` 17/17 (main-session run; the verifier does not run `*.it.test.ts`).
+Fingerprints matched on the first two passes, so results were reused (all exit 0): server lint, typecheck, arch:check, unit suite (excl. `*.it.test.ts`); client lint, typecheck, vitest (80 files / 420 tests at `ffc4159b…`); mcp-server typecheck + test; `./scripts/check-shared-sync.sh`; `brief.it.test.ts` 17/17 (main-session run; the verifier does not run `*.it.test.ts`). Third pass (AC-71 / S10 re-check): fingerprint is now `d400068d…`, which differs only because the two doc files changed (`git status --porcelain`: `docs/plans/pr-brief.md`, `docs/specs/2026-10-02-pr-brief.md`); no code file changed, so no check was re-run and none of the earlier exit codes is affected.
 
 ## Report discrepancies
 - The plan addendum (`pr-brief.md`, line ~728) cites `pr-brief.verification.md` for 320 px / 200 % reflow measurements. Those are user-supplied and were **not** independently verified (see the appendix).
-- The W5 report does not list the unnumbered presentation under *Deviations*.
-- Plan changes since the first pass: C23 and S19 wording, S10 line, the AC-71 user decision, the `ReviewFocus` row. No requirement text was removed.
+- The W5 report does not list the unnumbered presentation under *Deviations*. Since the spec text now agrees (AC-71), this is a missing note only, not a conflict.
+- Plan changes since the first pass: C23 and S19 wording, S10 line, the AC-71 user decision, the `ReviewFocus` row. The spec's AC-71 and design note were edited on 2026-10-03 at the user's explicit request; no other requirement text was removed.
 
 ## Unplanned changes
 No plan step names these, and no report *Deviations* entry names them unless noted; the addendum covers some in prose only:
@@ -133,15 +135,14 @@ No plan step names these, and no report *Deviations* entry names them unless not
 - `pg:_components/PrDetailHeader/{PrDetailHeader.tsx,styles.ts}`, `VerdictBanner/{VerdictBanner.tsx,styles.ts}`, `PriorPrsSection/styles.ts`.
 - `pg:_components/BlastRadiusCard/{BlastRadiusCard.tsx,styles.ts,BlastRadiusCard.test.tsx}`, `BlastSymbolGroup/{BlastSymbolGroup.tsx,styles.ts}`.
 - `pg:_components/OverviewTab/OverviewTab.module.css` (S11 names `styles.ts` only); `client/src/components/diff-viewer/index.ts` and `target.ts`.
-- `server/INSIGHTS.md` (declared in the W2/W4 reports); docs: `docs/homework-pr-brief.md`, `docs/plans/pr-brief.{md,impl.md,reports.md,verification.md}`.
+- `server/INSIGHTS.md` (declared in the W2/W4 reports); docs: `docs/homework-pr-brief.md`, `docs/plans/pr-brief.{md,impl.md,reports.md,verification.md}`, `docs/specs/2026-10-02-pr-brief.md` (AC-71 and design note, user-requested edit of 2026-10-03).
 
 ## Out of scope / waived
 - `reviews.it.test.ts` (4 tests) and `context-attachments.it.test.ts` (1 test, AC-8 foreign view repo): fail on a clean HEAD too; waived by the user.
 - Rate limit taken before the single-flight lookup (`service.ts:193`, finding F1): matches plan steps 2–3; waived by the user.
-- Plan out-of-scope items stayed not done: no e2e flow, no `doc-writer` docs, no spec edits, no MCP tool, `history` stays `null`, no auto-generation, no migration.
+- Plan out-of-scope items stayed not done: no e2e flow, no `doc-writer` docs, no MCP tool, `history` stays `null`, no auto-generation, no migration. The only spec edit is the user-requested AC-71 / design-note wording of 2026-10-03.
 
 ## Not verifiable (manual steps)
-- **AC-71:** resolve at spec level (`spec-creator` revision, or a user waiver).
 - **NFR-1:** on the seeded DB via `./scripts/dev.sh`: 40 × GET `/pulls/<id>/brief`, take the 38th sorted value (expect ≤ 0.300 s); three timed POSTs (each ≤ 75 s) compared with `durationMs` in the `brief.completed` log; optionally time input collection (≤ 10 s) with a slow blast or specs.
 - **NFR-6** (visible Chrome tab, ideally a smaller seeded PR): keyboard-only walk through Generate, Regenerate, risk expand, risk refs and focus items; target sizes ≥ 24×24 CSS px; 320 px and 200 % zoom reflow to one column; 4.5:1 contrast on brief text; screen-reader announcements for generation start/success/failure and "File not in this PR's diff".
 - **Original diff order, live** (plan manual step "both orders"): open `?tab=diff&file=…&line=…` with Original order selected and check header and line positions under the sticky page header.
