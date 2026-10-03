@@ -147,7 +147,7 @@ The spec requires one bounded model call over already computed facts, without hu
 - **C20** — No new dependencies and no lockfile changes. — root `AGENTS.md`
 - **C21** — Without `httpRetries` the adapters behave as before. — Q1
 - **C22** — The API is additive only; `tab` / `trace` unchanged; `file` / `line` optional. — NFR-8
-- **C23** — The `children` slot in `IntentCard` is optional; without it the render is identical to the current one (other places, if any appear, are not affected). — react-best-practices (composition)
+- **C23** — The `children` slot in `IntentCard` is optional; without it `IntentCard` renders one shared card with the label and content (see *Post-implementation UI alignment*: this supersedes the earlier "identical to the current render" clause), and it adds only the `id="intent"` anchor and focus attributes; other places, if any appear, are not affected. — react-best-practices (composition)
 
 ## Steps
 
@@ -403,7 +403,7 @@ The spec requires one bounded model call over already computed facts, without hu
   - `BriefMissingInputs` — "Generated without:" + reason + fix link AC-105: intent → `<a href="#intent">`, specs → Project Context.
   - `RiskAreas` + `RiskItem` — icon + textual severity + title + refs; `aria-expanded` → explanation; empty text.
   - `BriefFileRef` — middle truncation, `title` / `aria-label` with the full path; an `onOpenFile` button or text + "not in this PR's diff".
-  - `ReviewFocus` — heading, numbered `file:line — reason`, buttons; empty text.
+  - `ReviewFocus` — heading, compact unnumbered `file:line — reason` rows (user-accepted, see the *Post-implementation UI alignment* addendum; the earlier "numbered" wording is superseded), buttons; empty text.
   - `BriefSkeleton`.
 
   Tests: `RiskAreas.test.tsx`, `ReviewFocus.test.tsx`, `BriefHeader.test.tsx`, `BriefMissingInputs.test.tsx` (the intent link has `href="#intent"`, specs — `/repos/r1/context`).
@@ -420,7 +420,7 @@ The spec requires one bounded model call over already computed facts, without hu
   - modify `client/src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/IntentCard.tsx`:
     - signature `IntentCard({ prId, children }: { prId; children?: React.ReactNode })`;
     - every render branch (loading, error, empty, derived) returns `<section id="intent" tabIndex={-1} aria-labelledby=…>` with the existing card and **`{children}` after it**, so that Risk areas are in the Intent block in all intent states;
-    - without `children` the output is identical to the current one, except for the `id` attribute.
+    - without `children` the output has no extra slot wrapper (the label moved inside the shared card per the *Post-implementation UI alignment* addendum; the earlier "identical except for the `id` attribute" wording is superseded).
   - modify `.../IntentCard/styles.ts` — spacing between the card and the slot.
   - create `.../IntentCard/IntentCard.test.tsx` (mocked `fetch`, `brief` provider):
     - in the empty and derived states `children` renders inside `section#intent`;
@@ -723,7 +723,7 @@ The completed W5 layout was compared with the supplied Overview mockup on the po
 - S11: render the PR Brief label above one card containing the verdict banner and brief content. Keep the generated summary, provenance, missing-input notices, and Generate/Regenerate states.
 - S19 / Q4: render Intent and its optional Risk areas slot inside one shared card in every Intent state. This supersedes the earlier placement of the slot after the Intent card; preserve `section#intent` and the optional slot behavior.
 - Existing Blast radius components: place the heading and Tree/Graph control inside the card; initially expand the first downstream symbol and collapse later symbols so a long tree does not push Review focus far below the fold. Every group remains expandable.
-- S10: place the Review focus heading and item count inside its card, with compact unnumbered rows in stored order. This supersedes the numbered-list presentation; file navigation and the empty state remain the same.
+- S10: place the Review focus heading and item count inside its card, with compact unnumbered rows in stored order. This supersedes the numbered-list presentation; file navigation and the empty state remain the same. **User decision (2026-10-03): the design shows an unnumbered list, so the unnumbered presentation is accepted. Spec AC-71 still says "numbered"; the spec is approved and immutable, so aligning it is a new spec revision by `spec-creator`, run by hand — not done in this run.**
 - Verification: client typecheck and 28 focused component tests passed; the populated PR #5 was inspected in the browser. The plan's keyboard and 320px/200% reflow checks remain part of Phase 4.
 - NFR-6 follow-up: scope accessible foreground colours to the PR Brief, keep the Intent focus indicator, and make the app shell/navigation and PR header usable at 320 CSS px and 200% zoom. Live Chrome checks confirmed single-column reflow at both sizes; a spoken screen-reader pass remains in Phase 4. See `pr-brief.verification.md` for measurements and evidence.
 

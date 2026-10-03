@@ -79,3 +79,24 @@ Open rows → fixes in review-fix round (this report is superseded by the final 
 - AC-104/NFR-9: `relativeTime` pure, returns `{key, count}`; `BriefHeader` formats via `card.relativeTime.*` (ICU plural) in `brief.json`; floors instead of rounding; future/<1 min → "just now". Test (m) "Generated 2 hours ago for commit".
 - C13: `OverviewTab` props 8 → 7 (`repoFullName`+`headSha` → optional `repo` object); `page.tsx` updated; navigation props still required.
 - Checks: client lint/typecheck/vitest (80 files, 414 tests) exit 0.
+
+## Phase 4 — manual verification, live (main session, 2026-10-03)
+Environment: the user's running dev stack (API :3001, web :3000), PR #5 of `sgdiachenko/dev-digest` (id `7b52bc5b…`, 318 files, head `cc5aa2a7`). Provider/model for `risk_brief` was changed by the user to OpenRouter `openai/gpt-oss-20b`; no key value was read or printed.
+
+Live generation (curl, API):
+- POST 1: HTTP 200 in 9.9 s, tokens 5890 in / 1823 out, cost $0.00041, `missing_inputs`: intent stale, diff_stats truncated, description empty; 7 review-focus items, 0 risks (empty risks accepted by AC-59).
+- POST 2 (repeat): HTTP 200 in 37.7 s, cost $0.00029, 1 risk, 6 review-focus items.
+- POST 3 (repeat): HTTP 502 `external_service_error` / `invalid_output` after 17.8 s; the stored brief from POST 2 stayed intact (AC-47, AC-48 confirmed live).
+- NFR-1: GET p95 (38th of 40) = 6.8 ms (min 4.1, median 5.7, max 8.4 ms) ≤ 300 ms; each POST ≤ 75 s (9.9 s, 37.7 s; failure path 17.8 s).
+- Total spend ≈ $0.0007.
+
+Browser (Chrome, visible tab):
+- Overview after reload: stored brief shown, exactly one GET `/brief` and no POST (AC-67); "Generated just now for commit cc5aa2a · openai/gpt-oss-20b · $0.0003" (AC-77); Regenerate instead of Generate; AI-generated label + summary; "Generated without:" with intent/diff stats/description reasons and a "Derive intent" fix link.
+- Layout (AC-69): PR BRIEF label above one card (verdict banner + summary); Intent card (with Risk areas inside) left, Blast radius right; Review focus card below with item count and unnumbered rows; long caller paths wrap inside the Blast radius card (user-requested fix).
+- Click on a Review-focus item → `?tab=diff&file=…ContextTab.tsx&line=1` (AC-87/88); the card is expanded, the target line row has focus (`tabindex=-1`) at y=221 of 836 with the file header at y=152–192 and nothing covering it (AC-89/90/91/93).
+- A file over 200 changed lines (`OnboardingTourView.test.tsx`, 407 added, line 150): card expanded, line focused at y=221.
+- A file in the `docs` role group (`client/docs/ui-architecture.md`, line 5): group opened, file header focused at y=181.
+- A line outside the diff (`.claude/agents/README.md`, line 3): label "Line 3 isn't part of this diff" and header focus (AC-94).
+- Back from Files changed returns to Overview with no query parameters (AC-97).
+
+Not re-done in this pass (the Overview of this 318-file PR stopped loading in the automation tab after ~40 s, so probing was stopped): 320 px / 200 % reflow, 24×24 target sizes, keyboard order, contrast, spoken screen-reader pass (NFR-6). The user's own earlier Chrome checks for reflow and contrast are in the appendix of `pr-brief.verification.md` and were not independently verified.
