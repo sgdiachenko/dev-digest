@@ -27,16 +27,78 @@ flowchart TD
   ONB["/onboarding<br/>add repo"] -->|"POST /repos"| API[("Fastify API")]
   PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
 
-  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills)"]
-  SKILLS["/skills"] --> SKILL["/skills/:id<br/>editor (config · preview · stats · versions)"]
+  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills · context)"]
+  SKILLS["/skills"] --> SKILL["/skills/:id<br/>editor (config · context · preview · stats · versions)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
+  CTX["/repos/:repoId/context<br/>Project Context"]
+  TOUR["/repos/:repoId/tour<br/>Onboarding Tour"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
   PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/smart-diff<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
-  AGENTS -->|"/agents · /agents/:id · /agents/:id/skills"| API
-  SKILLS -->|"/skills · /skills/:id · /skills/:id/stats<br/>/skills/:id/versions · /skills/:id/restore · /skills/import"| API
+  AGENTS -->|"/agents · /agents/:id · /agents/:id/skills · /agents/:id/context"| API
+  SKILLS -->|"/skills · /skills/:id · /skills/:id/stats<br/>/skills/:id/versions · /skills/:id/restore · /skills/import · /skills/:id/context"| API
+  CTX -->|"GET /repos/:id/context · /repos/:id/context/file<br/>POST /repos/:id/context/rescan"| API
+  TOUR -->|"GET /repos/:id/tour · /repos/:id/index-state<br/>POST /repos/:id/tour/narrative · /repos/:id/refresh · /repos/:id/resync"| API
   SETTINGS -->|"/settings · /providers"| API
 ```
+
+`/repos/:repoId/tour` (`src/app/repos/[repoId]/tour/`) is the Onboarding Tour:
+five facts-built sections, an "On this page" rail, an optional AI narrative and
+Markdown export. Behaviour: [specs/pages.md](specs/pages.md#reposrepoidtour);
+wiring: [docs/ui-architecture.md](docs/ui-architecture.md#onboarding-tour-hooks-and-view).
+
+`/repos/:repoId/context` (`src/app/repos/[repoId]/context/`) is the read-only
+Project Context page: document list with category chips and a filter, a safe
+Markdown preview, a freshness footer and Rescan. Filter, chips and the selected
+document live in the URL. Hooks: `src/lib/hooks/context.ts`. Each row shows
+"Used by N agents · M skills" (or "Not used", or "Usage unavailable" when
+`used_by` is `null`); activating it opens a scrollable list of links to
+`/agents/:id?tab=context` and `/skills/:id?tab=context`
+(`ProjectContextView/_components/UsedBy/`).
+
+### Context tabs (attachments)
+
+The agent editor and the skill editor each have a **Context** tab
+(`agents/[id]/_components/AgentEditor/_components/ContextTab/`,
+`skills/_components/SkillsView/_components/SkillEditor/_components/ContextTab/`)
+that attaches and orders Project Context documents. The shared list,
+reorder logic and budget meter live in `src/components/context-attachments/`
+(`AttachList`, `AttachRow`, `BudgetMeter`, `TokenEstimate`; it may not import
+from `app/`). Data comes from `useAgentContext` / `useSetAgentContext` /
+`useSkillContext` / `useSetSkillContext` (`src/lib/hooks/context.ts`) over the
+[attachments routes](../server/docs/api-contracts.md#project-context-attachments).
+
+- A repository selector (defaults to the active repository) filters the list;
+  a save sends the **full** ordered list across all repositories.
+- Reorder with the drag handle or the Move up / Move down buttons; there is no
+  reorder shortcut. A failed save reverts to the last server-confirmed list and
+  shows Retry; "Saved" is announced in a `role="status"` region.
+- The agent tab adds a read-only "Inherited from skills" section and the budget
+  meter "≈ T / 8,000 tokens" with the documents a run would skip. The skill tab
+  adds "Serializes as", the exact block the skill's documents produce.
+- Long paths are middle-truncated to 56 visible characters; the full path stays
+  the title and the checkbox's accessible name.
+
+**Gotcha: tab validation lives in two page-level lists.** An editor tab is
+reachable through `?tab=` only if its key is also in the page's `VALID_TABS`:
+`agents/[id]/page.tsx:15` and `skills/_components/SkillsView/constants.ts:4`.
+A tab added only to the editor's own `TABS` silently falls back to Config and
+breaks every "Used by" link. `SkillsView/constants.test.ts` asserts each editor
+tab is in `VALID_TABS` and that Context is second.
+
+### Run drawer: project context
+
+The run trace drawer (`pulls/[number]/_components/RunTraceDrawer/`) labels the
+block "Project context — attached specs (untrusted)", shows each "Specs read"
+path as a link to `/repos/:repoId/context?doc=` with the run's short SHA, shows
+per-block "≈ N tokens · estimate" (the project-context block uses the server's
+`project_context.total_est_tokens`) and the run total as "actual". The
+fullscreen prompt modal lists skipped documents and a jump list of `###`
+headings above the stored text. Traces without `project_context` render
+"Specs read: none" as before. The fullscreen prompt dialog has its own focus
+handling (`PromptBlock/useModalFocus.ts`: focus in, Escape, Tab wrap, focus
+return). The vendored `Modal` is unchanged, so the other dialogs built on it
+still lack Escape and focus handling (known gap).
 
 Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
 `g`-then-key shortcuts). Pages are thin; feature logic sits in colocated

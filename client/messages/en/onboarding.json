@@ -1,17 +1,166 @@
 {
-  "title": "Onboarding Tour",
-  "sections": "Sections",
-  "sectionCount": "{count} sections",
-  "regenerate": "Regenerate",
-  "regenerating": "Regenerating…",
-  "unknownError": "Unknown error",
-  "generate": {
-    "title": "Generate onboarding tour",
-    "body": "DevDigest indexes the repo and specs, then writes a 5-section guided tour: overview, architecture, key modules, getting started, and conventions & gotchas.",
-    "cta": "Generate onboarding tour",
-    "generating": "Generating…"
+  "title": "Onboarding for {repo}",
+  "titlePrefix": "Onboarding for ",
+  "crumb": "Onboarding Tour",
+  "fromFacts": "From repository facts",
+  "aiWritten": "AI-written",
+  "header": {
+    "sha": "Commit {sha}",
+    "files": "{indexed} indexed of {total} files",
+    "filesUnknownTotal": "{indexed} files indexed",
+    "status": {
+      "full": "Index: full",
+      "partial": "Index: partial",
+      "degraded": "Index: degraded",
+      "failed": "Index: failed"
+    },
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "linkCopyFailed": "Could not copy the link",
+    "export": "Export as Markdown"
   },
-  "loadError": {
-    "title": "Couldn’t load the onboarding tour"
+  "sections": {
+    "architecture": "Architecture overview",
+    "critical_paths": "Critical paths",
+    "run_locally": "How to run locally",
+    "reading_path": "Guided reading path",
+    "first_tasks": "First tasks"
+  },
+  "collapse": "Collapse {section}",
+  "expand": "Expand {section}",
+  "onThisPage": "On this page",
+  "jumpTo": "Jump to",
+  "states": {
+    "loading": "Loading the tour",
+    "loadError": "The tour could not be loaded",
+    "retry": "Retry",
+    "notCloned": "This repository is not cloned yet",
+    "notIndexed": "Indexing — the tour appears when the index is ready",
+    "resync": "Resync",
+    "banner": "Index is {status}: {reason}. {indexed} indexed of {total} files.",
+    "bannerNoReason": "Index is {status}. {indexed} indexed of {total} files.",
+    "bannerUnknownTotal": "Index is {status}. {indexed} files indexed.",
+    "unavailable": "The tour is not available for this repository",
+    "statusWord": {
+      "partial": "partial",
+      "degraded": "degraded",
+      "failed": "failed"
+    }
+  },
+  "empty": {
+    "architecture": "No modules were found in this repository",
+    "critical_paths": "No critical paths could be determined for this repository",
+    "run_locally": "No run commands found in manifests or README",
+    "reading_path": "No reading path could be built for this repository",
+    "first_tasks": "No first tasks were found for this repository"
+  },
+  "architecture": {
+    "summary": "Stack: {stack}. Entry points: {entryPoints}. {modules, plural, one {# top-level module} other {# top-level modules}}.",
+    "none": "none detected",
+    "stack": "Stack",
+    "modules": "Modules",
+    "moduleFiles": "{count, plural, one {# file} other {# files}}",
+    "convention": "By convention",
+    "verified": "Verified",
+    "diagram": "Module dependency diagram",
+    "noGraph": "No import graph — heuristic structure"
+  },
+  "critical": {
+    "heuristic": "Heuristic order — no import graph",
+    "score": "Score {score}",
+    "routes": "{count, plural, one {# route} other {# routes}}",
+    "importers": "{count, plural, one {# importer} other {# importers}}",
+    "tags": {
+      "entry_point": "Entry point",
+      "public_surface": "Public surface",
+      "high_fan_in": "High fan-in",
+      "security_sensitive": "Security-sensitive",
+      "data_schema": "Data schema",
+      "runtime_config": "Runtime config",
+      "docs": "Docs"
+    }
+  },
+  "runLocally": {
+    "rootGroup": "Repository root",
+    "group": "Package {path}",
+    "ecosystem": "Ecosystem: {ecosystem}",
+    "phase": {
+      "install": "Install",
+      "environment": "Environment",
+      "infrastructure": "Infrastructure",
+      "dev": "Run",
+      "test": "Test"
+    },
+    "step": "Step {number}",
+    "source": "Source: {source}",
+    "byConvention": "By convention — verify",
+    "copy": "Copy",
+    "copyCommand": "Copy command {command}",
+    "copied": "Copied",
+    "copyFallback": "Press ⌘C / Ctrl+C to copy",
+    "envNames": "Variables: {names}",
+    "warning": {
+      "lifecycle_hook": "Runs a lifecycle hook: {detail}",
+      "remote_code": "Downloads and runs remote code"
+    }
+  },
+  "readingPath": {
+    "position": "Item {position}",
+    "heuristic": "Heuristic order — no import graph",
+    "reason": {
+      "entry_point": "Entry point",
+      "imported_by": "Imported by item {position}",
+      "critical": "Critical file"
+    }
+  },
+  "firstTasks": {
+    "complexity": {
+      "low": "Complexity: low",
+      "medium": "Complexity: medium"
+    },
+    "title": {
+      "todo_comment": "Resolve the TODO or FIXME comment in {path}",
+      "missing_test": "Add tests for {path}",
+      "route_without_test": "Add tests for the routes in {path}",
+      "readme_missing_setup": "Document setup and run steps in {path}"
+    },
+    "directory": "Directory",
+    "line": "Line {line}"
+  },
+  "openOnGitHub": "Open on GitHub",
+  "open": "Open",
+  "openOnGitHubFor": "Open {path} on GitHub",
+  "narrative": {
+    "generate": "Generate narrative",
+    "regenerate": "Regenerate",
+    "generating": "Generating…",
+    "regeneratingNote": "Regenerating",
+    "approx": "approx. {cost}",
+    "costUnknown": "cost unknown",
+    "costNotReported": "cost not reported",
+    "generatedLine": "Generated {time} from commit {sha} · {model} · {cost}",
+    "outdated": "Outdated — repository changed since",
+    "updated": "Narrative updated",
+    "failedAnnounce": "Generation failed",
+    "failure": {
+      "llm_timeout": "Generation timed out",
+      "llm_error": "The model returned an error",
+      "invalid_output": "The model returned output that could not be used",
+      "interrupted": "Generation was interrupted"
+    },
+    "retry": "Retry",
+    "missingKey": "Add an API key for {provider} in Settings",
+    "noStructuredProvider": "No provider for {model} supports structured output — choose another model in Settings",
+    "openSettings": "Open Settings",
+    "rateLimited": "Too many generation requests — try again in a minute",
+    "notInIndex": "Not in current index",
+    "aiDiagramUnavailable": "AI diagram unavailable"
+  },
+  "export": {
+    "fromFacts": "From repository facts",
+    "aiWritten": "AI-written",
+    "commit": "Commit",
+    "indexed": "Files indexed",
+    "status": "Index status"
   }
 }

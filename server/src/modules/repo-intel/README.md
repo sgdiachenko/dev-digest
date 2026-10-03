@@ -41,6 +41,13 @@ touch the pipeline internals:
 - `getBlastRadius(repoId, files)` → impacted symbols / callers (used by L04).
 - `getUnresolvedReferences(repoId, …)` → phantom-symbol detection (used by L06).
 - `getConventionSamples(repoId)` → top-ranked files for convention extraction (L02).
+- `getGraphFacts(repoId)` → whole-repo import edges, file ranks and per-file
+  route/cron facts, each sorted by path (`service.ts:724`, `types.ts:129-141`). Used
+  by the Onboarding Tour ([architecture.md](../../../docs/architecture.md#onboarding-tour-modulesonboarding)).
+  Returns empty arrays when `REPO_INTEL_ENABLED` is off or the repo has no graph. It
+  reads three tables in three separate, non-transactional queries, so during a full
+  reindex the result can mix old and new rows; callers must tolerate that
+  (JSDoc at `service.ts:716-722`).
 
 In the starter, only `getRepoMap` / `getFileRank` / `getCallerSignatures` are
 wired — into `modules/reviews/run-executor.ts`, which adds the repo map and a
@@ -51,3 +58,8 @@ and a per-agent `repo_intel` flag.
 
 - `GET /repos/:id/index-state` — index status (drives the **Indexed** badge).
 - `POST /repos/:id/resync` — enqueue a re-index.
+  After the sync succeeds, `resyncRepo` also enqueues a `project-context-scan`
+  job so the Project Context catalog is rebuilt from the advanced clone
+  (`service.ts:168-174`). The enqueue is best-effort and does not change the
+  resync result, and it runs whether or not `REPO_INTEL_ENABLED` is on.
+  See [architecture.md](../../../docs/architecture.md#project-context-catalog-modulesproject-context).

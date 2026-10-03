@@ -1,0 +1,8 @@
+{
+  "_comment": "USD per 1M tokens, matched by substring of the model id (first match wins). Left unset on purpose: fill from your provider's rate card. collect.mjs prints a cost column only for models that have all four rates set.",
+  "rates": [
+    { "match": "opus",   "input": null, "cache_write": null, "cache_read": null, "output": null },
+    { "match": "sonnet", "input": null, "cache_write": null, "cache_read": null, "output": null },
+    { "match": "haiku",  "input": null, "cache_write": null, "cache_read": null, "output": null }
+  ]
+}

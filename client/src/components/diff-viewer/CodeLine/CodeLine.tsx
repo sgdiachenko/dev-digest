@@ -10,9 +10,13 @@ import { FindingCard } from "@/components/finding-card/FindingCard";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
 import { type DiffFindingApi, topSeverity } from "../findings";
 import { type Line } from "../helpers";
-import { s, lineRowFor, lineSignFor } from "../styles";
+import { s, lineRowFor, lineSignFor, highlightFor } from "../styles";
 import { CommentThreadView } from "../CommentThreadView";
 import { InlineComposer } from "../InlineComposer";
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
 
 export function CodeLine({
   ln,
@@ -21,6 +25,8 @@ export function CodeLine({
   commenting,
   findings,
   findingApi,
+  highlighted,
+  focusTarget,
 }: {
   ln: Line;
   path: string;
@@ -29,6 +35,10 @@ export function CodeLine({
   /** Findings anchored to this line (already matched by the parent). */
   findings?: FindingRecord[];
   findingApi?: DiffFindingApi;
+  /** Briefly marks this line as the navigation target. */
+  highlighted?: boolean;
+  /** Set on the navigation target line: receives the DOM node, makes it focusable. */
+  focusTarget?: (el: HTMLDivElement | null) => void;
 }) {
   const t = useTranslations("prReview");
   const [hover, setHover] = React.useState(false);
@@ -55,7 +65,12 @@ export function CodeLine({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div style={lineRowFor(ln.kind, sevColor)}>
+      <div
+        ref={focusTarget}
+        tabIndex={focusTarget ? -1 : undefined}
+        data-new-line={ln.newNo}
+        style={{ ...lineRowFor(ln.kind, sevColor), ...(highlighted ? highlightFor(prefersReducedMotion()) : null) }}
+      >
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button

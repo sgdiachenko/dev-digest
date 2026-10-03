@@ -139,18 +139,114 @@ describe('AI contracts parse fixtures', () => {
     expect(d.groups[2]!.role).toBe('docs');
   });
 
-  it('Conformance / Onboarding / EvalRun / MemoryItem', () => {
+  it('Onboarding facts-only (narrative null) and with a full narrative', () => {
+    const base = {
+      repo_id: 'r1',
+      availability: 'available',
+      source_sha: 'a'.repeat(40),
+      computed_at: '2026-10-01T10:00:00.000Z',
+      index: {
+        status: 'full',
+        reason: null,
+        files_indexed: 10,
+        files_in_repo: 12,
+        graph_available: true,
+        files_skipped_by_tour: 0,
+      },
+      sections: {
+        architecture: {
+          origin: 'facts',
+          summary: 's',
+          stack: [{ kind: 'ecosystem', name: 'node', evidence_path: 'package.json', confidence: 'verified' }],
+          modules: [{ path: 'src', file_count: 3 }],
+          diagram: { nodes: [{ id: 'n1', path: 'src' }], edges: [{ from: 'n1', to: 'n1', import_count: 1 }] },
+        },
+        critical_paths: {
+          origin: 'facts',
+          graph_based: true,
+          items: [{ path: 'src/a.ts', score: 5, tags: ['entry_point'], route_count: null, importer_count: 2 }],
+        },
+        run_locally: {
+          origin: 'facts',
+          groups: [
+            {
+              package_path: '.',
+              ecosystem: 'node',
+              commands: [
+                {
+                  id: 'c1',
+                  position: 0,
+                  phase: 'install',
+                  command: 'pnpm install',
+                  source_path: null,
+                  source_key: null,
+                  by_convention: true,
+                  env_names: null,
+                  warnings: [{ kind: 'lifecycle_hook', detail: 'postinstall' }],
+                },
+              ],
+            },
+          ],
+        },
+        reading_path: {
+          origin: 'facts',
+          graph_based: false,
+          items: [{ position: 0, path: 'src/a.ts', reason: 'entry_point', imported_by_position: null, tags: [] }],
+        },
+        first_tasks: {
+          origin: 'facts',
+          items: [{ id: 't1', signal: 'todo_comment', path: 'src/a.ts', path_kind: 'file', line: 3, complexity: 'low' }],
+        },
+      },
+    };
+    const facts = Onboarding.parse({ ...base, narrative: null, estimated_cost: null });
+    expect(facts.narrative).toBeNull();
+    expect(facts.sections?.run_locally.groups[0]?.commands[0]?.id).toBe('c1');
+
+    const full = Onboarding.parse({
+      ...base,
+      estimated_cost: { model: 'm', approx_usd: null },
+      narrative: {
+        status: 'ready',
+        generation_id: 'g1',
+        source_sha: 'a'.repeat(40),
+        outdated: false,
+        generated_at: '2026-10-01T10:01:00.000Z',
+        provider: 'openrouter',
+        model: 'm',
+        input_tokens: 100,
+        output_tokens: 50,
+        cost_usd: null,
+        last_failure: { reason: 'interrupted', at: '2026-10-01T10:02:00.000Z', provider: null, model: null },
+        fallback_sections: ['first_tasks'],
+        sections: {
+          architecture: { body_markdown: 'b', diagram_mermaid: null },
+          critical_paths: [{ path: 'src/a.ts', description: 'd' }],
+          run_locally: [{ command_id: 'c1', position: 0, note: null }],
+          reading_path: null,
+          first_tasks: null,
+        },
+      },
+    });
+    expect(full.narrative?.status).toBe('ready');
+    expect(full.narrative?.fallback_sections).toEqual(['first_tasks']);
+
+    // old shape is rejected
+    expect(() =>
+      Onboarding.parse({ sections: [{ kind: 'architecture', title: 'T', body: 'b', links: [] }] }),
+    ).toThrow();
+    // bad datetime / enum rejected
+    expect(() => Onboarding.parse({ ...base, computed_at: 'yesterday', narrative: null, estimated_cost: null })).toThrow();
+    expect(() => Onboarding.parse({ ...base, availability: 'nope', narrative: null, estimated_cost: null })).toThrow();
+  });
+
+  it('Conformance / EvalRun / MemoryItem', () => {
     expect(() =>
       Conformance.parse({
         spec_id: 's1',
         spec_title: 'Spec',
         items: [{ requirement: 'r', status: 'implemented' }],
         completeness_pct: 80,
-      }),
-    ).not.toThrow();
-    expect(() =>
-      Onboarding.parse({
-        sections: [{ kind: 'architecture', title: 'T', body: 'b', links: [] }],
       }),
     ).not.toThrow();
     expect(() =>

@@ -23,6 +23,8 @@ import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
+import { wrapUntrusted } from './prompt.js';
+import { loadPromptTemplate } from './prompts.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
 import { RepoRepository } from '../modules/repos/repository.js';
@@ -34,7 +36,15 @@ import { IntentService } from '../modules/intent/service.js';
 import { PullsRepository } from '../modules/pulls/repository.js';
 import { SmartDiffService } from '../modules/smart-diff/service.js';
 import { BlastService } from '../modules/blast/service.js';
+import { BriefRepository } from '../modules/brief/repository.js';
+import { BriefService } from '../modules/brief/service.js';
 import { PrHistoryService } from '../modules/pr-history/service.js';
+import { ProjectContextRepository } from '../modules/project-context/repository.js';
+import { ProjectContextService } from '../modules/project-context/service.js';
+import { OnboardingRepository } from '../modules/onboarding/repository.js';
+import { OnboardingService } from '../modules/onboarding/service.js';
+import { OnboardingNarrativeService } from '../modules/onboarding/narrative-service.js';
+import { ContextAttachmentsService } from '../modules/context-attachments/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
@@ -90,7 +100,13 @@ export class Container {
   private _pullsRepo?: PullsRepository;
   private _smartDiffService?: SmartDiffService;
   private _blastService?: BlastService;
+  private _briefRepo?: BriefRepository;
+  private _briefService?: BriefService;
   private _prHistoryService?: PrHistoryService;
+  private _projectContext?: ProjectContextService;
+  private _contextAttachments?: ContextAttachmentsService;
+  private _onboarding?: OnboardingService;
+  private _onboardingNarrative?: OnboardingNarrativeService;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -171,6 +187,7 @@ export class Container {
       this.git,
       this.skillsRepo,
       this.intentService(),
+      this.contextAttachments,
       this.config.promptLog,
     );
     return new ReviewService(this.reviewRepo, this.agentsRepo, this.runBus, executor);
@@ -206,6 +223,34 @@ export class Container {
     return (this._blastService ??= new BlastService(this.pullsRepo, this.repoIntel));
   }
 
+  get briefRepo(): BriefRepository {
+    return (this._briefRepo ??= new BriefRepository(this.db));
+  }
+
+  /**
+   * The PR Brief use case. Memoized: its single-flight map and per-workspace
+   * rate-limit windows are per-instance, so the route must always get the same
+   * one. Its ports are satisfied by the memoized repositories / services (no
+   * second instance of anything stateful): `pullsRepo`, `intentService()`,
+   * `blastService()` and the SAME `contextAttachments` the review executor uses.
+   * GitHub is resolved lazily per call (`() => this.github()`), so a token
+   * rotation is picked up.
+   */
+  briefService(): BriefService {
+    return (this._briefService ??= new BriefService(
+      this.briefRepo,
+      this.pullsRepo,
+      this.intentService(),
+      this.blastService(),
+      this.contextAttachments,
+      () => this.github(),
+      (provider) => this.llm(provider),
+      (workspaceId) => resolveFeatureModel(this, workspaceId, 'risk_brief'),
+      (text) => this.tokenizer.count(text),
+      wrapUntrusted,
+    ));
+  }
+
   /**
    * "Prior PRs touching these files" use case (P3). No repository of its
    * own — `pullsRepo` already exposes everything `PrHistoryStore`/
@@ -225,6 +270,62 @@ export class Container {
     const github = await this.github();
     this._prHistoryService = new PrHistoryService(this.pullsRepo, this.pullsRepo, github);
     return this._prHistoryService;
+  }
+
+  /**
+   * Project Context catalog use case. Memoized: routes, the scan job handler
+   * and any future consumer (attachments) must share ONE instance, because the
+   * single-flight scan map lives in it.
+   */
+  get projectContext(): ProjectContextService {
+    return (this._projectContext ??= new ProjectContextService(
+      new ProjectContextRepository(this.db),
+      this.git,
+      this.tokenizer,
+      this.jobs,
+    ));
+  }
+
+  /**
+   * Onboarding tour (deterministic facts). Memoized: the facts cache and single-flight map live
+   * in the service. The narrative overlay is a lazy closure: `onboardingNarrative` needs this
+   * service for its facts, so resolving it eagerly here would be a construction cycle.
+   */
+  get onboarding(): OnboardingService {
+    return (this._onboarding ??= new OnboardingService(
+      new OnboardingRepository(this.db),
+      this.repoIntel,
+      this.git,
+      { forTour: (...args) => this.onboardingNarrative.forTour(...args) },
+    ));
+  }
+
+  /**
+   * Onboarding AI narrative. Memoized: its single-flight map and rate-limit windows are
+   * per-instance, so the route and the `GET /tour` overlay must share one.
+   */
+  get onboardingNarrative(): OnboardingNarrativeService {
+    return (this._onboardingNarrative ??= new OnboardingNarrativeService(
+      new OnboardingRepository(this.db),
+      this.onboarding,
+      this.repoIntel,
+      this.git,
+      (provider) => this.llm(provider),
+      (workspaceId) => resolveFeatureModel(this, workspaceId, 'onboarding'),
+      (model, tokensIn, tokensOut) => this.priceBook.estimate(model, tokensIn, tokensOut),
+      (text) => this.tokenizer.count(text),
+      wrapUntrusted,
+      () => loadPromptTemplate('onboarding.system.md'),
+    ));
+  }
+
+  /** Project Context attachments (agents / skills ↔ catalog documents). Memoized, like its catalog. */
+  get contextAttachments(): ContextAttachmentsService {
+    return (this._contextAttachments ??= new ContextAttachmentsService(
+      this.agentsRepo,
+      this.skillsRepo,
+      this.projectContext,
+    ));
   }
 
   get codeIndex(): CodeIndex {

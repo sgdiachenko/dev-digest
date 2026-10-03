@@ -22,6 +22,9 @@ import type {
   UnifiedDiff,
   BlameLine,
   GitCommit,
+  GitTreeEntry,
+  GitGrepMatch,
+  GitGrepOptions,
   CodeIndex,
   CodeMatch,
   CodeSymbol,
@@ -33,7 +36,13 @@ import type {
   SecretKey,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
-import { assertSafeShowFileAtArgs, BlobTooLargeError } from './git/show-file-at-guard.js';
+import {
+  assertSafeGrepArgs,
+  assertSafeOid,
+  assertSafeRef,
+  assertSafeShowFileAtArgs,
+  BlobTooLargeError,
+} from './git/show-file-at-guard.js';
 
 /**
  * Deterministic MOCK adapters for tests/dev — NO real network. Each mirrors the
@@ -270,11 +279,25 @@ export interface MockGitOptions {
   syncedHead?: string;
   /** Content `showFileAt` returns, keyed by `"ref:path"`; unset ⇒ `files[path]`. */
   showFileAtByRefPath?: Record<string, string>;
+  /** `listTree` result (any sha) unless `treeBySha` has an entry for it. */
+  tree?: GitTreeEntry[];
+  treeBySha?: Record<string, GitTreeEntry[]>;
+  /** `readBlob` content keyed by oid; unset oid ⇒ empty blob. */
+  blobs?: Record<string, string | Uint8Array>;
+  readBlobError?: Error;
+  listTreeError?: Error;
+  /** `grepAt` hits (any sha/pattern); unset ⇒ `[]`. Honours `maxResults`. */
+  grep?: GitGrepMatch[];
+  grepError?: Error;
+  /** `sync()` rejects with this when set. */
+  syncError?: Error;
 }
 
 export class MockGitClient implements GitClient {
   public cloned: { repo: RepoRef; url: string }[] = [];
   public syncs: { repo: RepoRef; branch: string }[] = [];
+  public readBlobCalls: string[] = [];
+  public grepCalls: { sha: string; patterns: string[]; opts?: GitGrepOptions }[] = [];
   private syncedHead?: string;
 
   constructor(private opts: MockGitOptions = {}) {}
@@ -289,6 +312,7 @@ export class MockGitClient implements GitClient {
   async fetchPullHead(): Promise<void> {}
   async sync(repo: RepoRef, branch: string): Promise<{ head: string }> {
     this.syncs.push({ repo, branch });
+    if (this.opts.syncError) throw this.opts.syncError;
     // After a sync, HEAD advances to syncedHead (or stays at head if unset).
     this.syncedHead = this.opts.syncedHead ?? this.opts.head ?? 'a1b2c3d4';
     return { head: this.syncedHead };
@@ -322,6 +346,34 @@ export class MockGitClient implements GitClient {
       if (size > maxBytes) throw new BlobTooLargeError(ref, path, size, maxBytes);
     }
     return content;
+  }
+  async listTree(_repo: RepoRef, sha: string): Promise<GitTreeEntry[]> {
+    assertSafeRef(sha);
+    if (this.opts.listTreeError) throw this.opts.listTreeError;
+    return this.opts.treeBySha?.[sha] ?? this.opts.tree ?? [];
+  }
+  async readBlob(_repo: RepoRef, oid: string, maxBytes?: number): Promise<Uint8Array> {
+    assertSafeOid(oid);
+    this.readBlobCalls.push(oid);
+    if (this.opts.readBlobError) throw this.opts.readBlobError;
+    const blob = this.opts.blobs?.[oid] ?? '';
+    const bytes = typeof blob === 'string' ? new TextEncoder().encode(blob) : blob;
+    if (maxBytes != null && bytes.byteLength > maxBytes) {
+      throw new BlobTooLargeError(oid, '(blob)', bytes.byteLength, maxBytes);
+    }
+    return bytes;
+  }
+  async grepAt(
+    _repo: RepoRef,
+    sha: string,
+    patterns: string[],
+    opts?: GitGrepOptions,
+  ): Promise<GitGrepMatch[]> {
+    assertSafeGrepArgs(sha, patterns, opts?.pathspecs);
+    this.grepCalls.push({ sha, patterns, ...(opts ? { opts } : {}) });
+    if (this.opts.grepError) throw this.opts.grepError;
+    const hits = this.opts.grep ?? [];
+    return opts?.maxResults != null ? hits.slice(0, Math.max(0, opts.maxResults)) : hits;
   }
 }
 

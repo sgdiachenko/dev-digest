@@ -4,7 +4,7 @@ import * as t from '../../db/schema.js';
 import type { SkillSource, SkillType } from '@devdigest/shared';
 import type { StatsAgentRow, StatsFindingRow, StatsRunRow, SkillStatsRaw } from './helpers.js';
 import { INITIAL_SKILL_VERSION, RESTORE_NOTE_PREFIX, STATS_WINDOW_DAYS } from './constants.js';
-import { ConflictError } from '../../platform/errors.js';
+import { ConflictError, NotFoundError } from '../../platform/errors.js';
 import { assessSkillSafety } from './safety.js';
 
 /** Postgres unique_violation → a 409 the client can show inline, instead of a 500. */
@@ -54,6 +54,26 @@ export interface PromptSkill {
   name: string;
   body: string;
   source: SkillSource;
+}
+
+/** A Project Context document pinned to a skill, by repo + catalog path. */
+export interface SkillContextDocRef {
+  repoId: string;
+  path: string;
+}
+
+export interface SkillContextDoc extends SkillContextDocRef {
+  skillId: string;
+  position: number;
+}
+
+/** An agent's linked skill with the two flags that decide whether it is injected. */
+export interface LinkedSkillState {
+  id: string;
+  name: string;
+  order: number;
+  enabled: boolean;
+  safe: boolean;
 }
 
 export class SkillsRepository {
@@ -205,6 +225,81 @@ export class SkillsRepository {
       body: r.skill.body,
       source: r.skill.source as SkillSource,
     }));
+  }
+
+  /** Every skill linked to an agent (enabled or not, safe or not), in `agent_skills.order`. */
+  async linkedForAgentWithState(agentId: string): Promise<LinkedSkillState[]> {
+    const rows = await this.db
+      .select({ skill: t.skills, order: t.agentSkills.order })
+      .from(t.agentSkills)
+      .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
+      .where(eq(t.agentSkills.agentId, agentId))
+      .orderBy(asc(t.agentSkills.order));
+    return rows.map((r) => ({
+      id: r.skill.id,
+      name: r.skill.name,
+      order: r.order,
+      enabled: r.skill.enabled,
+      safe: assessSkillSafety(r.skill.body).safe,
+    }));
+  }
+
+  // ---- skill_context_docs (Project Context attachments) -------------------
+  //
+  // A skill's attachments never touch `skills.version`: `version` tracks the body,
+  // and an agent picks the documents up through its own version snapshot.
+
+  /** Attached documents of a skill (all repos), in prompt order. */
+  async listContextDocs(skillId: string): Promise<SkillContextDoc[]> {
+    return this.listContextDocsForSkills([skillId]);
+  }
+
+  /** Attachments of several skills (optionally one repo), ordered by skill id, then position. */
+  async listContextDocsForSkills(skillIds: string[], repoId?: string): Promise<SkillContextDoc[]> {
+    if (skillIds.length === 0) return [];
+    return this.db
+      .select({
+        skillId: t.skillContextDocs.skillId,
+        repoId: t.skillContextDocs.repoId,
+        path: t.skillContextDocs.path,
+        position: t.skillContextDocs.position,
+      })
+      .from(t.skillContextDocs)
+      .where(
+        and(
+          inArray(t.skillContextDocs.skillId, skillIds),
+          repoId ? eq(t.skillContextDocs.repoId, repoId) : undefined,
+        ),
+      )
+      .orderBy(asc(t.skillContextDocs.skillId), asc(t.skillContextDocs.position));
+  }
+
+  /** Replace the skill's full ordered attachment list in ONE transaction; no version change. */
+  async replaceContextDocs(
+    workspaceId: string,
+    skillId: string,
+    docs: SkillContextDocRef[],
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [skill] = await tx
+        .select({ id: t.skills.id })
+        .from(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, skillId)))
+        .for('update');
+      if (!skill) throw new NotFoundError('Skill not found');
+      await tx.delete(t.skillContextDocs).where(eq(t.skillContextDocs.skillId, skillId));
+      if (docs.length > 0) {
+        await tx.insert(t.skillContextDocs).values(
+          docs.map((d, position) => ({
+            skillId,
+            workspaceId,
+            repoId: d.repoId,
+            path: d.path,
+            position,
+          })),
+        );
+      }
+    });
   }
 
   // ---- Stats tab -------------------------------------------------------

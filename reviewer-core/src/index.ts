@@ -17,6 +17,10 @@ export {
   wrapUntrusted,
   renderIntentBlock,
   MAX_INTENT_CHARS,
+  renderProjectContext,
+  fitProjectContext,
+  MAX_PROJECT_CONTEXT_CHARS,
+  type ProjectDoc,
   type PromptParts,
   type AssembledPrompt,
   type PromptIntent,
@@ -51,6 +55,7 @@ export { reduceReviews, sliceDiff } from './review/reduce.js';
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {
   reviewPullRequest,
+  selectReviewMode,
   DEFAULT_MAP_THRESHOLD_LINES,
   DEFAULT_REVIEW_MAX_RETRIES,
   type ReviewInput,
@@ -71,3 +76,6 @@ export {
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+
+// LLM provider errors.
+export { NoEligibleProviderError } from './llm/errors.js';

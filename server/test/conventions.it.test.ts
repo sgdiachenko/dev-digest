@@ -77,6 +77,7 @@ function makeRepoIntel(samplesByRepo: Record<string, string[]>): RepoIntel {
     getConventionSamples: async (repoId: string) => samplesByRepo[repoId] ?? [],
     getTopFilesByRank: notImplemented,
     getCriticalPaths: notImplemented,
+    getGraphFacts: notImplemented,
   } as unknown as RepoIntel;
 }
 

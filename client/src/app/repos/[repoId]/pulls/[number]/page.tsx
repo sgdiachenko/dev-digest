@@ -12,6 +12,7 @@ import { AppShell } from "../../../../../components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
 import { PrDetailHeader } from "./_components/PrDetailHeader";
 import { OverviewTab } from "./_components/OverviewTab";
+import { latestReview } from "./_components/OverviewTab/helpers";
 import { FindingsTab } from "./_components/FindingsTab";
 import { DiffTab } from "./_components/DiffTab";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
@@ -22,6 +23,8 @@ import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context"
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
 import type { FindingRecord } from "@devdigest/shared";
+import { withoutTarget } from "./file-target";
+import { usePrFileNavigation } from "./use-pr-file-navigation";
 
 export default function PRDetailPage() {
   const params = useParams<{ repoId: string; number: string }>();
@@ -83,7 +86,14 @@ export default function PRDetailPage() {
     else sp.set(key, val);
     router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
   };
-  const setTab = (t: string) => setParam("tab", t);
+  // Leaving the Files tab also drops its file/line target from the URL.
+  const setTab = (t: string) => {
+    const sp = withoutTarget(new URLSearchParams(search.toString()));
+    sp.set("tab", t);
+    router.replace(`/repos/${repoId}/pulls/${number}?${sp.toString()}`);
+  };
+  const changedFiles = (pr?.files ?? []).map((f) => f.path);
+  const { openFile, target: fileTarget, statusMessage } = usePrFileNavigation({ repoId, number, changedFiles });
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
@@ -155,14 +165,20 @@ export default function PRDetailPage() {
         onRunsStarted={() => invalidateActiveRuns()}
       />
 
-      <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
+      <div role="status" aria-live="polite" style={{ padding: statusMessage ? "8px 32px 0" : 0, maxWidth: 1080, margin: "0 auto", fontSize: 13, color: "var(--text-muted)" }}>
+        {statusMessage}
+      </div>
+
+      <div style={{ padding: "24px clamp(12px, 3vw, 32px) 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto", minWidth: 0 }}>
         {tab === "overview" && (
           <OverviewTab
             prId={prId}
             repoId={repoId}
             prBody={pr.body}
-            repoFullName={repoFullName}
-            headSha={pr.head_sha}
+            repo={{ fullName: repoFullName, headSha: pr.head_sha }}
+            changedFiles={changedFiles}
+            latestReview={latestReview(reviews)}
+            onOpenFile={openFile}
           />
         )}
 
@@ -195,12 +211,12 @@ export default function PRDetailPage() {
         {tab === "diff" && (
           <DiffTab
             prId={prId}
-            filesCount={pr.files_count}
             files={pr.files}
             canComment={pr.status === "open"}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
             headerHeight={headerHeight}
+            target={fileTarget}
           />
         )}
       </div>

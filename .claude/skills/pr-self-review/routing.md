@@ -17,8 +17,8 @@ union the skills, review the file once.
 | 2 | `contracts` | `server/src/vendor/shared/**`, `client/src/vendor/shared/**` | [zod](../zod/SKILL.md) |
 | 3 | `domain-core` | `reviewer-core/src/**` | [onion-architecture](../onion-architecture/SKILL.md) |
 | 4 | `backend-http` | `server/src/modules/*/routes.ts`, `server/src/app.ts`, `server/src/server.ts` | [fastify-best-practices](../fastify-best-practices/SKILL.md), [onion-architecture](../onion-architecture/SKILL.md) |
-| 5 | `backend-service` | `server/src/modules/*/{service,helpers,constants,findings,diff-loader,run-executor,prompt}.ts`, `server/src/modules/_shared/**`, `server/src/platform/**` | [onion-architecture](../onion-architecture/SKILL.md) |
-| 6 | `backend-data` | `server/src/modules/*/repository.ts`, `server/src/modules/*/repository/**`, `server/src/db/**` | [drizzle-orm-patterns](../drizzle-orm-patterns/SKILL.md), [onion-architecture](../onion-architecture/SKILL.md) |
+| 5 | `backend-service` | `server/src/modules/*/{service,helpers,constants,findings,diff-loader,run-executor,prompt}.ts`, `server/src/modules/*/*-service.ts`, `server/src/modules/*/facts/**`, `server/src/modules/*/narrative/**`, `server/src/modules/_shared/**`, `server/src/platform/**` | [onion-architecture](../onion-architecture/SKILL.md) |
+| 6 | `backend-data` | `server/src/modules/*/repository.ts`, `server/src/modules/*/*-repository.ts`, `server/src/modules/*/repository/**`, `server/src/db/**` | [drizzle-orm-patterns](../drizzle-orm-patterns/SKILL.md), [onion-architecture](../onion-architecture/SKILL.md) |
 | 7 | `backend-schema` | `server/src/db/schema.ts`, `server/src/db/schema/**`, `server/src/db/migrations/**` | [postgresql-table-design](../postgresql-table-design/SKILL.md), [drizzle-orm-patterns](../drizzle-orm-patterns/SKILL.md) |
 | 8 | `backend-adapters` | `server/src/adapters/**`, `server/src/platform/container.ts` | [onion-architecture](../onion-architecture/SKILL.md) |
 | 9 | `frontend-routes` | `client/src/app/**/{page,layout,route,loading,error,not-found,template}.tsx`, `client/src/app/**/*.ts` | [next-best-practices](../next-best-practices/SKILL.md), [frontend-architecture](../frontend-architecture/SKILL.md) |
@@ -34,6 +34,7 @@ union the skills, review the file once.
 | 19 | `semver-discipline` | `server/src/**`, `reviewer-core/src/**`, `client/src/vendor/shared/contracts/**`, `**/package.json`, `**/CHANGELOG*`, `.changeset/**`, plus any changed release configuration, API specification, or documentation that affects versioning or the public contract | [semver-discipline](../semver-discipline/SKILL.md) — evaluate version or release intent after compatibility checks; internal changes alone do not require major; consolidate supporting compatibility findings |
 | 20 | `deprecation-policy` | `server/src/**`, `reviewer-core/src/**`, `client/src/vendor/shared/contracts/**`, `**/package.json`, `**/CHANGELOG*`, plus any changed API specification, migration documentation, supported export, compatibility wrapper, or release configuration | [deprecation-policy](../deprecation-policy/SKILL.md) — run only when a public contract is deprecated, removed, renamed, replaced, or loses compatibility support; consolidate findings with `api-compatibility` and `semver-discipline` |
 | 21 | `mcp-server` | `mcp-server/src/**` | [zod](../zod/SKILL.md), [typescript-expert](../typescript-expert/SKILL.md), [security](../security/SKILL.md) |
+| 22 | `specs` | `docs/specs/[0-9]*.md`, `docs/specs/README.md` | [ears-requirements](../ears-requirements/SKILL.md) — every AC/EC/NFR line and the self-check; [ux-design-review](../ux-design-review/SKILL.md) only when the spec's `Modules:` includes `client` — UI state matrix complete; also check the registry row matches the spec |
 
 Lane order is the review order, and it is deliberate: lanes 1–2 are cheap and
 can block on their own, so a failure there saves the cost of the rest.
@@ -41,6 +42,8 @@ can block on their own, so a failure there saves the cost of the rest.
 ## Skills with no lane
 
 `mermaid-diagram` and `engineering-insights` are never routed by a file glob.
+`run-plan` is a workflow runner (user-invoked `/run-plan`), not a review skill — never routed.
+[`workflow-retro`](../workflow-retro/SKILL.md) is a post-run retrospective (user-invoked `/workflow-retro`) — never routed.
 `engineering-insights` runs once at the end of a review that surfaced something
 non-obvious; `mermaid-diagram` only when the review itself needs a diagram.
 

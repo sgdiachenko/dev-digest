@@ -1,5 +1,6 @@
 /**
- * tokenizer adapter — token counter for the repo-map budget search (T3).
+ * tokenizer adapter — canonical token estimator for repo-intel (repo-map budget
+ * search, T3) and project-context (per-document `est_tokens`).
  *
  * The repo-map renderer (pipeline/repo-map.ts) binary-searches the largest set
  * of symbols that fits a token budget; that loop calls `count()` ≤ ~13 times.
@@ -8,14 +9,14 @@
  * lazy-initialised (loading the BPE ranks is the heavy part) and any failure
  * falls back to the `ceil(chars / 4)` heuristic — the renderer must never throw.
  *
- * Scope: in-process, ONLY under modules/repo-intel. Swappable in tests via a
- * mock counter (ContainerOverrides.tokenizer).
+ * Scope: in-process. Swappable in tests via a mock counter
+ * (ContainerOverrides.tokenizer). The `Tokenizer` port lives in
+ * `@devdigest/shared` (adapters.ts); re-exported here for existing imports.
  */
 import { getEncoding, type Tiktoken } from 'js-tiktoken';
+import type { Tokenizer } from '@devdigest/shared';
 
-export interface Tokenizer {
-  count(text: string): number;
-}
+export type { Tokenizer };
 
 /** Heuristic fallback used before/instead of a real encoder. */
 export function approxTokens(text: string): number {

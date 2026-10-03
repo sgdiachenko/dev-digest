@@ -3,11 +3,21 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
 import type { RunTrace, FindingRecord } from "@devdigest/shared";
 import { PROMPT_COLORS } from "../../constants";
-import { estimateTokens, formatCost, formatSeconds, formatTokens } from "../../helpers";
+import {
+  estimateTokens,
+  formatCost,
+  formatSeconds,
+  formatTokens,
+  projectContextHeadings,
+  projectContextSkipped,
+  shortSha,
+} from "../../helpers";
 import { s } from "../../styles";
 import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
@@ -18,6 +28,10 @@ import { Row, Stat } from "../atoms";
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
   const stats = trace.stats;
+  const params = useParams<{ repoId: string }>();
+  const repoId = params?.repoId;
+  const pc = trace.project_context;
+  const estimateTip = t("trace.prompt.estimateTooltip");
   return (
     <>
       <TraceSection icon="Settings" title={t("trace.configuration")}>
@@ -40,11 +54,24 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
               {trace.specs_read.length === 0 ? (
                 <span style={s.specsNone}>{t("trace.config.none")}</span>
               ) : (
-                trace.specs_read.map((sp, i) => (
-                  <span key={i} className="mono" style={s.spec}>
-                    {sp}
-                  </span>
-                ))
+                trace.specs_read.map((sp, i) =>
+                  pc && repoId ? (
+                    <span key={i}>
+                      <Link
+                        href={`/repos/${repoId}/context?doc=${encodeURIComponent(sp)}`}
+                        className="mono"
+                        style={s.specLink}
+                      >
+                        {sp}
+                      </Link>{" "}
+                      <span style={s.specSha}>{t("trace.config.specsAt", { sha: shortSha(pc.sha) })}</span>
+                    </span>
+                  ) : (
+                    <span key={i} className="mono" style={s.spec}>
+                      {sp}
+                    </span>
+                  ),
+                )
               )}
             </div>
           </Row>
@@ -62,7 +89,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
       >
         <div style={s.statsRow}>
           <Stat label={t("trace.stat.duration")} val={formatSeconds(stats.duration_ms)} />
-          <Stat label={t("trace.stat.tokens")} val={formatTokens(stats.tokens_in, stats.tokens_out)} />
+          <Stat label={`${t("trace.stat.tokens")} · ${t("trace.stat.tokensActual")}`} val={formatTokens(stats.tokens_in, stats.tokens_out)} />
           <Stat label={t("trace.stat.cost")} val={formatCost(stats.cost_usd)} />
           <Stat label={t("trace.stat.findings")} val={stats.findings} />
         </div>
@@ -76,6 +103,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           text={trace.prompt_assembly.system}
           color={PROMPT_COLORS.system}
           tokens={estimateTokens(trace.prompt_assembly.system)}
+            tooltip={estimateTip}
         />
         {trace.prompt_assembly.skills != null && (
           <PromptBlock
@@ -83,6 +111,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
             text={trace.prompt_assembly.skills}
             color={PROMPT_COLORS.skills}
             tokens={estimateTokens(trace.prompt_assembly.skills)}
+            tooltip={estimateTip}
           />
         )}
         {trace.prompt_assembly.memory != null && (
@@ -91,6 +120,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
             text={trace.prompt_assembly.memory}
             color={PROMPT_COLORS.memory}
             tokens={estimateTokens(trace.prompt_assembly.memory)}
+            tooltip={estimateTip}
           />
         )}
         {trace.prompt_assembly.repo_map != null && (
@@ -99,6 +129,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
             text={trace.prompt_assembly.repo_map}
             color={PROMPT_COLORS.repoMap}
             tokens={estimateTokens(trace.prompt_assembly.repo_map)}
+            tooltip={estimateTip}
           />
         )}
         {trace.prompt_assembly.specs != null && (
@@ -106,7 +137,13 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
             label={t("trace.prompt.specs")}
             text={trace.prompt_assembly.specs}
             color={PROMPT_COLORS.specs}
-            tokens={estimateTokens(trace.prompt_assembly.specs)}
+            tokens={pc ? pc.total_est_tokens : estimateTokens(trace.prompt_assembly.specs)}
+            tooltip={estimateTip}
+            modalExtras={
+              pc
+                ? { headings: projectContextHeadings(trace.prompt_assembly.specs), skipped: projectContextSkipped(trace) }
+                : undefined
+            }
           />
         )}
         {trace.prompt_assembly.callers != null && (
@@ -115,6 +152,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
             text={trace.prompt_assembly.callers}
             color={PROMPT_COLORS.callers}
             tokens={estimateTokens(trace.prompt_assembly.callers)}
+            tooltip={estimateTip}
           />
         )}
         {trace.prompt_assembly.intent != null && (
@@ -123,6 +161,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
             text={trace.prompt_assembly.intent}
             color={PROMPT_COLORS.intent}
             tokens={estimateTokens(trace.prompt_assembly.intent)}
+            tooltip={estimateTip}
           />
         )}
         <PromptBlock
@@ -130,6 +169,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           text={trace.prompt_assembly.user}
           color={PROMPT_COLORS.user}
           tokens={estimateTokens(trace.prompt_assembly.user)}
+            tooltip={estimateTip}
         />
       </TraceSection>
 

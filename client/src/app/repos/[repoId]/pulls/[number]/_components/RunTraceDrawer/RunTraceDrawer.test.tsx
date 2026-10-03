@@ -19,8 +19,12 @@ const TRACE: RunTrace = {
   ],
 };
 
+let current: RunTrace = TRACE;
 vi.mock("../../../../../../../lib/hooks/trace", () => ({
-  useRunTrace: () => ({ data: TRACE, isLoading: false }),
+  useRunTrace: () => ({ data: current, isLoading: false }),
+}));
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ repoId: "repo1" }),
 }));
 vi.mock("../../../../../../../lib/hooks/reviews", () => ({
   useRunEvents: () => ({ events: [], running: false }),
@@ -28,7 +32,10 @@ vi.mock("../../../../../../../lib/hooks/reviews", () => ({
 
 import RunTraceDrawer from "./RunTraceDrawer";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  current = TRACE;
+});
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
@@ -58,5 +65,41 @@ describe("A5 Run Trace drawer (smoke)", () => {
     fireEvent.click(screen.getByText("log"));
     // LiveLogStream renders its filter input
     expect(screen.getByPlaceholderText("Filter log…")).toBeInTheDocument();
+  });
+
+  it("renders Specs read: none for a trace without project_context (old trace)", () => {
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    const row = screen.getByText("Specs read").parentElement as HTMLElement;
+    expect(row).toHaveTextContent("none");
+    expect(screen.queryByRole("link", { name: /docs/ })).not.toBeInTheDocument();
+  });
+
+  it("links each spec to the catalog with its scanned sha, and labels estimates vs actual tokens", () => {
+    current = {
+      ...TRACE,
+      specs_read: ["docs/a b.md", "docs/c.md"],
+      prompt_assembly: { ...TRACE.prompt_assembly, specs: "## Project context\n### docs/a b.md\n<untrusted source=\"spec:docs/a b.md\">\nx\n</untrusted>" },
+      project_context: {
+        sha: "abcdef1234567890",
+        budget_tokens: 12000,
+        total_est_tokens: 1234,
+        docs: [
+          { path: "docs/a b.md", source: "agent", skill_name: null, est_tokens: 1000, status: "injected", reason: null },
+          { path: "docs/c.md", source: "skill", skill_name: "s", est_tokens: 234, status: "injected", reason: null },
+        ],
+      },
+    };
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    const link = screen.getByRole("link", { name: "docs/a b.md" });
+    expect(link).toHaveAttribute("href", "/repos/repo1/context?doc=docs%2Fa%20b.md");
+    expect(screen.getAllByText("at abcdef1")).toHaveLength(2);
+    fireEvent.click(screen.getByText("Prompt assembly"));
+    // AC-32: the block is labelled as untrusted project context
+    expect(screen.getByText("Project context — attached specs (untrusted)")).toBeInTheDocument();
+    // specs block uses the server's total, not chars/4
+    const est = screen.getByText("≈ 1,234 tokens · estimate");
+    expect(est).toHaveAttribute("title", expect.stringContaining("Tokenizer estimate"));
+    // TOKENS stat is marked as the actual count
+    expect(screen.getByText("TOKENS · actual")).toBeInTheDocument();
   });
 });

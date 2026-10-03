@@ -2,6 +2,7 @@
    Import from "@/lib/hooks" for the platform hooks (settings/repos/pulls/context)
    or from a domain file directly (e.g. "@/lib/hooks/reviews") — both resolve here. */
 export * from "./core";
+export * from "./context";
 export * from "./agents";
 export * from "./skills";
 export * from "./reviews";
@@ -12,3 +13,5 @@ export * from "./intent";
 export * from "./smart-diff";
 export * from "./blast";
 export * from "./pr-history";
+export * from "./tour";
+export * from "./brief";

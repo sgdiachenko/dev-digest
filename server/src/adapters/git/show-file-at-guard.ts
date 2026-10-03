@@ -17,7 +17,11 @@
  *    byte (path truncation attacks in some C git builds).
  */
 
+import type { GitGrepMatch, GitTreeEntry } from '@devdigest/shared';
+
 const SHA_RE = /^[0-9a-f]{7,40}$/;
+/** Full object id (sha-1 or sha-256) — `readBlob` takes only these. */
+const OID_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
 export class UnsafeGitShowArgsError extends Error {
   constructor(message: string) {
@@ -58,6 +62,36 @@ export function assertSafeRef(ref: string): void {
   }
 }
 
+export function assertSafeOid(oid: string): void {
+  if (!OID_RE.test(oid)) {
+    throw new UnsafeGitShowArgsError(`Unsafe git object id (expected 40 or 64 hex chars): ${oid}`);
+  }
+}
+
+const LS_TREE_ENTRY_RE = /^(\d{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64}) +(\d+|-)$/;
+
+/**
+ * Parse `git ls-tree -r -l -z` output: `<mode> <type> <oid> <size|->\t<path>\0`
+ * per entry. `-` (non-blob) becomes `size: null`. Malformed records throw.
+ */
+export function parseLsTreeZ(raw: string): GitTreeEntry[] {
+  const out: GitTreeEntry[] = [];
+  for (const record of raw.split('\0')) {
+    if (record.length === 0) continue;
+    const tab = record.indexOf('\t');
+    const m = tab < 0 ? null : LS_TREE_ENTRY_RE.exec(record.slice(0, tab));
+    if (!m) throw new UnsafeGitShowArgsError('Unexpected "git ls-tree" output record');
+    out.push({
+      path: record.slice(tab + 1),
+      mode: m[1]!,
+      type: m[2] as GitTreeEntry['type'],
+      oid: m[3]!,
+      size: m[4] === '-' ? null : Number(m[4]),
+    });
+  }
+  return out;
+}
+
 export function assertSafePath(path: string): void {
   if (path.length === 0) throw new UnsafeGitShowArgsError('Empty path');
   if (path.includes('\0')) throw new UnsafeGitShowArgsError(`Unsafe path (NUL byte): ${path}`);
@@ -75,4 +109,46 @@ export function assertSafePath(path: string): void {
 export function assertSafeShowFileAtArgs(ref: string, path: string): void {
   assertSafeRef(ref);
   assertSafePath(path);
+}
+
+/**
+ * Validate `git grep` argv inputs: `sha` is a hex sha (never a symbolic ref or
+ * option), every pattern is non-empty and NUL-free (patterns travel only after
+ * `-e`, so a leading `-` is inert), and every pathspec is a plain relative path
+ * (`assertSafePath`) that is not a `:(magic)` pathspec.
+ */
+export function assertSafeGrepArgs(sha: string, patterns: string[], pathspecs: string[] = []): void {
+  assertSafeRef(sha);
+  if (patterns.length === 0) throw new UnsafeGitShowArgsError('No grep patterns');
+  for (const p of patterns) {
+    if (p.length === 0) throw new UnsafeGitShowArgsError('Empty grep pattern');
+    if (p.includes('\0')) throw new UnsafeGitShowArgsError('Unsafe grep pattern (NUL byte)');
+  }
+  for (const ps of pathspecs) {
+    assertSafePath(ps);
+    if (ps.startsWith(':')) {
+      throw new UnsafeGitShowArgsError(`Unsafe pathspec (magic signature): ${ps}`);
+    }
+  }
+}
+
+/**
+ * Parse `git grep -n --null` output over a tree: records are
+ * `<sha>:<path>\0<line>\0<content>\n`. Lines that do not match the shape (e.g.
+ * a stray continuation) are skipped. The `<sha>:` prefix is stripped.
+ */
+export function parseGrepNull(raw: string, sha: string): GitGrepMatch[] {
+  const prefix = `${sha}:`;
+  const out: GitGrepMatch[] = [];
+  for (const record of raw.split('\n')) {
+    if (!record.startsWith(prefix)) continue;
+    const firstNul = record.indexOf('\0');
+    if (firstNul < 0) continue;
+    const secondNul = record.indexOf('\0', firstNul + 1);
+    if (secondNul < 0) continue;
+    const line = Number(record.slice(firstNul + 1, secondNul));
+    if (!Number.isInteger(line) || line < 1) continue;
+    out.push({ path: record.slice(prefix.length, firstNul), line });
+  }
+  return out;
 }

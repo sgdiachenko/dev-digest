@@ -65,7 +65,7 @@ module.exports = {
       comment:
         'A use case must not know HOW things are stored. Persistence is reached ' +
         'through a repository port, never drizzle-orm or db/* directly.',
-      from: { path: '^src/modules/[^/]+/(service|helpers|constants)\\.ts$' },
+      from: { path: '^src/modules/[^/]+/(service|helpers|constants|[a-z-]+-service)\\.ts$' },
       to: { path: ['^src/db/', 'node_modules/drizzle-orm'] },
     },
     {
@@ -75,8 +75,26 @@ module.exports = {
         'constructor(private container: Container) is a service locator: real ' +
         'dependencies vanish from the signature and a cycle forms with the ' +
         'composition root. Take the two or three ports actually used.',
-      from: { path: '^src/modules/[^/]+/(service|run-executor)\\.ts$' },
+      from: { path: '^src/modules/[^/]+/(service|run-executor|[a-z-]+-service)\\.ts$' },
       to: { path: '^src/platform/container\\.ts$' },
+    },
+    {
+      name: 'pure-folders-are-pure',
+      severity: 'error',
+      comment:
+        'modules/<n>/facts and modules/<n>/narrative are pure functions: no ' +
+        'persistence, adapters, platform, framework or filesystem. Inject ' +
+        'dependencies (token counter, clock, untrusted framing) as parameters.',
+      from: { path: '^src/modules/[^/]+/(facts|narrative)/' },
+      to: {
+        path: [
+          '^src/(db|adapters|platform)/',
+          '^src/modules/[^/]+/(service|routes|repository|[a-z-]+-service)',
+          'node_modules/(drizzle-orm|fastify|postgres|simple-git|octokit|openai)',
+          '^node:fs',
+          '^fs$',
+        ],
+      },
     },
     {
       name: 'no-sideways-module-imports',

@@ -24,11 +24,11 @@ hook at the API.
 ## Where things live
 
 - `src/app/**/page.tsx` — routes: `/`, `/repos/:repoId/pulls`,
-  `/pulls/:number`, `/agents`, `/agents/:id`, `/settings/:section`,
-  `/onboarding`
+  `/pulls/:number`, `/repos/:repoId/tour`, `/agents`, `/agents/:id`,
+  `/settings/:section`, `/onboarding` (add-repository form, not the tour)
 - `src/app/**/_components/<Name>/` — colocated feature logic + `*.test.tsx`; pages themselves stay thin
 - `src/lib/hooks/*` — one TanStack Query hook module per domain (`agents.ts`,
-  `core.ts`, `repo-intel.ts`, `reviews.ts`, `trace.ts`) → `src/lib/api.ts`
+  `core.ts`, `repo-intel.ts`, `reviews.ts`, `tour.ts`, `trace.ts`) → `src/lib/api.ts`
 - `src/components/app-shell` — cross-cutting chrome: nav, breadcrumbs, `g`-then-key shortcuts
 - `src/vendor/{ui,shared}` — vendored, not npm-installed (see root [AGENTS.md](../AGENTS.md))
 
@@ -58,6 +58,7 @@ hook at the API.
 ## Read When
 
 - **Adding/changing a route or the data-fetching pattern** → [docs/ui-architecture.md](docs/ui-architecture.md)
+- **Changing the Onboarding Tour page** → [docs/ui-architecture.md](docs/ui-architecture.md#onboarding-tour-hooks-and-view)
 - **Changing what a page must show/guarantee** → [specs/pages.md](specs/pages.md)
 - **Hit unexpected behavior here** → [INSIGHTS.md](INSIGHTS.md)
 

@@ -34,6 +34,7 @@ import type {
   BlastChangedSymbol,
   BlastResult,
   FileRankRow,
+  GraphFacts,
   IndexResult,
   IndexState,
   RefRow,
@@ -53,6 +54,7 @@ import {
   RESYNC_JOB_KIND,
   SUPPORTED_EXT,
 } from './constants.js';
+import { CONTEXT_SCAN_JOB_KIND } from '../project-context/constants.js';
 import { runFullIndex, type IndexPayload } from './pipeline/full.js';
 import { runIncremental } from './pipeline/incremental.js';
 
@@ -163,6 +165,13 @@ export class RepoIntelService implements RepoIntel {
         durationMs: Date.now() - startedAt,
         reason: `sync_failed:${err instanceof Error ? err.message : String(err)}`,
       };
+    }
+    // The clone now reflects new code: rebuild the Project Context catalog too
+    // (best-effort — never affects the resync result).
+    try {
+      await this.deps.jobs.enqueue(repo.workspaceId, CONTEXT_SCAN_JOB_KIND, { repoId });
+    } catch {
+      // no handler / transient enqueue failure
     }
     return runIncremental(this.deps, this.repo, { repoId });
   }
@@ -705,6 +714,28 @@ export class RepoIntelService implements RepoIntel {
       paths.push(chain);
     }
     return paths;
+  }
+
+  /**
+   * Whole-repo edges + ranks + file facts (onboarding tour). Flag off → empty
+   * arrays. Reads three tables without a transaction: a concurrent full
+   * reindex is not atomic, so callers must tolerate a momentarily mixed view.
+   */
+  async getGraphFacts(repoId: string): Promise<GraphFacts> {
+    if (!this.deps.config.repoIntelEnabled) return { edges: [], ranks: [], fileFacts: [] };
+    const [edgeRows, ranks, fileFacts] = await Promise.all([
+      this.repo.getEdges(repoId),
+      this.repo.getAllFileRank(repoId),
+      this.repo.getAllFileFacts(repoId),
+    ]);
+    const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    return {
+      edges: edgeRows
+        .map((e) => ({ from: e.fromFile, to: e.toFile }))
+        .sort((a, b) => cmp(a.from, b.from) || cmp(a.to, b.to)),
+      ranks: [...ranks].sort((a, b) => cmp(a.path, b.path)),
+      fileFacts: [...fileFacts].sort((a, b) => cmp(a.path, b.path)),
+    };
   }
 }
 

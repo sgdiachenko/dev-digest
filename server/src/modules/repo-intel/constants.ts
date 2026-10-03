@@ -64,3 +64,5 @@ export const INDEX_SOFT_BUDGET_MS = 110_000;
 export const BFS_DEPTH = 2;
 export const HOTNESS_WINDOW_DAYS = 180;
 export const DEFAULT_REPO_MAP_TOKEN_BUDGET = 1500;
+/** Estimated-token budget for the Project Context block injected into one review run. */
+export const PROJECT_CONTEXT_BUDGET_TOKENS = 8000;

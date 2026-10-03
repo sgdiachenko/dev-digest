@@ -9,9 +9,21 @@ import type {
   UnifiedDiff,
   BlameLine,
   GitCommit,
+  GitTreeEntry,
+  GitGrepMatch,
+  GitGrepOptions,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './diff-parser.js';
-import { assertSafeShowFileAtArgs, BlobTooLargeError, parseBlobSize } from './show-file-at-guard.js';
+import {
+  assertSafeGrepArgs,
+  assertSafeOid,
+  assertSafeRef,
+  assertSafeShowFileAtArgs,
+  BlobTooLargeError,
+  parseBlobSize,
+  parseGrepNull,
+  parseLsTreeZ,
+} from './show-file-at-guard.js';
 
 /**
  * Depth fetched by `sync()`. Deeper than the shallow clone (CLONE_DEPTH=1) so the
@@ -146,6 +158,52 @@ export class SimpleGitClient implements GitClient {
     // `raw()` — never string-interpolated into a shell command.
     return g.raw(['show', `${ref}:${path}`]);
   }
+
+  async listTree(repo: RepoRef, sha: string): Promise<GitTreeEntry[]> {
+    assertSafeRef(sha);
+    const raw = await this.git(repo).raw(['ls-tree', '-r', '-l', '-z', sha]);
+    return parseLsTreeZ(raw);
+  }
+
+  async readBlob(repo: RepoRef, oid: string, maxBytes?: number): Promise<Uint8Array> {
+    assertSafeOid(oid);
+    const g = this.git(repo);
+    if (maxBytes != null) {
+      const size = parseBlobSize(await g.raw(['cat-file', '-s', oid]));
+      if (size > maxBytes) throw new BlobTooLargeError(oid, '(blob)', size, maxBytes);
+    }
+    return new Uint8Array(await g.showBuffer([oid]));
+  }
+
+  async grepAt(
+    repo: RepoRef,
+    sha: string,
+    patterns: string[],
+    opts: GitGrepOptions = {},
+  ): Promise<GitGrepMatch[]> {
+    const pathspecs = opts.pathspecs ?? [];
+    assertSafeGrepArgs(sha, patterns, pathspecs);
+    const args = ['grep', '-n', '-I', '--null', '--no-color'];
+    if (opts.ignoreCase) args.push('-i');
+    if (opts.maxPerFile != null) args.push('-m', String(Math.max(1, Math.floor(opts.maxPerFile))));
+    args.push(...patterns.flatMap((p) => ['-e', p]), sha, '--', ...pathspecs);
+    let raw: string;
+    try {
+      raw = await this.git(repo).raw(args);
+    } catch (err) {
+      // `git grep` exits 1 with no output when nothing matches — not an error.
+      if (isNoMatch(err)) return [];
+      throw err;
+    }
+    const matches = parseGrepNull(raw, sha);
+    return opts.maxResults != null ? matches.slice(0, Math.max(0, opts.maxResults)) : matches;
+  }
+}
+
+/** simple-git rejects a non-zero exit; for `git grep`, exit 1 + empty stderr means "no match". */
+function isNoMatch(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.trim() === '';
 }
 
 function parseBlamePorcelain(raw: string): BlameLine[] {

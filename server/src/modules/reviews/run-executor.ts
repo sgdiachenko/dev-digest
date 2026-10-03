@@ -1,11 +1,22 @@
 import type { GitClient, LLMProvider, Provider as ProviderId, RunEventKind, SkillSource } from '@devdigest/shared';
 import type { RunBus } from '../../platform/sse.js';
 import type { RepoIntel } from '../repo-intel/types.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type {
+  Provider,
+  ProjectContextSkipReason,
+  ProjectContextTrace,
+  Review,
+  RunTrace,
+  UnifiedDiff,
+} from '@devdigest/shared';
 import {
   reviewPullRequest,
   countBlockers,
   wrapUntrusted,
+  fitProjectContext,
+  renderProjectContext,
+  selectReviewMode,
+  type ProjectDoc,
   type PromptIntent,
   type PromptLogLevel,
 } from '@devdigest/reviewer-core';
@@ -16,6 +27,8 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import type { ProjectContextForRun } from '../context-attachments/types.js';
+import { formatContextLine, touchedByDiff } from '../context-attachments/helpers.js';
 
 /** One skill linked to a review agent, resolved for prompt assembly. */
 export interface PromptSkill {
@@ -55,6 +68,16 @@ export interface IntentDeriver {
   ): Promise<PromptIntent>;
 }
 
+/**
+ * What `buildProjectContext` fixed for one run: the documents handed to the engine (after the
+ * 48,000-char safeguard) and the trace block. `kept` is empty and `trace` null when the agent
+ * has nothing to inject or resolution was unavailable.
+ */
+interface ProjectContextState {
+  kept: ProjectDoc[];
+  trace: ProjectContextTrace | null;
+}
+
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
   constructor() {
@@ -87,7 +110,7 @@ export type RunOutcome = {
  * review. Per-agent failures are isolated.
  */
 export class ReviewRunExecutor {
-  /** Ports, not the container: the run loop needs exactly these six. */
+  /** Ports, not the container: the run loop needs exactly these seven. */
   constructor(
     private repo: ReviewRepository,
     private runBus: RunBus,
@@ -96,6 +119,8 @@ export class ReviewRunExecutor {
     private git: GitClient,
     private skills: SkillsReader,
     private intent: IntentDeriver,
+    /** Project Context attachments resolved once per run (git objects at the scanned sha). */
+    private projectContext: ProjectContextForRun,
     /** Prompt-assembly telemetry level (config.promptLog); sizes/sources only. */
     private promptLog: PromptLogLevel = 'summary',
   ) {}
@@ -183,7 +208,17 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog, intent);
+        const outcome = await this.runOneAgent(
+          workspaceId,
+          pull,
+          repo,
+          diff,
+          agent,
+          runId,
+          runLog,
+          intent,
+          logger,
+        );
         logger?.info(
           {
             runId,
@@ -216,6 +251,7 @@ export class ReviewRunExecutor {
     runId: string,
     parentLog: RunLogger,
     intent: PromptIntent | undefined,
+    logger?: Logger,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -224,6 +260,11 @@ export class ReviewRunExecutor {
     const runLog = parentLog.forRun(runId, { agent: agent.name });
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
+
+    // Set as the run progresses so the failure/cancel trace records only what really happened:
+    // `projectContext` once resolution ran, `engineEntered` right before the engine is called.
+    let projectContext: ProjectContextState | undefined;
+    let engineEntered = false;
 
     try {
       // Resolve the agent's LLM provider. (container.llm throws if the provider
@@ -261,10 +302,23 @@ export class ReviewRunExecutor {
       const linkedSkills = await this.buildSkillBlocks(agent.id, runLog);
       const skillBlocks = linkedSkills.map((s) => s.block);
 
+      // Project Context — resolved ONCE here (list and SHA fixed for the whole run), before the
+      // first LLM call. Never throws; on any failure the run continues without the block.
+      projectContext = await this.buildProjectContext(
+        workspaceId,
+        pull,
+        agent,
+        linkedSkills,
+        diff,
+        runLog,
+        logger,
+      );
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
       // above, and persistence + observability below.
+      engineEntered = true;
       const outcome = await reviewPullRequest({
         systemPrompt: agent.systemPrompt,
         model: agent.model,
@@ -288,6 +342,9 @@ export class ReviewRunExecutor {
         // when the agent has none linked (or none enabled), same
         // omit-when-empty contract as callers/repoMap above.
         ...(skillBlocks.length ? { skills: skillBlocks } : {}),
+        // Project Context — only when at least one document survived; otherwise the prompt is
+        // byte-identical to the no-attachments baseline.
+        ...(projectContext.kept.length ? { specs: projectContext.kept } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         // Joins every `prompt.assembled` event to this run's trace + Live Log.
@@ -362,7 +419,8 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        specs_read: projectContext.kept.map((d) => d.path),
+        project_context: projectContext.trace,
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -406,7 +464,23 @@ export class ReviewRunExecutor {
         })
         .catch(() => undefined);
       await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .saveRunTrace(
+          runId,
+          this.traceFromBuffer(
+            runId,
+            pull,
+            agent,
+            '0/0 passed',
+            Date.now() - start,
+            projectContext && {
+              specsRead: projectContext.kept.map((d) => d.path),
+              projectContext: projectContext.trace,
+              // The block exists in a prompt only if the engine was entered (EC-21).
+              specsBlock:
+                engineEntered && projectContext.kept.length > 0 ? renderProjectContext(projectContext.kept) : null,
+            },
+          ),
+        )
         .catch(() => undefined);
       this.runBus.complete(runId);
       throw err;
@@ -427,7 +501,7 @@ export class ReviewRunExecutor {
   private async buildSkillBlocks(
     agentId: string,
     runLog: RunLogger,
-  ): Promise<Array<{ id: string; block: string }>> {
+  ): Promise<Array<{ id: string; name: string; block: string }>> {
     let linked: PromptSkill[];
     try {
       linked = await this.skills.forAgent(agentId);
@@ -439,10 +513,94 @@ export class ReviewRunExecutor {
 
     const resolved = linked.map((s) => ({
       id: s.id,
+      name: s.name,
       block: s.source === 'manual' ? s.body : wrapUntrusted(`skill:${s.name}`, s.body),
     }));
     runLog.info(`Attached ${resolved.length} skill(s): ${linked.map((s) => s.name).join(', ')}`);
     return resolved;
+  }
+
+  /**
+   * Resolve the Project Context block for this run and write its Live Log lines (before the
+   * first LLM call). The catalog port is asked once; the 48,000-char safeguard is applied here
+   * and anything it drops is recorded in the trace as `skipped` / `over_budget`.
+   *
+   * Live Log and logger carry paths, sizes, estimates and reasons — never document text or a
+   * secret value. Any throw is logged and degrades to "no block" (the run is never failed).
+   */
+  private async buildProjectContext(
+    workspaceId: string,
+    pull: PullRow,
+    agent: AgentRow,
+    linkedSkills: Array<{ id: string; name: string }>,
+    diff: UnifiedDiff,
+    runLog: RunLogger,
+    logger?: Logger,
+  ): Promise<ProjectContextState> {
+    const none: ProjectContextState = { kept: [], trace: null };
+    try {
+      const result = await this.projectContext.resolveForRun(
+        {
+          workspaceId,
+          agentId: agent.id,
+          repoId: pull.repoId,
+          injectedSkills: linkedSkills.map((s) => ({ id: s.id, name: s.name })),
+        },
+        logger,
+      );
+      if (result.kind === 'unavailable') {
+        runLog.info(`Project context unavailable: ${result.reason}`);
+        return none;
+      }
+      if (result.kind === 'none') {
+        runLog.info(formatContextLine({ n: 0, tokens: 0, skipped: {}, calls: 1 }));
+        return none;
+      }
+
+      const { kept, dropped } = fitProjectContext(result.docs);
+      const droppedPaths = new Set(dropped.map((d) => d.path));
+      const docs = result.trace.docs.map((d) =>
+        d.status === 'injected' && droppedPaths.has(d.path)
+          ? { ...d, status: 'skipped' as const, reason: 'over_budget' as const }
+          : d,
+      );
+      const droppedTokens = result.trace.docs.reduce(
+        (sum, d, i) => (docs[i] !== d ? sum + (d.est_tokens ?? 0) : sum),
+        0,
+      );
+      const trace: ProjectContextTrace = {
+        ...result.trace,
+        total_est_tokens: Math.max(0, result.trace.total_est_tokens - droppedTokens),
+        docs,
+      };
+
+      const skipped: Partial<Record<ProjectContextSkipReason, number>> = {};
+      for (const d of docs) if (d.reason) skipped[d.reason] = (skipped[d.reason] ?? 0) + 1;
+      // Map-reduce repeats the block in every per-file call (NFR-2).
+      const calls =
+        kept.length > 0 && selectReviewMode(agent.strategy ?? REVIEW_STRATEGY, diff) === 'map-reduce'
+          ? diff.files.length
+          : 1;
+      runLog.info(formatContextLine({ n: kept.length, tokens: trace.total_est_tokens, skipped, calls }));
+
+      const keptPaths = kept.map((d) => d.path);
+      for (const path of touchedByDiff(diff.files.map((f) => f.path), keptPaths)) {
+        runLog.info(
+          `Project context: ${path} is also changed by this PR — the model sees the default-branch version`,
+        );
+      }
+      for (const path of result.secretPaths) {
+        if (keptPaths.includes(path)) {
+          runLog.info(`Project context: ${path} may contain a secret — it is injected as attached`);
+        }
+      }
+      if (result.allReadsFailed) runLog.info('Project context: no attached document could be read');
+      return { kept, trace };
+    } catch (err) {
+      runLog.info(`Project context failed — continuing without it: ${(err as Error).message}`);
+      logger?.warn({ prId: pull.id, agentId: agent.id, err: (err as Error).message }, 'project context: failed');
+      return none;
+    }
   }
 
   /**
@@ -543,6 +701,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     grounding: string,
     durationMs = 0,
+    extras?: { specsRead: string[]; projectContext: ProjectContextTrace | null; specsBlock: string | null },
   ): RunTrace {
     return {
       config: {
@@ -554,11 +713,18 @@ export class ReviewRunExecutor {
         source: 'local',
       },
       stats: { duration_ms: durationMs, tokens_in: 0, tokens_out: 0, cost_usd: null, findings: 0, grounding },
-      prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
+      prompt_assembly: {
+        system: agent.systemPrompt,
+        skills: null,
+        memory: null,
+        specs: extras?.specsBlock ?? null,
+        user: '',
+      },
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],
-      specs_read: [],
+      specs_read: extras?.specsRead ?? [],
+      project_context: extras?.projectContext ?? null,
       log: toRunLogLines(this.runBus.buffer(runId)),
     };
   }

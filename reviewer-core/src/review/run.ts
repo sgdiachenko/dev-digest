@@ -7,7 +7,7 @@ import type {
   UnifiedDiff,
 } from '@devdigest/shared';
 import { Review as ReviewSchema } from '@devdigest/shared';
-import { assemblePrompt, type PromptIntent } from '../prompt.js';
+import { assemblePrompt, type ProjectDoc, type PromptIntent } from '../prompt.js';
 import { summarizePrompt, type PromptLogLevel } from '../prompt-log.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
@@ -23,7 +23,7 @@ import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
  * (no DB, GitHub, fs, memory retrieval, intent, or persistence) — those stay in
  * the caller (server persists + streams SSE; runner posts + writes an artifact).
  *
- * Skill bodies / memory / specs are RESOLVED strings here: the caller turns
+ * Skill bodies / memory / spec docs are RESOLVED text here: the caller turns
  * AgentManifest skill slugs into bodies (DB in the studio, fs in the runner).
  */
 
@@ -57,8 +57,8 @@ export interface ReviewInput {
   skills?: string[];
   /** Curated memory items. */
   memory?: string[];
-  /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */
-  specs?: string[];
+  /** Attached project-context docs (untrusted; each delimiter-wrapped downstream). */
+  specs?: ProjectDoc[];
   /**
    * Optional callers-of-changed-symbols digest (T1.3). Untrusted; rendered
    * before the diff section. Empty/undefined → section omitted.
@@ -130,7 +130,11 @@ export interface ReviewOutcome {
   raw: string;
 }
 
-function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: number): ReviewMode {
+export function selectReviewMode(
+  strategy: ReviewStrategy,
+  diff: UnifiedDiff,
+  threshold: number = DEFAULT_MAP_THRESHOLD_LINES,
+): ReviewMode {
   if (strategy === 'single-pass') return 'single-pass';
   if (strategy === 'map-reduce') return diff.files.length > 1 ? 'map-reduce' : 'single-pass';
   // auto: map-reduce only when the diff is both large AND multi-file (else 1 call).
@@ -141,7 +145,7 @@ function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: numb
 export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
   const threshold = input.mapThresholdLines ?? DEFAULT_MAP_THRESHOLD_LINES;
   const maxRetries = input.maxRetries ?? DEFAULT_REVIEW_MAX_RETRIES;
-  const mode = selectMode(input.strategy ?? 'auto', input.diff, threshold);
+  const mode = selectReviewMode(input.strategy ?? 'auto', input.diff, threshold);
   const emit = (kind: RunEventKind, msg: string, data?: unknown) =>
     input.onEvent?.({ kind, msg, data });
 

@@ -16,6 +16,7 @@ import {
   type DiffCommentApi,
 } from "../comments";
 import { type DiffFindingApi, partitionFindings, topSeverity } from "../findings";
+import { type DiffTarget } from "../target";
 import { s, chevronFor } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
@@ -43,10 +44,13 @@ export function FileCard({
   file,
   commenting,
   findings: findingApi,
+  target,
 }: {
   file: PrFile;
   commenting?: DiffCommentApi;
   findings?: DiffFindingApi;
+  /** Set only on the card of the navigation target's file. */
+  target?: DiffTarget;
 }) {
   const t = useTranslations("shell");
   const tPr = useTranslations("prReview");
@@ -54,6 +58,24 @@ export function FileCard({
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
+
+  // A new target key expands this card (adjust-on-prop-change, no effect).
+  const [seenKey, setSeenKey] = React.useState<string | null>(null);
+  if (target && target.key !== seenKey) {
+    setSeenKey(target.key);
+    setOpen(true);
+  }
+  // First rendered line whose new-side number is the target line, if any.
+  const targetLineIdx =
+    target && target.line != null ? lines.findIndex((ln) => ln.newNo === target.line) : -1;
+  const lineMissing = !!target && target.line != null && targetLineIdx < 0;
+  const onApplied = target?.onApplied;
+  // Focus/scroll goes to the target line when it is rendered, otherwise to the header.
+  const applyTo = (el: HTMLDivElement | null) => {
+    if (el) onApplied?.(el);
+  };
+  const headerRef = target && targetLineIdx < 0 ? applyTo : undefined;
+  const lineRef = target ? applyTo : undefined;
 
   // Group this file's comments into threads, then split into ones we can anchor
   // to a rendered line vs. "outdated" (GitHub dropped the line / it's not here).
@@ -87,13 +109,20 @@ export function FileCard({
     : 0;
 
   return (
-    <div style={s.fileCard}>
-      <div onClick={() => setOpen((o) => !o)} style={s.fileHeader}>
+    <div data-diff-file-card style={{ ...s.fileCard, ...(target?.line != null && targetLineIdx >= 0 ? { overflow: "clip" as const } : null) }}>
+      <div
+        ref={headerRef}
+        tabIndex={headerRef ? -1 : undefined}
+        data-diff-file={file.path}
+        onClick={() => setOpen((o) => !o)}
+        style={{ ...s.fileHeader, ...(target?.line != null && targetLineIdx >= 0 ? { position: "sticky" as const, zIndex: 2, background: "var(--bg-elevated)" } : null) }}
+      >
         <Icon.ChevronRight size={13} style={chevronFor(open)} />
         <Icon.FileText size={14} style={s.fileIcon} />
         <span className="mono" style={s.filePath}>
           {file.path}
         </span>
+        {lineMissing && target && <span style={s.fileNotice}>{target.lineNotInDiffLabel}</span>}
         {fileFindingsCount > 0 && fileTopSeverity && (
           <span
             role="img"
@@ -128,6 +157,8 @@ export function FileCard({
                 commenting={commenting}
                 findings={findingsForLine(ln, matchedFindings)}
                 findingApi={findingApi}
+                highlighted={i === targetLineIdx && target?.highlighted}
+                focusTarget={i === targetLineIdx ? lineRef : undefined}
               />
             ))
           )}
