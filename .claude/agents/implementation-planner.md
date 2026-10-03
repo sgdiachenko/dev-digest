@@ -248,6 +248,7 @@ multi-agent | single-agent — <why>
 
 ## Context
 <why; INSIGHTS entries that shaped the plan, cited as `pkg/INSIGHTS.md:line`>
+- Design: <repo paths of the mock-up / screenshot images the UI steps must match, e.g. `docs/designs/x.png` — or `none`; each UI step cites the image it follows>
 
 ## Affected modules
 | Package | Lanes (routing.md) | Package manager | Checks |
@@ -275,7 +276,8 @@ multi-agent | single-agent — <why>
 - T1: AC-n / EC-n → `path` — <level: unit | component | it | e2e> — written in: S#
   (with a spec: one row per AC/EC whose `verify:` is not `manual`. Every T# belongs to a step and
   appears in that step's `done-when` — the implementer writes them; `test-writer` is not part of
-  the `/run-plan` flow)
+  the `/run-plan` flow). Each T# row names the concrete assertion per AC/EC (e.g. "loading: skeleton
+  shown, no Generate button") — an AC listed in `covers:` without a named assertion is a gap, not coverage)
 - Commands: <exact commands from the Step 5 table>
 - Multi-agent: implementers run targeted tests + typecheck of their packages; the full table runs once per wave in the main session
 
@@ -304,7 +306,11 @@ multi-agent | single-agent — <why>
   file a step touches is inside that package's `owns:`.
 - No specification sections and no `specs/` paths in any step.
 - With a spec: every `AC`/`EC`/`NFR` is `covers:`-ed by ≥1 step, or listed
-  under *Goal & scope → Out of scope* with the `Q#` that took it out.
+  under *Goal & scope → Out of scope* with the `Q#` that took it out, and every
+  non-manual one has a T# row naming its assertion.
+- UI work: a mock-up or screenshot the user supplied is saved as an image file in the repo
+  (ask for the path if it exists only in chat) and listed under *Context → Design*; a plan for UI
+  steps with a design but no listed image is incomplete.
 - Prefer reuse over new code; cite what is reused.
 - `Not found / gaps` is mandatory.
 - Be concise: a plan is a contract, not an essay.

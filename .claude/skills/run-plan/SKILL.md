@@ -52,6 +52,10 @@ Arguments: `$ARGUMENTS`
    uses another step's output — a function, a type, a file — cannot run in
    the same wave as its producer). A gap → stop and name it (it's the
    planner's to fix), unless the user says go.
+   - Design: if the request, spec or plan mentions a mock-up / screenshot, the plan
+     must list the image file(s) under *Context → Design*; a design that exists only in
+     chat → stop and ask the user to save it under `docs/` (it is the planner's to add).
+     Implementers get the image path, not a description.
    - Live checks: if *Review handoff → Manual verification* needs a live call
      to a paid or credentialed service (e.g. a real LLM key), ask once now
      (`AskUserQuestion`): is it configured, and what spend is acceptable?
@@ -67,6 +71,10 @@ Arguments: `$ARGUMENTS`
 Plan: docs/plans/<slug>.md (multi-agent, waves: 1✔ 2…)   Spec: <spec ID>
 Phase: review   Verify round: 1/2   Review round: 2/3
 Extra instructions: <one line or none>
+
+## Waived / manual-only
+- waived by user: <test or finding — reason>   (e.g. red on clean HEAD)
+- manual-only rows: <AC/NFR IDs and the exact manual step>
 
 ## Log
 - 2026-09-29 wave 1 done, checks green
@@ -96,18 +104,29 @@ Reports go to `docs/plans/<slug>.reports.md` (appended, one `##` per report).
   3. Failures: small, in one `W#`'s files → fix here; larger → one **fresh**
      `implementer` with the failing lines + `W#` + plan path. Max 2 rounds
      per wave, then ask the user.
-  4. A `blocked` report is a plan problem → show it; the user re-runs the
+  4. **Integration gate** (a plan's `*.it.test.ts`, needs Docker): on a red result run the
+     same files on a clean `git worktree` of `HEAD` first. Red there too → pre-existing: show
+     it to the user to waive or fix as its own change (record it under *Waived*), not as a
+     `W#` fix. Server tests must stay hermetic (`server/test/setup-hermetic.ts` hides the
+     developer's `~/.devdigest/secrets.json`).
+  5. A `blocked` report is a plan problem → show it; the user re-runs the
      planner or decides.
 
 ## Phase 2 — Verify (max 2 rounds)
 
 1. `plan-verifier` with plan, spec and `<slug>.reports.md` paths, plus
    `Checks already run:` the last full check table with exit codes and
-   `gate.sh fingerprint` value (it re-runs only if the fingerprint differs).
+   `gate.sh fingerprint` value (it re-runs only if the fingerprint differs), and the
+   state file path for its *Waived / manual-only* section — paths, not pasted text. It
+   **writes the report itself** to `docs/plans/<slug>.verification.md` and replies with the
+   verdict, the open rows and the path; never retype or re-paste the matrix. This first
+   pass is the one full matrix.
 2. `verified` → Phase 3. `unmet`/`partial` rows → fix (small → here, else a
    fresh implementer with only those rows as its steps; a row that lacks a
    test gets the test written the same way).
-3. Re-run `plan-verifier` with `Rows to re-check: <IDs>` only. Still unmet
+3. Re-run `plan-verifier` with `Rows to re-check: <IDs>` and `Changed files: <paths>` only
+   — it rewrites the same file. A second full matrix only once, right before Phase 6, and
+   only if code changed since the last full pass. Still unmet
    after round 2 → ask: fix more / accept as partial (recorded) / stop.
 4. `not-verifiable — plan ↔ requirement conflict` is never fixed in code —
    it's the user's call (re-plan or a superseding spec, done by hand).
@@ -189,7 +208,8 @@ says "none", ask it for only that.
    (`pnpm -C server exec vitest run <files>` needs Docker;
    `./scripts/e2e.sh`) or leave them to CI.
 3. Show the summary and ask: commit / open PR / stop. Commits and
-   `gh pr create` only on an explicit yes.
+   `gh pr create` only on an explicit yes. The PR body links `docs/plans/<slug>.verification.md`
+   (and the retro, if one was run).
 
 ## Check table (the commands CI runs)
 

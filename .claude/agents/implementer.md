@@ -95,7 +95,10 @@ its short form.
 ## Workflow
 
 1. **Orient.** Read root `AGENTS.md` and the `AGENTS.md` + `INSIGHTS.md` of
-   every package in the plan (per `engineering-insights`).
+   every package in the plan (per `engineering-insights`). If the plan lists
+   images under *Context → Design*, open each one with the Read tool (it shows
+   images) before the first UI step and build to it; a listed image you cannot
+   open goes under *Open issues*, and you stop that UI step.
 2. **Execute steps in order** (respect `depends-on`). For each step:
    - Read (on demand, see above) and apply the skills the step names
      **plus** the skills of each file's lane (table above); if they differ,
@@ -107,7 +110,10 @@ its short form.
    - write the tests the step's `done-when` requires, including every
      *Test plan* `T#` row assigned to this step (`written in: S#`) — they
      are the evidence `plan-verifier` checks each AC against, and no
-     `test-writer` pass follows in `/run-plan`. Each new test must fail without
+     `test-writer` pass follows in `/run-plan`. Before you call a step done, compare
+     its `covers:` list with your tests: every AC/EC whose `verify:` is not `manual`
+     has a test that asserts it, or you write one — a gap you cannot close goes under
+     *Open issues*, never silently. Each new test must fail without
      the change it covers (assert behaviour, not `toBeDefined()`); nothing
      beyond the plan's tests (client
      components: `<Name>.test.tsx` beside the component; server DB-backed

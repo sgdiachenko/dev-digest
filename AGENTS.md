@@ -27,7 +27,7 @@ run on the host, not in a container).
   options, optional), `implementation-planner` (read-only requirements review +
   Implementation Plan; asks multi- vs single-agent mode; never specs), `implementer`
   (executes the plan, runs the package checks), `test-writer` (adds test
-  coverage, test files only), `plan-verifier` (read-only traceability check),
+  coverage, test files only), `plan-verifier` (traceability check; writes only its own verification report),
   `architecture-reviewer` (read-only onion/layering review),
   `security-reviewer` (read-only OWASP-based security review), `doc-writer`
   (Markdown docs + diagrams). Flow: spec-creator (analyze → answers →
