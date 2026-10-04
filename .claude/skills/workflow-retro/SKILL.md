@@ -113,7 +113,7 @@ result? Main-session share of the total; `thinking` share of output; model
 choice per agent (a cheaper model that would have done the same job, or a
 job that clearly needed a bigger one).
 
-**G. Against the previous runs** — read `docs/retros/README.md` (if it
+**G. Against the previous runs** — read `docs/retros/ledger.md` (if it
 exists) and compare with the last 3 rows of the same workflow type: tokens,
 agents started/launched, launch failures, active time. Say plainly whether
 this run was cheaper, the same or costlier, and which single change explains
@@ -142,7 +142,7 @@ Wall/active: <..> · Biggest cost: <agent> · Biggest lesson: <one line>
 ## Не перевірено  — limits of this retro
 ```
 
-**History index.** Append one row to `docs/retros/README.md` (create it with
+**History ledger.** Append one row to `docs/retros/ledger.md` — the single shared file, one row per run (create it with
 the header if missing; never rewrite old rows):
 
 ```markdown

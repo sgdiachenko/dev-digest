@@ -1,6 +1,6 @@
-# Retros
+# Retro ledger
 
-One row per `/workflow-retro` run; never rewrite old rows.
+One row per `/workflow-retro` run, newest last — read it top to bottom to see the trend across runs; never rewrite old rows. Per-run reports: the `<YYYY-MM-DD>-<slug>.md` files beside it.
 
 | Date | Workflow | Session | Tokens (in-new / cache-read / out) | Cost | Agents started/launched | Active / wall | Top lesson | Report |
 |---|---|---|---|---|---|---|---|---|
