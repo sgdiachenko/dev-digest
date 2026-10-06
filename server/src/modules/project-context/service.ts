@@ -42,6 +42,8 @@ import type {
 interface ScanOptions {
   sync: boolean;
   logger?: ScanLogger;
+  /** Called once the `scanning` row is committed (or the scan has already failed). */
+  onScanning?: () => void;
 }
 
 const REASON_MAX_CHARS = 200;
@@ -202,7 +204,13 @@ export class ProjectContextService implements ProjectContextCatalog {
   ): Promise<ContextRescanAccepted> {
     const repo = await this.requireRepo(workspaceId, repoId);
     if (!repo.clonePath) throw new ConflictError('not_cloned');
-    void this.scan(repo, { sync: true, logger });
+    // A running scan already left the row `scanning`; otherwise wait for this scan to commit it, so
+    // a GET right after the 202 can't read the previous `ready` row and stop polling too early.
+    const idle = !this.inFlight.has(repo.id);
+    let marked: () => void = () => {};
+    const scanning = new Promise<void>((resolve) => (marked = resolve));
+    const scan = this.scan(repo, { sync: true, logger, onScanning: marked });
+    if (idle) await Promise.race([scanning, scan]);
     return { status: 'accepted', catalog_status: 'scanning' };
   }
 
@@ -290,12 +298,13 @@ export class ProjectContextService implements ProjectContextCatalog {
   }
 
   /** Never throws: a failure is persisted as `error` and logged. */
-  private async runScan(repo: ContextRepo, { sync, logger }: ScanOptions): Promise<void> {
+  private async runScan(repo: ContextRepo, { sync, logger, onScanning }: ScanOptions): Promise<void> {
     const startedAt = Date.now();
     const ref = this.refOf(repo);
     let phase = 'scan_failed';
     try {
       await this.store.markScanning(repo.id, repo.workspaceId, new Date(startedAt));
+      onScanning?.();
       phase = 'sync_failed';
       const sha = sync
         ? (await this.git.sync(ref, repo.defaultBranch)).head
