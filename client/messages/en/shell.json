@@ -26,6 +26,7 @@
     "agents": "Agents",
     "conventions": "Conventions",
     "eval": "Eval Dashboard",
+    "evalDashboard": "Eval Dashboard",
     "memory": "Memory",
     "multi-agent": "Multi-Agent Review",
     "agent-performance": "Agent Performance",

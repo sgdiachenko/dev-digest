@@ -52,6 +52,21 @@ export function wrapUntrusted(label: string, content: string): string {
   return `<untrusted source="${safeLabel}">\n${safe}\n</untrusted>`;
 }
 
+/**
+ * Inverse of `wrapUntrusted`: returns the content of the first
+ * `<untrusted source="<label>">` block with the `<\/untrusted>` escape undone,
+ * or null when no such block exists.
+ */
+export function unwrapUntrusted(label: string, text: string): string | null {
+  const open = `<untrusted source="${sanitizeLabel(label)}">\n`;
+  const start = text.indexOf(open);
+  if (start === -1) return null;
+  const from = start + open.length;
+  const end = text.indexOf('\n</untrusted>', from);
+  if (end === -1) return null;
+  return text.slice(from, end).replaceAll('<\\/untrusted>', '</untrusted>');
+}
+
 /** Cap the PR description so a huge author body can't blow the token budget. */
 const MAX_PR_DESCRIPTION_CHARS = 4000;
 

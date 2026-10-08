@@ -11,6 +11,8 @@ import {
   useFindingAction,
 } from "@/lib/hooks/reviews";
 import { usePrSmartDiff } from "@/lib/hooks/smart-diff";
+import { useAgents } from "@/lib/hooks/agents";
+import { EvalCaseModal, useEvalCaseLauncher } from "@/components/eval-case-modal";
 import { notify } from "@/lib/toast";
 import type { PrFile } from "@devdigest/shared";
 import { diffTotals, findingsForSmartDiff, orderFilesByRole, type DiffOrder } from "./helpers";
@@ -47,6 +49,8 @@ export function DiffTab({
   const { data: reviews } = usePrReviews(prId);
   const { data: smartDiff, isLoading: smartDiffLoading, isError: smartDiffError } = usePrSmartDiff(prId);
   const action = useFindingAction();
+  const { data: agents } = useAgents();
+  const evalLauncher = useEvalCaseLauncher(reviews ?? [], agents ?? []);
 
   const allFindings = React.useMemo(() => (reviews ?? []).flatMap((r) => r.findings), [reviews]);
   const hasFindings = allFindings.length > 0;
@@ -104,6 +108,8 @@ export function DiffTab({
     },
     repoFullName,
     headSha,
+    onTurnIntoEvalCase: evalLauncher.open,
+    evalDisabledReason: evalLauncher.reasonFor,
   };
 
   return (
@@ -146,6 +152,9 @@ export function DiffTab({
         ))
       ) : (
         <DiffViewer files={files} commenting={commenting} findings={findingApi} target={target ?? undefined} />
+      )}
+      {evalLauncher.openFindingId && (
+        <EvalCaseModal source={{ kind: "finding", findingId: evalLauncher.openFindingId }} onClose={evalLauncher.close} />
       )}
     </section>
   );

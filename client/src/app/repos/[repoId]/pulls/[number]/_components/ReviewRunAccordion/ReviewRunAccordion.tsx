@@ -11,6 +11,7 @@ import type { ReviewRecord, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
+import { useAgents } from "../../../../../../../lib/hooks/agents";
 
 const VERDICT_COLOR: Record<string, string> = {
   request_changes: "var(--crit)",
@@ -59,6 +60,7 @@ export function ReviewRunAccordion({
     }
   }, [targetRunId, targetNonce, review.run_id]);
   const del = useDeleteReview(prId);
+  const { data: agents } = useAgents();
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
@@ -162,6 +164,8 @@ export function ReviewRunAccordion({
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}
+            reviews={[review]}
+            agents={agents ?? []}
           />
         </div>
       )}

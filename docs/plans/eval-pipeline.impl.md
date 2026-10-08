@@ -1,0 +1,47 @@
+# impl: Eval Pipeline
+
+Plan: docs/plans/eval-pipeline.md (multi-agent, waves: 1…4)   Spec: 2026-10-08-eval-pipeline
+Phase: verify (round 1)   Verify round: 1/2   Review round: 0/3
+Extra instructions: none
+Live checks: none needed (manual checks are UI-only; DB via local Docker)
+
+## Waived / manual-only
+- waived by user: none
+- manual-only rows: AC-139, AC-141, AC-142, NFR-12, NFR-13 → Delivery D2–D5 (user)
+
+## Log
+- 2026-10-08 Phase 0 done: spec approved, designs present, Docker up, plan sanity-checked (waves respect depends-on).
+- 2026-10-08 wave 1 launched: W1 contracts, W2 reviewer-core, W3 schema, W4 client foundation.
+- W3 (S5) done: migration 0018_last_proemial_gods.sql, add-only, typecheck green, db:migrate not run. Handoff: `eval_runs.suite_run_id` is NOT NULL without default → migration fails on a DB that already has eval_runs rows (plan assumes empty table; D1 risk). Status values chosen by implementer: suite run `queued|running|completed|failed|interrupted|cancelled`; case run `queued|running|pass|fail|error|timeout` — S13/S16 must use these.
+- W2 (S3, S4) done: reviewer-core typecheck + tests green (5 new), server typecheck green. Handoff: `unwrapUntrusted` does not round-trip content that already contains a literal `<\/untrusted>` (inherent to the escape scheme); noted for review, not a blocker.
+- W1 (S1, S2) done: shared-sync green, server/client/mcp typecheck green, T1/T2 + contracts.test green. Deviations to track: (a) helper types (`EvalCaseType`, `EvalExpectation`, `EvalDiffSource`, `EvalCaseBase`, …) live in `knowledge.ts`, not `eval-ci.ts` — to avoid an import cycle (mcp mirror copies knowledge.ts alone); barrel exports unchanged. (b) `EvalRunComparison.flips[]` has an extra `flip` field (pass_to_fail|fail_to_pass|none) required by AC-127. (c) `EvalCaseInput` is a ZodEffects — `.extend/.omit` must go through `EvalCaseBase`. (d) W1 appended one line to `server/INSIGHTS.md` (outside its owned paths; harmless). (e) Pre-existing tsc errors at `server/test/contracts.test.ts:321-322` — tests are not typechecked (INSIGHTS:63), not from W1.
+- W4 (S19, S20, S21) done: i18n eval namespace rewritten (no `<word>`), Sidebar item + labelFor, useModalFocus moved to components/modal-focus. Deviations: curly quotes in eval messages (ICU `'{` escape); `nav.evalDashboard` added next to existing `nav.eval`.
+- Wave 1 full check table: GREEN — server lint/typecheck/arch:check/unit tests; client lint/typecheck/tests (424); reviewer-core typecheck+tests; mcp-server typecheck+tests; check-shared-sync.
+- wave 2 launched: W5 server eval core (S6–S11), W6 seed (S12), W7 client hooks (S22–S23).
+- W6 (S12) done: seed-eval.ts + seed.ts wiring; typecheck green; lint on the two files only (full-package lint is in the wave-2 table). Seed runs carry hand-written metrics and fixture system_prompt/agent_version — not derived from the real scorer (fine for e2e/demo, noted).
+- W7 (S22, S23) done: lib/hooks/eval.ts + tests green, typecheck + lint green. Deviation: `useStartEvalRun` resolves `{run_id, already_active}` on 409 run_active instead of throwing (carries active_run_id); `useCancelEvalRun` included. Hook signatures for W9–W11 recorded in the implementer report (agent-scoped mutations take agentId at creation).
+- W5 (S6–S11) done: eval/types.ts, constants.ts, helpers.ts (draft/score/aggregate/compare), toSkillBlock in reviews, llm-params.ts. Targeted tests 32 green; arch:check 0 errors. Deviations: ports/types designed by W5 (W8 must read types.ts as is); scoreCase/aggregate/compareRuns return shapes richer than plan (CaseScore, RunAggregate; compareRuns returns {case_set, flips, identical_config}, service adds a/b). On `failed` runs recall/precision/citation/cases_passed null, cost+duration still summed. `sentTemperature` nulls only provider=openai + reasoning model.
+- Wave 2 full check table: GREEN — server lint/typecheck/arch:check/unit tests; client lint/typecheck/tests; reviewer-core typecheck+tests; check-shared-sync.
+- wave 3 launched: W8 server eval API (S13–S18), W9 EvalCaseModal + FindingCard (S24–S28), W11 Eval Dashboard (S34–S37).
+- wave 3: all three implementers stopped at the monthly spend limit (HTTP 429) before reporting. Partial state found: W8 — only W5 files (no repository/service/routes yet); W9 — S24 partial (`components/eval-case-modal/helpers.ts`, `useEvalCaseDraft.ts`), nothing else; W11 — nothing. Relaunching all three as fresh implementers, each told to inspect existing files and continue from them.
+- W11 (S34–S37) done, client app/eval — green (vitest 90 files/489 tests, typecheck, lint). Open: (a) `missing-i18n` `eval.overview.crumbLab` ("Skills Lab") and `eval.overview.runAllAgents` — code falls back via t.has(); main session adds keys between waves (plan process). (b) AC-114 "Run all agents" (could) NOT built — no all-agents hook/endpoint in W7; record as a gap for the Summary, not a blocker. (c) Vendored Checkbox is 16px — wrapped in a 24px cell, vendor/ui not patched (C17/NFR-12 gap; re-check at D5). (d) BarRow fixed 150px label column — table in horizontal-scroll wrapper; check at 320px (D5).
+- W9 (S24–S28) done: EvalCaseModal (+ EvalCaseForm split, not in plan), useEvalCaseLauncher, FindingCard buttons, DiffTab/FindingsPanel/ReviewRunAccordion wiring. client suites 369 green, typecheck + lint green. Deviations: provenance line not shown (draft contract has no finding title); Files tab / Run-on-save left out per DD-1/DD-10. Open: `classifySaveError` assumes a 422 shape `{details.field|path, message}` — verify against W8.
+- Added i18n keys `eval.overview.crumbLab` and `eval.overview.runAllAgents` (main session, the missing-i18n process; W11 code already falls back).
+- W10 (S29–S33) done: Agents › Evals tab, client green; deviations: custom metric tiles, agentName prop, small-set hint at 8 cases, no Cancel button for active run.
+- Added i18n key `eval.metrics.title` (main session, missing-i18n from W10).
+- Wave 4 full check table: GREEN — server lint/typecheck/arch/unit 739 + it 17/17 (Docker); client typegen/lint/typecheck/tests 520; reviewer-core 52; mcp-server 26; shared-sync 0. Fingerprint 18c949d3….
+- Reports written to docs/plans/eval-pipeline.reports.md. Phase 2 started: plan-verifier → docs/plans/eval-pipeline.verification.md.
+- Verify round 1 (plan-verifier): verified with gaps — met 164, partial 4, unmet 0, not-verifiable 21. Report: docs/plans/eval-pipeline.verification.md.
+- `verify:l06` run as one command by main session: exit 0, 8 files / 89 tests (Docker) — closes AC-137/S18 partial.
+- AC-114 decision (user): the overview button must read "Run all evals" (AC-92/DD-5), not "Run all agents"; user asked where it is. Implementing: useStartAllEvalRuns hook → POST /eval/run-all, button on Eval Dashboard overview, i18n `overview.runAllEvals`. Delegated to a fresh implementer (touches 4+ client files).
+- Run all agents button on Eval Dashboard overview: done (label "Run all agents" per the user's latest instruction; overrides the earlier "Run all evals" answer). Client 522/522, typecheck, lint green.
+- Build error found by the user in dev (Webpack: `Can't resolve './contracts/findings.js'`): the new eval-case-modal imports `EvalCaseInput` (a value) from `@devdigest/shared`; the barrel uses NodeNext `.js` specifiers that webpack does not map to `.ts`. Fix (main session): `client/next.config.mjs` adds `resolve.extensionAlias` `.js → [.ts, .tsx, .js]`. Verified with `next build` exit 0. Dev server must be restarted to pick up the config.
+- Intent timeout (not part of the feature, found in a live PR review): `EXTRACT_TIMEOUT_MS` 30 s → 90 s (server/src/modules/intent/constants.ts). Server typecheck 0, unit 739/739. Model swap NOT done (cost/quality choice left to the user). Intent failure is caught in run-executor ("continuing without it"), so the stuck-looking `running` agents are likely still working — to confirm on a live run.
+- Still partial, manual (D5): NFR-12 (16px Checkbox in 24px cell), NFR-13 (dashboard recent-runs table in horizontal scroll at minWidth 1180; BarRow fixed 150px label) — check at 320px / 200% zoom.
+- (earlier note) W10 was launched early: its depends-on (W4, W7, W9) are all done and it shares no files with W8, so it does not wait for the rest of wave 3. Remaining in wave 3: W8 (server API).
+- W8 (S13–S18) done: server eval API, 15 routes, container/app wiring, boot-sweep. Main-session checks (Docker up, so the integration gate ran): server lint/typecheck/arch:check (0 errors, 7 warnings outside the package), unit 739/739, `eval.it.test.ts` 16/16 and `eval-perf.it.test.ts` 1/1 on Testcontainers Postgres — not skipped. Deviations: `partial` status is text (cast in finishRun; enum has no `partial`); `cases_passed` NOT NULL stored as 0 when status is not completed/partial, API returns null; SuiteRunStore extends EvalStore (cancelRun, agentIdsWithCases); Container.logger added. Run-all (AC-114) is implemented server-side (`runAll`) — UI button still missing (W11 gap).
+- Fixed (main session, client/src/components/eval-case-modal/helpers.ts): `classifySaveError` read `details.path` from a 422 whose `details` is a zod issue ARRAY (server app.ts:128-132 sends `err.validation`), so the field was lost and only the generic message showed (AC-52/157). Now takes the first issue; +4 unit tests in helpers.test.ts (11/11 green).
+
+## Review ledger
+| F# | Source | Sev | file:line | Summary | Status | Round |
+|---|---|---|---|---|---|---|

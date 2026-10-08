@@ -14,7 +14,8 @@
     "arch:report": "depcruise src test --config .dependency-cruiser.cjs --output-type err-long",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "verify:l06": "vitest run test/eval-scoring.test.ts test/eval-helpers.test.ts test/eval-fixed-inputs.test.ts test/eval-suite-executor.test.ts test/eval-contract-parity.test.ts test/eval-contracts.test.ts test/contracts.test.ts test/eval.it.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.33.1",

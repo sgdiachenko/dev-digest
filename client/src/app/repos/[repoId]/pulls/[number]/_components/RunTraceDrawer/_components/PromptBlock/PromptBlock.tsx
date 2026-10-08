@@ -8,7 +8,7 @@ import { Button, Icon, Modal } from "@devdigest/ui";
 import { s } from "../../styles";
 import type { SkippedDoc } from "../../helpers";
 import { PromptModalBody } from "../PromptModalBody";
-import { useModalFocus } from "./useModalFocus";
+import { useModalFocus } from "@/components/modal-focus";
 
 const miniBtnStyle: React.CSSProperties = {
   display: "inline-flex",

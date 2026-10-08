@@ -12,7 +12,6 @@ import type {
 import {
   reviewPullRequest,
   countBlockers,
-  wrapUntrusted,
   fitProjectContext,
   renderProjectContext,
   selectReviewMode,
@@ -25,7 +24,7 @@ import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
 import { REVIEW_STRATEGY } from './constants.js';
-import { taskLine } from './helpers.js';
+import { taskLine, toSkillBlock } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 import type { ProjectContextForRun } from '../context-attachments/types.js';
 import { formatContextLine, touchedByDiff } from '../context-attachments/helpers.js';
@@ -514,7 +513,7 @@ export class ReviewRunExecutor {
     const resolved = linked.map((s) => ({
       id: s.id,
       name: s.name,
-      block: s.source === 'manual' ? s.body : wrapUntrusted(`skill:${s.name}`, s.body),
+      block: toSkillBlock(s),
     }));
     runLog.info(`Attached ${resolved.length} skill(s): ${linked.map((s) => s.name).join(', ')}`);
     return resolved;

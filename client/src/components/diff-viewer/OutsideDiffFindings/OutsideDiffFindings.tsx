@@ -15,12 +15,16 @@ export function OutsideDiffFindings({
   onAction,
   repoFullName,
   headSha,
+  onTurnIntoEvalCase,
+  evalDisabledReason,
 }: {
   findings: FindingRecord[];
   pending?: boolean;
   onAction?: (findingId: string, action: FindingActionKind, reply?: string) => void;
   repoFullName?: string | null;
   headSha?: string | null;
+  onTurnIntoEvalCase?: (findingId: string) => void;
+  evalDisabledReason?: (f: FindingRecord) => string | null;
 }) {
   const t = useTranslations("prReview");
   if (findings.length === 0) return null;
@@ -35,6 +39,8 @@ export function OutsideDiffFindings({
           repoFullName={repoFullName}
           headSha={headSha}
           onAction={(action, reply) => onAction?.(f.id, action, reply)}
+          onTurnIntoEvalCase={onTurnIntoEvalCase ? () => onTurnIntoEvalCase(f.id) : undefined}
+          evalDisabledReason={evalDisabledReason?.(f)}
         />
       ))}
     </div>

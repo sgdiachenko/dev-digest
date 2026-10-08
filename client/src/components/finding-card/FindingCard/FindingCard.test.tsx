@@ -58,3 +58,54 @@ describe("FindingCard (smoke, both themes)", () => {
     expect(onAction).toHaveBeenCalledWith("dismiss");
   });
 });
+
+describe("FindingCard — Turn into eval case (T36)", () => {
+  it("renders the button after Accept and Dismiss only when a callback is passed (AC-3, C20)", () => {
+    const { unmount } = renderWithIntl(<FindingCard f={FINDING} defaultExpanded onAction={() => {}} />);
+    expect(screen.queryByRole("button", { name: /Turn into eval case/ })).toBeNull();
+    unmount();
+
+    renderWithIntl(<FindingCard f={FINDING} defaultExpanded onAction={() => {}} onTurnIntoEvalCase={() => {}} />);
+    const labels = screen.getAllByRole("button").map((b) => b.textContent?.trim());
+    const accept = labels.indexOf("Accept");
+    const dismiss = labels.indexOf("Dismiss");
+    const evalIdx = labels.indexOf("Turn into eval case");
+    expect(evalIdx).toBeGreaterThan(Math.max(accept, dismiss));
+    expect(screen.queryByRole("button", { name: "Learn" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reply to author" })).toBeNull();
+  });
+
+  it("is disabled with the reason as title and accessible description (AC-1, AC-4)", () => {
+    const onTurn = vi.fn();
+    renderWithIntl(
+      <FindingCard
+        f={FINDING}
+        defaultExpanded
+        onTurnIntoEvalCase={onTurn}
+        evalDisabledReason="Accept or dismiss this finding first"
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /Turn into eval case/ });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("title", "Accept or dismiss this finding first");
+    expect(btn).toHaveAccessibleDescription("Accept or dismiss this finding first");
+    fireEvent.click(btn);
+    expect(onTurn).not.toHaveBeenCalled();
+  });
+
+  it("stays enabled on a muted dismissed card and calls back on click (AC-2)", () => {
+    const onTurn = vi.fn();
+    renderWithIntl(
+      <FindingCard
+        f={{ ...FINDING, dismissed_at: "2026-10-08T00:00:00Z" }}
+        defaultExpanded
+        onTurnIntoEvalCase={onTurn}
+        evalDisabledReason={null}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /Turn into eval case/ });
+    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    expect(onTurn).toHaveBeenCalledTimes(1);
+  });
+});

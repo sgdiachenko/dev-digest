@@ -1,0 +1,57 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  row: {
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
+    borderRadius: 9,
+    padding: "12px 16px",
+  } satisfies CSSProperties,
+  top: { display: "flex", alignItems: "center", gap: 14 } satisfies CSSProperties,
+  main: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    cursor: "pointer",
+    borderRadius: 6,
+  } satisfies CSSProperties,
+  text: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  name: {
+    display: "block",
+    fontSize: 14,
+    fontWeight: 600,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+  meta: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginTop: 3,
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  tag: {
+    padding: "0 6px",
+    borderRadius: 4,
+    border: "1px solid var(--border-strong)",
+    fontSize: 11.5,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  statusIcon: { width: 24, height: 24, display: "grid", placeItems: "center", flexShrink: 0 } satisfies CSSProperties,
+  actions: { display: "flex", alignItems: "center", gap: 2, flexShrink: 0, transition: "opacity .12s" } satisfies CSSProperties,
+  provenance: {
+    marginTop: 8,
+    paddingLeft: 36,
+    fontSize: 12.5,
+    color: "var(--text-muted)",
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+  link: { color: "var(--accent)", textDecoration: "underline" } satisfies CSSProperties,
+} as const;

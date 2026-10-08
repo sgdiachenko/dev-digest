@@ -2,12 +2,23 @@
  * Pure helpers for the review service (side-effect free; operate purely on
  * their arguments — no DB / network / `this`).
  */
-import type { Finding, FindingsSummary, SeverityCounts, Verdict } from '@devdigest/shared';
+import type { Finding, FindingsSummary, SeverityCounts, SkillSource, Verdict } from '@devdigest/shared';
+import { wrapUntrusted } from '@devdigest/reviewer-core';
 import type { FindingRow, PullRow, ReviewRow } from './repository.js';
 
 // reduceReviews + sliceDiff live in @devdigest/reviewer-core (pure engine logic
 // shared with the CI runner); re-exported here for backward-compatible imports.
 export { reduceReviews, sliceDiff } from '@devdigest/reviewer-core';
+
+/**
+ * Prompt block of one skill: a hand-written (`manual`) rubric is trusted and
+ * goes in as-is; any other source is someone else's text and is wrapped as
+ * untrusted. Shared by the PR review and the eval review so both build
+ * identical skill blocks.
+ */
+export function toSkillBlock(s: { name: string; body: string; source: SkillSource }): string {
+  return s.source === 'manual' ? s.body : wrapUntrusted(`skill:${s.name}`, s.body);
+}
 
 export interface ReviewDtoFinding extends Finding {
   review_id: string;

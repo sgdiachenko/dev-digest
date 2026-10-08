@@ -63,6 +63,7 @@ export function Sidebar({ ctx }: { ctx: ShellContext }) {
                 active={ctx.activeKey === it.key}
                 repoId={ctx.repoId}
                 Link={Link}
+                labelFor={ctx.labelFor}
               />
             ))}
           </div>

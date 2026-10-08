@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { Verdict, Finding } from './findings.js';
-import { EvalRun, EvalOwnerKind, Conformance, Provider, CiFailOn } from './knowledge.js';
+import {
+  EvalRun,
+  EvalOwnerKind,
+  EvalCaseBase,
+  Conformance,
+  Provider,
+  CiFailOn,
+} from './knowledge.js';
 
 /**
  * A4 — Eval / CI / Compose / Conformance API contracts (L06).
@@ -16,20 +23,232 @@ import { EvalRun, EvalOwnerKind, Conformance, Provider, CiFailOn } from './knowl
 // Eval — case input + persisted run record + dashboard
 // ===========================================================================
 
-/** Create/update payload for an eval case (id + owner resolved by the route). */
-export const EvalCaseInput = z.object({
-  owner_kind: EvalOwnerKind,
-  owner_id: z.string(),
-  name: z.string().min(1),
-  input_diff: z.string().default(''),
-  input_files: z.unknown().nullish(),
-  input_meta: z.unknown().nullish(),
-  expected_output: z.unknown(),
-  notes: z.string().nullish(),
+/** New-side line range of one hunk (inclusive). */
+export type HunkRange = { start: number; end: number };
+
+/**
+ * Parses a unified diff into the new-side line ranges of its hunks, per file
+ * (`diff --git` / `+++ b/<path>` / `@@ -a,b +c,d @@`). A deleted file
+ * (`+++ /dev/null`) and a pure-deletion hunk (`+c,0`) contribute no range.
+ */
+export function hunkRangesByFile(diff: string): Map<string, HunkRange[]> {
+  const out = new Map<string, HunkRange[]>();
+  let current: string | null = null;
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      current = null;
+      const m = /^diff --git a\/.+ b\/(.+?)\r?$/.exec(line);
+      if (m) {
+        current = m[1]!;
+        if (!out.has(current)) out.set(current, []);
+      }
+    } else if (line.startsWith('+++ ')) {
+      const target = line.slice(4).replace(/\t.*$/, '').replace(/\r$/, '');
+      if (target === '/dev/null') {
+        current = null;
+      } else {
+        current = target.startsWith('b/') ? target.slice(2) : target;
+        if (!out.has(current)) out.set(current, []);
+      }
+    } else if (line.startsWith('@@') && current !== null) {
+      const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+      if (!m) continue;
+      const start = Number(m[1]);
+      const count = m[2] === undefined ? 1 : Number(m[2]);
+      if (count > 0) out.get(current)!.push({ start, end: start + count - 1 });
+    }
+  }
+  return out;
+}
+
+/**
+ * Create/update payload for an eval case. The owner comes from the route path
+ * (no `owner_kind` / `owner_id` in the body). The `superRefine` validates the
+ * expectations against the diff fragment, in the order of AC-145: reversed
+ * range, file absent from the fragment, lines outside every hunk of the file.
+ * (An empty `must_find` list is the `expectations` min(1) rule; invalid JSON
+ * is caught client-side before the object exists.)
+ */
+export const EvalCaseInput = EvalCaseBase.superRefine((val, ctx) => {
+  const hunks = hunkRangesByFile(val.input_diff);
+  val.expectations.forEach((e, i) => {
+    if (e.end_line < e.start_line) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'end_line must not be below start_line',
+        path: ['expectations', i, 'end_line'],
+      });
+      return;
+    }
+    const ranges = hunks.get(e.file);
+    if (!ranges) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'file is not in the diff fragment',
+        path: ['expectations', i, 'file'],
+      });
+      return;
+    }
+    if (!ranges.some((r) => e.start_line <= r.end && e.end_line >= r.start)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'lines are outside every hunk of the file',
+        path: ['expectations', i, 'start_line'],
+      });
+    }
+  });
 });
 export type EvalCaseInput = z.infer<typeof EvalCaseInput>;
+/** Caller-facing input type — `.default()` fields stay optional (web hooks). */
+export type EvalCaseInputBody = z.input<typeof EvalCaseInput>;
 
-/** A persisted eval run row (one execution of a case), returned by the API. */
+/** Server-built draft of a case from a triaged finding (`GET /findings/:id/eval-draft`). */
+export const EvalCaseDraft = EvalCaseBase.extend({
+  owner_id: z.string(),
+  owner_name: z.string(),
+  existing_case: z.object({ id: z.string(), name: z.string() }).nullable(),
+});
+export type EvalCaseDraft = z.infer<typeof EvalCaseDraft>;
+
+export const EvalCaseStatus = z.enum(['pass', 'fail', 'error']);
+export type EvalCaseStatus = z.infer<typeof EvalCaseStatus>;
+
+/** Why an eval review could not finish (the case/attempt is `error`, never pass/fail). */
+export const EvalErrorReason = z.enum(['missing_key', 'provider_error', 'timeout', 'invalid_output']);
+export type EvalErrorReason = z.infer<typeof EvalErrorReason>;
+
+/** How a kept finding relates to the case expectations. */
+export const EvalFindingMatch = z.enum(['matched', 'unmatched', 'forbidden_hit']);
+export type EvalFindingMatch = z.infer<typeof EvalFindingMatch>;
+
+/** One case outcome — used by attempts and by `EvalSuiteRun.per_case`. No prompt text. */
+export const EvalCaseResult = z.object({
+  case_id: z.string().nullable(),
+  case_name: z.string(),
+  status: EvalCaseStatus,
+  error_reason: EvalErrorReason.nullable(),
+  actual_findings: z.array(Finding.extend({ match: EvalFindingMatch })),
+  dropped_findings: z.array(z.object({ finding: Finding, reason: z.string() })),
+  expected_count: z.number().int(),
+  actual_count: z.number().int(),
+  duration_ms: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+});
+export type EvalCaseResult = z.infer<typeof EvalCaseResult>;
+
+export const EvalAttemptStatus = z.enum(['running', 'done', 'error']);
+export type EvalAttemptStatus = z.infer<typeof EvalAttemptStatus>;
+
+/** An unpersisted "Run case" attempt (`GET /eval-attempts/:id`). */
+export const EvalAttempt = z.object({
+  attempt_id: z.string(),
+  status: EvalAttemptStatus,
+  started_at: z.string(),
+  result: EvalCaseResult.nullable(),
+});
+export type EvalAttempt = z.infer<typeof EvalAttempt>;
+
+export const EvalSuiteRunStatus = z.enum([
+  'queued',
+  'running',
+  'completed',
+  'partial',
+  'failed',
+  'cancelled',
+  'interrupted',
+]);
+export type EvalSuiteRunStatus = z.infer<typeof EvalSuiteRunStatus>;
+
+/** The agent configuration pinned at the start of a suite run. */
+export const EvalSuiteRunConfig = z.object({
+  provider: Provider,
+  model: z.string(),
+  strategy: z.string(),
+  system_prompt: z.string(),
+  skills: z.array(z.object({ id: z.string(), version: z.number().int() })),
+  /** The temperature actually sent; `null` when the provider ignores it. */
+  temperature: z.number().nullable(),
+});
+export type EvalSuiteRunConfig = z.infer<typeof EvalSuiteRunConfig>;
+
+/** One suite run of an agent over its pinned case set. */
+export const EvalSuiteRun = z.object({
+  id: z.string(),
+  agent_id: z.string(),
+  status: EvalSuiteRunStatus,
+  agent_version: z.number().int(),
+  config: EvalSuiteRunConfig,
+  case_ids: z.array(z.string()),
+  cases_total: z.number().int(),
+  cases_completed: z.number().int(),
+  cases_errored: z.number().int(),
+  cases_passed: z.number().int().nullable(),
+  recall: z.number().min(0).max(1).nullable(),
+  precision: z.number().min(0).max(1).nullable(),
+  citation_accuracy: z.number().min(0).max(1).nullable(),
+  cost_usd: z.number().nullable(),
+  duration_ms: z.number().int().nullable(),
+  started_at: z.string(),
+  finished_at: z.string().nullable(),
+  error_reason: z.string().nullable(),
+  per_case: z.array(EvalCaseResult),
+});
+export type EvalSuiteRun = z.infer<typeof EvalSuiteRun>;
+
+/** `EvalSuiteRun` without the heavy parts (`per_case`, `config.system_prompt`) — list payloads. */
+export const EvalSuiteRunSummary = EvalSuiteRun.omit({ per_case: true, config: true }).extend({
+  config: EvalSuiteRunConfig.omit({ system_prompt: true }),
+});
+export type EvalSuiteRunSummary = z.infer<typeof EvalSuiteRunSummary>;
+
+/** `GET /eval/overview` — every agent's latest run plus the newest runs across agents. */
+export const EvalOverview = z.object({
+  agents: z.array(
+    z.object({
+      agent_id: z.string(),
+      name: z.string(),
+      model: z.string(),
+      latest: EvalSuiteRunSummary.nullable(),
+      recall_trend: z.array(z.number()),
+    }),
+  ),
+  recent_runs: z.array(EvalSuiteRunSummary.extend({ agent_name: z.string() })),
+});
+export type EvalOverview = z.infer<typeof EvalOverview>;
+
+export const EvalCaseOutcome = z.enum(['pass', 'fail', 'error', 'absent']);
+export type EvalCaseOutcome = z.infer<typeof EvalCaseOutcome>;
+
+/** `GET /eval-runs/compare` — `a` is the older run. */
+export const EvalRunComparison = z.object({
+  a: EvalSuiteRun,
+  b: EvalSuiteRun,
+  case_set: z.object({ added: z.array(z.string()), removed: z.array(z.string()) }),
+  flips: z.array(
+    z.object({
+      case_id: z.string(),
+      case_name: z.string(),
+      a: EvalCaseOutcome,
+      b: EvalCaseOutcome,
+      flip: z.enum(['pass_to_fail', 'fail_to_pass', 'none']),
+    }),
+  ),
+  identical_config: z.boolean(),
+});
+export type EvalRunComparison = z.infer<typeof EvalRunComparison>;
+
+/** `POST /agents/:id/eval-runs` → 202. */
+export const EvalRunStartResponse = z.object({ run_id: z.string() });
+export type EvalRunStartResponse = z.infer<typeof EvalRunStartResponse>;
+
+/** `POST /agents/:id/eval-attempts` → 202. */
+export const EvalAttemptStartResponse = z.object({ attempt_id: z.string() });
+export type EvalAttemptStartResponse = z.infer<typeof EvalAttemptStartResponse>;
+
+/**
+ * A persisted eval run row (one execution of a case).
+ * @deprecated Per-case run records are replaced by `EvalSuiteRun` / `EvalCaseResult`.
+ */
 export const EvalRunRecord = z.object({
   id: z.string(),
   case_id: z.string(),
@@ -45,7 +264,10 @@ export const EvalRunRecord = z.object({
 });
 export type EvalRunRecord = z.infer<typeof EvalRunRecord>;
 
-/** Result of running a single case: the metrics (EvalRun) + the persisted row id. */
+/**
+ * Result of running a single case: the metrics (EvalRun) + the persisted row id.
+ * @deprecated Use `EvalCaseResult` (attempts) / `EvalSuiteRun` (suite runs).
+ */
 export const EvalRunResult = z.object({
   run_id: z.string(),
   case_id: z.string(),
@@ -64,7 +286,10 @@ export const EvalTrendPoint = z.object({
 });
 export type EvalTrendPoint = z.infer<typeof EvalTrendPoint>;
 
-/** Aggregate dashboard for an owner (agent/skill) or the whole workspace. */
+/**
+ * Aggregate dashboard for an owner (agent/skill) or the whole workspace.
+ * @deprecated Use `EvalOverview` (`GET /eval/overview`).
+ */
 export const EvalDashboard = z.object({
   owner_kind: EvalOwnerKind.nullable(),
   owner_id: z.string().nullable(),

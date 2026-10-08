@@ -170,6 +170,8 @@ export function FileCard({
               onAction={findingApi.onAction}
               repoFullName={findingApi.repoFullName}
               headSha={findingApi.headSha}
+              onTurnIntoEvalCase={findingApi.onTurnIntoEvalCase}
+              evalDisabledReason={findingApi.evalDisabledReason}
             />
           )}
         </div>

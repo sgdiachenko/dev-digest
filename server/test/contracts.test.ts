@@ -261,6 +261,19 @@ describe('AI contracts parse fixtures', () => {
         per_trace: [{ name: 't01', pass: true, expected: 'x', actual: 'x' }],
       }),
     ).not.toThrow();
+    // zero denominator -> null metrics (AC-33)
+    expect(
+      EvalRun.parse({
+        recall: null,
+        precision: null,
+        citation_accuracy: null,
+        traces_passed: 0,
+        traces_total: 0,
+        duration_ms: 0,
+        cost_usd: null,
+        per_trace: [],
+      }).recall,
+    ).toBeNull();
     expect(() =>
       MemoryItem.parse({
         content: 'c',

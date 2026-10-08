@@ -5,6 +5,7 @@ import type { FindingRecord, PrFile, ReviewRecord, SmartDiff } from "@devdigest/
 import prReviewMessages from "../../../../../../../../messages/en/prReview.json";
 import shellMessages from "../../../../../../../../messages/en/shell.json";
 import briefMessages from "../../../../../../../../messages/en/brief.json";
+import evalMessages from "../../../../../../../../messages/en/eval.json";
 
 const findingActionMutate = vi.fn();
 let smartDiffResult: { data: SmartDiff | undefined; isLoading: boolean; isError: boolean } = {
@@ -19,6 +20,17 @@ vi.mock("../../../../../../../lib/hooks/reviews", () => ({
   useCreatePrComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
   usePrReviews: () => reviewsResult,
   useFindingAction: () => ({ mutate: findingActionMutate, isPending: false }),
+}));
+vi.mock("../../../../../../../lib/hooks/agents", () => ({
+  useAgents: () => ({ data: [{ id: "a1", name: "Reviewer" }] }),
+}));
+// The modal opens in its loading state here; its own behaviour is covered by EvalCaseModal.test.tsx.
+vi.mock("../../../../../../../lib/hooks/eval", () => ({
+  useEvalDraft: () => ({ data: undefined, error: null }),
+  useEvalAttempt: () => ({ data: undefined, error: null }),
+  useStartEvalAttempt: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateEvalCase: () => ({ mutateAsync: vi.fn() }),
+  useUpdateEvalCase: () => ({ mutateAsync: vi.fn() }),
 }));
 vi.mock("../../../../../../../lib/hooks/smart-diff", () => ({
   usePrSmartDiff: () => smartDiffResult,
@@ -35,7 +47,7 @@ function wrap(ui: React.ReactElement) {
   return (
     <NextIntlClientProvider
       locale="en"
-      messages={{ prReview: prReviewMessages, shell: shellMessages, brief: briefMessages }}
+      messages={{ prReview: prReviewMessages, shell: shellMessages, brief: briefMessages, eval: evalMessages }}
     >
       {ui}
     </NextIntlClientProvider>
@@ -185,6 +197,34 @@ describe("DiffTab — finding indicators", () => {
     expect(findingActionMutate).toHaveBeenCalledWith(
       expect.objectContaining({ findingId: "f-in-diff", action: "accept", prId: "pr1" }),
     );
+  });
+});
+
+describe("DiffTab — Turn into eval case", () => {
+  it("disables the button on an open inline finding, enables it on an accepted outside-diff one and opens the modal (AC-1, AC-2, AC-3)", () => {
+    smartDiffResult = { data: SMART_DIFF, isLoading: false, isError: false };
+    reviewsResult = {
+      data: [
+        {
+          ...REVIEW,
+          findings: REVIEW.findings.map((f) => (f.id === "f-outside" ? { ...f, accepted_at: "2026-06-02T00:00:00Z" } : f)),
+        },
+      ],
+    };
+    renderDiffTab();
+
+    const inline = screen.getByText("In-diff finding").closest('[data-finding-id="f-in-diff"]') as HTMLElement;
+    fireEvent.click(within(inline).getByText("In-diff finding"));
+    const blocked = within(inline).getByRole("button", { name: /Turn into eval case/ });
+    expect(blocked).toBeDisabled();
+    expect(blocked).toHaveAccessibleDescription("Accept or dismiss this finding first");
+
+    const outside = screen.getByText("Outside-diff finding").closest('[data-finding-id="f-outside"]') as HTMLElement;
+    fireEvent.click(within(outside).getByText("Outside-diff finding"));
+    const allowed = within(outside).getByRole("button", { name: /Turn into eval case/ });
+    expect(allowed).toBeEnabled();
+    fireEvent.click(allowed);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });
 
