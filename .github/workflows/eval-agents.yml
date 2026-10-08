@@ -81,11 +81,11 @@ jobs:
       - name: report (summary + baseline comparison)
         if: always()
         working-directory: evals
-        run: node scripts/ci-report.mjs "agent \${{ matrix.agent }}" results/ci-report.json
+        run: node scripts/ci-report.mjs "agent ${{ matrix.agent }}" results/ci-report.json
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-agent-\${{ matrix.agent }}
+          name: eval-agent-${{ matrix.agent }}
           path: |
             evals/results/ci-report.json
             evals/results/records.jsonl
