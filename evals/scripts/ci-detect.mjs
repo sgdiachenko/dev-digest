@@ -44,14 +44,22 @@ function touched(reClaude, reEvals) {
   return [...names].sort();
 }
 
-const skillNames = touched(
-  /^\.claude\/skills\/([^/]+)\//,
-  /^evals\/skills\/([^/]+)\//,
-);
-const agentNames = touched(
-  /^\.claude\/agents\/([^/]+)\.md$/,
-  /^evals\/agents\/([^/]+)\//,
-);
+// RUN_ALL=true (manual workflow_dispatch) selects every suite that has evals.
+const RUN_ALL = process.env.RUN_ALL === "true";
+const allNames = (tier) =>
+  existsSync(join(EVALS_DIR, tier))
+    ? readdirSync(join(EVALS_DIR, tier)).filter((n) => hasEvals(tier, n))
+    : [];
+
+// .claude/agents/README.md is the folder index, not an agent.
+const skillNames = RUN_ALL
+  ? allNames("skills")
+  : touched(/^\.claude\/skills\/([^/]+)\//, /^evals\/skills\/([^/]+)\//);
+const agentNames = (
+  RUN_ALL
+    ? allNames("agents")
+    : touched(/^\.claude\/agents\/([^/]+)\.md$/, /^evals\/agents\/([^/]+)\//)
+).filter((n) => n !== "README");
 
 const skills = skillNames.filter((n) => hasEvals("skills", n));
 const skippedSkills = skillNames.filter((n) => !hasEvals("skills", n));
@@ -60,12 +68,14 @@ const skippedAgents = agentNames.filter((n) => !hasEvals("agents", n));
 
 // The workflow tier measures the LIVE harness, so anything that changes it re-triggers it:
 // the root or .claude CLAUDE.md, any agent definition, the workflow cases, or the engine itself.
-const runWorkflow = changed.some(
+const runWorkflow =
+  RUN_ALL ||
+  changed.some(
   (f) =>
     f === "CLAUDE.md" ||
     f === ".claude/CLAUDE.md" ||
     /(^|\/)AGENTS\.md$/.test(f) || // the real files behind every CLAUDE.md symlink
-    /^\.claude\/agents\/.+\.md$/.test(f) ||
+    /^\.claude\/agents\/(?!README\.md$).+\.md$/.test(f) ||
     /^evals\/workflow\//.test(f) ||
     /^evals\/src\//.test(f),
 );

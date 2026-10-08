@@ -243,6 +243,24 @@ Notes:
   keep the case count small. For a stricter gate, split into a required `eval:agents`/`eval:skills`
   job and a non-blocking `eval:workflow` job (activation flakiness, above).
 
+### The repo's CI gate (`.github/workflows/evals.yml`)
+
+A merge gate, not a report. `detect` runs `scripts/ci-detect.mjs` on the PR diff, then:
+
+| Changed in the PR | Runs |
+|---|---|
+| `.claude/skills/<n>/**` or `evals/skills/<n>/**` | `skill-evals` → `evals/skills/<n>` (skipped with a visible note if `<n>` has no evals) |
+| `.claude/agents/<n>.md` or `evals/agents/<n>/**` | `agent-evals` → `evals/agents/<n>`, **and** the workflow tier |
+| `CLAUDE.md`, any `AGENTS.md`, `evals/workflow/**`, `evals/src/**` | `workflow-evals` |
+
+Every eval job gets at most two attempts. The single required check for branch protection is
+**`evals-gate`**: red if any job failed/was cancelled, green when jobs passed or were skipped.
+Fork PRs have no secrets, so the model jobs are skipped there.
+
+**Model switch** (no UI): `workflow_dispatch` input `model` / `judge_model` → repo variable
+`EVAL_MODEL` / `EVAL_JUDGE_MODEL` → default `deepseek/deepseek-v4-flash`. A manual dispatch runs
+every suite (`RUN_ALL=true`). Needs the `OPENROUTER_API_KEY` Actions secret.
+
 ## Module layout — `src/` (the engine)
 
 The engine is split by responsibility with one-directional dependencies (config knows nothing of

@@ -1,20 +1,32 @@
-# Harness evals. Two jobs:
-#  - docs-static: no model, free — AGENTS.md/CLAUDE.md symlinks, links and anchors.
-#  - workflow-evals: real Claude sessions via the OpenRouter proxy (costs tokens). Runs only when
-#    the harness changed (evals/scripts/ci-detect.mjs) and AT MOST TWICE: one attempt, plus one
-#    retry only if the first failed. Superseded pushes cancel the in-flight run, so a PR never
-#    piles up more runs.
+# Harness evals — a merge gate. Jobs:
+#  - docs-static:    no model, free — AGENTS.md/CLAUDE.md symlinks, links and anchors.
+#  - detect:         evals/scripts/ci-detect.mjs maps the PR's changed files onto eval suites.
+#  - skill-evals:    one matrix job per changed skill that has evals   (evals/skills/<name>)
+#  - agent-evals:    one matrix job per changed agent that has evals   (evals/agents/<name>)
+#  - workflow-evals: whole-harness tier; runs when CLAUDE.md / any AGENTS.md / an agent changes
+#  - evals-gate:     the ONE check to mark "required" in branch protection. Fails if any job above
+#                    failed; jobs that were skipped (nothing relevant changed) count as passed.
+#
+# All real-model jobs run on OpenRouter through the LiteLLM proxy. The model is switchable
+# (no UI): workflow_dispatch input  >  repo variable EVAL_MODEL  >  the default below.
+# Each eval job gets AT MOST two attempts (one retry only if the first failed). Superseded
+# pushes cancel the in-flight run.
 name: evals
 
 on:
+  # No `paths:` filter on purpose: evals-gate is a required check, and a required check that never
+  # reports (workflow skipped by paths) blocks the PR forever. `detect` decides what actually runs.
   pull_request:
-    paths:
-      - 'AGENTS.md'
-      - '**/AGENTS.md'
-      - 'CLAUDE.md'
-      - '.claude/**'
-      - 'evals/**'
-      - '.github/workflows/evals.yml'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'OpenRouter slug for the tasks (empty = repo variable EVAL_MODEL, then the default)'
+        required: false
+        default: ''
+      judge_model:
+        description: 'OpenRouter slug for the LLM judge (empty = same as the task model)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -23,13 +35,19 @@ concurrency:
   group: evals-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: evals
+env:
+  EVAL_BACKEND: openrouter
+  OPENROUTER_BASE_URL: http://localhost:4000
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-v4-flash' }}
+  EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-v4-flash' }}
 
 jobs:
   docs-static:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evals
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -43,54 +61,161 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm vitest run src/harness-docs
 
-  workflow-evals:
+  detect:
     runs-on: ubuntu-latest
-    # Real sessions can be flaky (activation) — report, but don't block the merge.
-    continue-on-error: true
-    timeout-minutes: 30
-    env:
-      EVAL_BACKEND: openrouter
-      OPENROUTER_BASE_URL: http://localhost:4000
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      EVAL_MODEL: google/gemini-2.5-flash
-      EVAL_JUDGE_MODEL: google/gemini-2.5-flash
+    # Fork PRs get no secrets, so a model run is impossible there: skip the model jobs entirely.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      skills: ${{ steps.detect.outputs.skills }}
+      agents: ${{ steps.detect.outputs.agents }}
+      run_workflow: ${{ steps.detect.outputs.run_workflow }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: Detect whether the workflow tier must run
-        id: detect
-        working-directory: .
+      - id: detect
+        env:
+          RUN_ALL: ${{ github.event_name == 'workflow_dispatch' }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")" \
-            node evals/scripts/ci-detect.mjs
-      - if: steps.detect.outputs.run_workflow == 'true'
-        uses: pnpm/action-setup@v4
-        with: { version: 10 }
-      - if: steps.detect.outputs.run_workflow == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: evals/pnpm-lock.yaml
-      - if: steps.detect.outputs.run_workflow == 'true'
-        run: pnpm install --frozen-lockfile
-      - if: steps.detect.outputs.run_workflow == 'true'
-        run: docker compose -f proxy/docker-compose.yml up -d
-      - if: steps.detect.outputs.run_workflow == 'true'
-        run: pnpm proxy:wait
+          if [ "$RUN_ALL" != "true" ]; then
+            CHANGED_FILES="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+            export CHANGED_FILES
+          fi
+          node evals/scripts/ci-detect.mjs
+      - name: Summary
+        env:
+          MODEL: ${{ env.EVAL_MODEL }}
+          JUDGE: ${{ env.EVAL_JUDGE_MODEL }}
+          SKILLS: ${{ steps.detect.outputs.skills }}
+          AGENTS: ${{ steps.detect.outputs.agents }}
+          RUN_WORKFLOW: ${{ steps.detect.outputs.run_workflow }}
+          SKIPPED_SKILLS: ${{ steps.detect.outputs.skipped_skills }}
+          SKIPPED_AGENTS: ${{ steps.detect.outputs.skipped_agents }}
+        run: |
+          {
+            echo "### Harness evals"
+            echo "- model: \`$MODEL\` · judge: \`$JUDGE\`"
+            echo "- skills: \`$SKILLS\`"
+            echo "- agents: \`$AGENTS\`"
+            echo "- workflow tier: \`$RUN_WORKFLOW\`"
+            [ -n "$SKIPPED_SKILLS" ] && echo "- SKIP skills (no evals): $SKIPPED_SKILLS"
+            [ -n "$SKIPPED_AGENTS" ] && echo "- SKIP agents (no evals): $SKIPPED_AGENTS"
+            true
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Visible yellow annotations on the run page; a skip is never a failure.
+          for n in $SKIPPED_SKILLS; do echo "::notice title=SKIP skill $n::no evals written for skill '$n' — nothing to run"; done
+          for n in $SKIPPED_AGENTS; do echo "::notice title=SKIP agent $n::no evals written for agent '$n' — nothing to run"; done
 
-      # Attempt 1 of 2.
+  skill-evals:
+    needs: detect
+    if: needs.detect.outputs.skills != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2 # OpenRouter rate limits degrade parallel tool-tier runs
+      matrix:
+        skill: ${{ fromJSON(needs.detect.outputs.skills) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/evals-setup
+      - name: skill evals (attempt 1)
+        id: attempt1
+        continue-on-error: true
+        working-directory: evals
+        env: { SUITE: '${{ matrix.skill }}' }
+        run: pnpm exec vitest run "skills/$SUITE/"
+      - name: skill evals (attempt 2, retry)
+        if: steps.attempt1.outcome == 'failure'
+        working-directory: evals
+        env: { SUITE: '${{ matrix.skill }}' }
+        run: pnpm exec vitest run "skills/$SUITE/"
+      - if: failure()
+        run: docker compose -f evals/proxy/docker-compose.yml logs --tail 100
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-skill-${{ matrix.skill }}
+          path: evals/results/records.jsonl
+          if-no-files-found: ignore
+      - if: always()
+        run: docker compose -f evals/proxy/docker-compose.yml down
+
+  agent-evals:
+    needs: detect
+    if: needs.detect.outputs.agents != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        agent: ${{ fromJSON(needs.detect.outputs.agents) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/evals-setup
+      - name: agent evals (attempt 1)
+        id: attempt1
+        continue-on-error: true
+        working-directory: evals
+        env: { SUITE: '${{ matrix.agent }}' }
+        run: pnpm exec vitest run "agents/$SUITE/"
+      - name: agent evals (attempt 2, retry)
+        if: steps.attempt1.outcome == 'failure'
+        working-directory: evals
+        env: { SUITE: '${{ matrix.agent }}' }
+        run: pnpm exec vitest run "agents/$SUITE/"
+      - if: failure()
+        run: docker compose -f evals/proxy/docker-compose.yml logs --tail 100
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-agent-${{ matrix.agent }}
+          path: evals/results/records.jsonl
+          if-no-files-found: ignore
+      - if: always()
+        run: docker compose -f evals/proxy/docker-compose.yml down
+
+  workflow-evals:
+    needs: detect
+    if: needs.detect.outputs.run_workflow == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/evals-setup
       - name: workflow evals (attempt 1)
         id: attempt1
-        if: steps.detect.outputs.run_workflow == 'true'
         continue-on-error: true
+        working-directory: evals
         run: pnpm eval:workflow
-      # Attempt 2 of 2 — only when attempt 1 failed. There is no attempt 3.
       - name: workflow evals (attempt 2, retry)
-        if: steps.detect.outputs.run_workflow == 'true' && steps.attempt1.outcome == 'failure'
+        if: steps.attempt1.outcome == 'failure'
+        working-directory: evals
         run: pnpm eval:workflow
-
       - if: failure()
-        run: docker compose -f proxy/docker-compose.yml logs --tail 100
-      - if: always() && steps.detect.outputs.run_workflow == 'true'
-        run: docker compose -f proxy/docker-compose.yml down
+        run: docker compose -f evals/proxy/docker-compose.yml logs --tail 100
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-workflow
+          path: evals/results/records.jsonl
+          if-no-files-found: ignore
+      - if: always()
+        run: docker compose -f evals/proxy/docker-compose.yml down
+
+  # Mark THIS job as the required status check. It is green when every upstream job succeeded or
+  # was skipped (nothing relevant changed / fork PR), red when any failed or was cancelled.
+  evals-gate:
+    if: always()
+    needs: [docs-static, detect, skill-evals, agent-evals, workflow-evals]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "upstream results: $RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then
+            echo "::error::harness evals failed — merge blocked"
+            exit 1
+          fi
