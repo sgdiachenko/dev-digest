@@ -5,8 +5,8 @@ import type { WorkflowCase } from "../src/index.js";
  * loaded via settingSources:["project"]) behaves as documented. Organized by scenario, not by a
  * single artifact, because these behaviors are cross-cutting.
  *
- * Budget: 5 Claude sessions total.
- *   - 3 × trace     → 1 session each                      = 3
+ * Budget: 10 Claude sessions total.
+ *   - 8 × trace     → 1 session each                      = 8
  *   - 1 × activation pair (positive + near-miss negative) = 2
  *
  * `trace` folds several assertions into ONE session (cheaper, coarser) and stops early once its
@@ -28,32 +28,63 @@ export const cases: WorkflowCase[] = [
     maxTurns: 8,
   },
 
-  // --- trace (1 session): two "Read When" rows at once -----------------------------------------
+  // --- nested-AGENTS routing: each package's AGENTS.md links its own docs ------------------------
+  // Root AGENTS.md says "working inside a package -> that package's AGENTS.md". The prompts push the
+  // agent to CONSULT repo guidance before touching code; one anchor doc per case keeps it stable.
   {
     kind: "trace",
-    // Tests the CLAUDE.md "Read When" routing, so the prompt must push toward CONSULTING the docs,
-    // not exploring source. Earlier phrasing ("розберись, як усе влаштовано") sent the model straight
-    // into schema.ts / pipeline.run.ts and it never opened the routed doc. One anchor doc (pipeline.md)
-    // keeps this a deterministic routing check — asserting two docs in one session is inherently flaky.
-    name: "pipeline task follows CLAUDE.md routing to pipeline.md",
+    name: "reviewer-core task follows package AGENTS.md to pipeline.md",
     prompt:
-      "Я збираюся змінити review pipeline. Перш ніж торкатися коду — звірся з настановами цього репо " +
-      "(CLAUDE.md) щодо того, яку документацію треба прочитати для змін у pipeline, і прочитай саме ці документи.",
+      "Я збираюся змінити review pipeline у reviewer-core. Перш ніж торкатися коду — звірся з настановами " +
+      "цього репо для цього пакета і прочитай документацію, на яку вони посилаються.",
     expectFilesRead: ["reviewer-core/docs/pipeline.md"],
     maxTurns: 8,
   },
-
-  // --- trace (1 session): CLAUDE.md "Hit unexpected behavior" routing -> gotchas ----------------
-  // Was a contrast case, but the control run (empty tmpdir) could still reach the real repo by
-  // absolute path and read gotchas.md, making the negative flaky. As a single-session trace it
-  // reliably checks the same routing rule: in the real repo, the discovery prompt reads gotchas.md.
   {
     kind: "trace",
-    name: "CLAUDE.md routes a gotchas lookup to reviewer-core/insights",
+    name: "client task follows client AGENTS.md to ui-architecture.md",
+    prompt:
+      "Я збираюся додати у client/ новий маршрут (сторінку) з завантаженням даних. Перш ніж писати код — звірся з " +
+      "настановами цього репо для client і прочитай документацію, на яку вони посилаються.",
+    expectFilesRead: ["client/docs/ui-architecture.md"],
+    maxTurns: 8,
+  },
+  {
+    kind: "trace",
+    name: "server task follows server AGENTS.md to architecture.md",
+    prompt:
+      "Я збираюся додати новий модуль у server/ (нова доменна сутність з репозиторієм і сервісом). Перш ніж " +
+      "писати код — звірся з настановами цього репо для server і прочитай документацію, на яку вони посилаються.",
+    expectFilesRead: ["server/docs/architecture.md"],
+    maxTurns: 8,
+  },
+  {
+    kind: "trace",
+    name: "mcp-server task follows its AGENTS.md to the mcp-server plan",
+    prompt:
+      "Я збираюся додати новий tool у mcp-server. Перш ніж писати код — звірся з настановами цього репо " +
+      "для mcp-server і прочитай документ, на який вони посилаються.",
+    expectFilesRead: ["docs/plans/mcp-server.md"],
+    maxTurns: 8,
+  },
+  {
+    kind: "trace",
+    name: "e2e task follows e2e AGENTS.md to flows.md",
+    prompt:
+      "Я збираюся додати новий e2e-флоу. Перш ніж писати його — звірся з настановами цього репо для e2e " +
+      "і прочитай документацію, на яку вони посилаються.",
+    expectFilesRead: ["e2e/docs/flows.md"],
+    maxTurns: 8,
+  },
+
+  // --- trace (1 session): root "Hit something surprising" row -> the package's INSIGHTS.md -------
+  {
+    kind: "trace",
+    name: "AGENTS.md routes a surprising-behavior lookup to reviewer-core/INSIGHTS.md",
     prompt:
       "У reviewer-core я стикнувся з несподіваною поведінкою — щось працює не так, як я очікував. " +
       "За настановами цього репо, де це вже могло бути задокументовано? Прочитай той файл.",
-    expectFilesRead: ["reviewer-core/insights/gotchas.md"],
+    expectFilesRead: ["reviewer-core/INSIGHTS.md"],
     maxTurns: 5,
   },
 

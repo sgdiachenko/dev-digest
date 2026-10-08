@@ -64,6 +64,7 @@ const runWorkflow = changed.some(
   (f) =>
     f === "CLAUDE.md" ||
     f === ".claude/CLAUDE.md" ||
+    /(^|\/)AGENTS\.md$/.test(f) || // the real files behind every CLAUDE.md symlink
     /^\.claude\/agents\/.+\.md$/.test(f) ||
     /^evals\/workflow\//.test(f) ||
     /^evals\/src\//.test(f),

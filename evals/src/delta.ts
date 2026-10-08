@@ -63,11 +63,18 @@ function main(): void {
   console.log(`A = ${labelA}  sha ${a.git_sha}${a.dirty ? "-dirty" : ""}  (${a.times} runs)`);
   console.log(`B = ${labelB}  sha ${b.git_sha}${b.dirty ? "-dirty" : ""}  (${b.times} runs)`);
 
-  const nodeids = [...new Set([...Object.keys(a.tests), ...Object.keys(b.tests)])].sort();
+  // Pair tests by case name, not by the full nodeid: the nodeid embeds the eval file and the
+  // describe name, so two variants sharing the same cases (architecture-reviewer vs -lite) would
+  // never line up and every row would read `— -> x`.
+  const byCase = (tests: RepeatFile["tests"]) =>
+    Object.fromEntries(Object.entries(tests).map(([id, t]) => [id.split(" > ").slice(-1)[0], t]));
+  const testsA = byCase(a.tests);
+  const testsB = byCase(b.tests);
+  const nodeids = [...new Set([...Object.keys(testsA), ...Object.keys(testsB)])].sort();
   for (const id of nodeids) {
-    const ta = a.tests[id];
-    const tb = b.tests[id];
-    const shortId = id.split(" > ").slice(-1)[0];
+    const ta = testsA[id];
+    const tb = testsB[id];
+    const shortId = id;
     rateRow("\n  ", shortId, ta?.pass, tb?.pass);
 
     const practiceTexts = [...new Set([...Object.keys(ta?.practices ?? {}), ...Object.keys(tb?.practices ?? {})])];

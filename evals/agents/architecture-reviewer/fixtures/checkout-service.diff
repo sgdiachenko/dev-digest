@@ -1,33 +1,47 @@
-diff --git a/server/src/modules/checkout/domain/checkout.ts b/server/src/modules/checkout/domain/checkout.ts
-index 1111111..2222222 100644
---- a/server/src/modules/checkout/domain/checkout.ts
-+++ b/server/src/modules/checkout/domain/checkout.ts
-@@ -1,5 +1,6 @@
-+import type { FastifyReply } from "fastify";
- export interface CheckoutOrder {
-   id: string;
-   total: number;
- }
-
--export function priceOrder(order: CheckoutOrder): number {
-+export function priceOrder(order: CheckoutOrder, reply?: FastifyReply): number {
-   return order.total;
- }
-
-diff --git a/server/src/modules/checkout/service.ts b/server/src/modules/checkout/service.ts
-index 3333333..4444444 100644
---- a/server/src/modules/checkout/service.ts
-+++ b/server/src/modules/checkout/service.ts
-@@ -1,10 +1,14 @@
- import { priceOrder } from "./domain/checkout.js";
-+import { PgCheckoutRepository } from "./repository.js";
-
- export class CheckoutService {
-+  private repo = new PgCheckoutRepository();
+diff --git a/server/src/vendor/shared/contracts/checkout.ts b/server/src/vendor/shared/contracts/checkout.ts
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/server/src/vendor/shared/contracts/checkout.ts
+@@ -0,0 +1,12 @@
++import { z } from 'zod';
++import type { FastifyReply } from 'fastify';
 +
-   async checkout(order: { id: string; total: number }) {
-     const price = priceOrder(order);
++export const CheckoutOrder = z.object({
++  id: z.string(),
++  total: z.number(),
++});
++export type CheckoutOrder = z.infer<typeof CheckoutOrder>;
++
++export function priceOrder(order: CheckoutOrder, reply?: FastifyReply): number {
++  return order.total;
++}
+diff --git a/server/src/modules/checkout/repository.ts b/server/src/modules/checkout/repository.ts
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/server/src/modules/checkout/repository.ts
+@@ -0,0 +1,5 @@
++export class PgCheckoutRepository {
++  async save(orderId: string, price: number): Promise<void> {
++    void [orderId, price];
++  }
++}
+diff --git a/server/src/modules/checkout/service.ts b/server/src/modules/checkout/service.ts
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ b/server/src/modules/checkout/service.ts
+@@ -0,0 +1,12 @@
++import { priceOrder, type CheckoutOrder } from '@devdigest/shared';
++import { PgCheckoutRepository } from './repository.js';
++
++export class CheckoutService {
++  private readonly repo = new PgCheckoutRepository();
++
++  async checkout(order: CheckoutOrder) {
++    const price = priceOrder(order);
 +    await this.repo.save(order.id, price);
-     return { price };
-   }
- }
++    return { price };
++  }
++}

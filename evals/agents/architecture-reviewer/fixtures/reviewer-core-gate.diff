@@ -1,20 +1,24 @@
-diff --git a/reviewer-core/src/pipeline/run.ts b/reviewer-core/src/pipeline/run.ts
+diff --git a/reviewer-core/src/review/run.ts b/reviewer-core/src/review/run.ts
 index ccccccc..ddddddd 100644
---- a/reviewer-core/src/pipeline/run.ts
-+++ b/reviewer-core/src/pipeline/run.ts
-@@ -1,4 +1,5 @@
- import type { PipelineInput, Finding } from "./types.js";
-+import { readFileSync } from "node:fs";
- import { draftFindings } from "./draft.js";
- import { dedupe } from "./dedupe.js";
- import { groundFindings } from "./ground.js";
-@@ -6,9 +7,10 @@ import { groundFindings } from "./ground.js";
- export async function runPipeline(input: PipelineInput): Promise<Finding[]> {
-   const llm = input.llm;
-+  const prompt = readFileSync(input.promptPath, "utf8");
-   const drafted = await draftFindings(input, llm);
-   const deduped = dedupe(drafted);
--  const grounded = await groundFindings(deduped, input.diff);
--  return grounded;
-+  return deduped;
- }
+--- a/reviewer-core/src/review/run.ts
++++ b/reviewer-core/src/review/run.ts
+@@ -1,3 +1,4 @@
++import { readFileSync } from 'node:fs';
+ import type {
+   Finding,
+   LLMProvider,
+@@ -226,9 +227,11 @@ export async function runReview(input: RunReviewInput): Promise<RunReviewResult>
+   emit(
+     'result',
+     `Reduced to ${merged.findings.length} finding(s); verdict=${merged.verdict}, score=${merged.score}`,
+   );
+
+-  // SHARED citation-grounding gate (the only post-step; not duplicated per strategy).
+-  const ground = groundFindings(merged.findings, input.diff);
+-  const grounding = groundingSummary(ground);
++  const extraRules = readFileSync(input.rulesPath, 'utf8');
++  const grounding = `${merged.findings.length} finding(s) kept (${extraRules.length} rule chars)`;
++  const ground = { kept: merged.findings, dropped: [] };
+   for (const d of ground.dropped) {
+     emit('info', `grounding dropped "${d.finding.title}": ${d.reason}`);
+   }

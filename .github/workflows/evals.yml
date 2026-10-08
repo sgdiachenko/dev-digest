@@ -1,0 +1,96 @@
+# Harness evals. Two jobs:
+#  - docs-static: no model, free — AGENTS.md/CLAUDE.md symlinks, links and anchors.
+#  - workflow-evals: real Claude sessions via the OpenRouter proxy (costs tokens). Runs only when
+#    the harness changed (evals/scripts/ci-detect.mjs) and AT MOST TWICE: one attempt, plus one
+#    retry only if the first failed. Superseded pushes cancel the in-flight run, so a PR never
+#    piles up more runs.
+name: evals
+
+on:
+  pull_request:
+    paths:
+      - 'AGENTS.md'
+      - '**/AGENTS.md'
+      - 'CLAUDE.md'
+      - '.claude/**'
+      - 'evals/**'
+      - '.github/workflows/evals.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: evals
+
+jobs:
+  docs-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm vitest run src/harness-docs
+
+  workflow-evals:
+    runs-on: ubuntu-latest
+    # Real sessions can be flaky (activation) — report, but don't block the merge.
+    continue-on-error: true
+    timeout-minutes: 30
+    env:
+      EVAL_BACKEND: openrouter
+      OPENROUTER_BASE_URL: http://localhost:4000
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      EVAL_MODEL: google/gemini-2.5-flash
+      EVAL_JUDGE_MODEL: google/gemini-2.5-flash
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Detect whether the workflow tier must run
+        id: detect
+        working-directory: .
+        run: |
+          CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")" \
+            node evals/scripts/ci-detect.mjs
+      - if: steps.detect.outputs.run_workflow == 'true'
+        uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - if: steps.detect.outputs.run_workflow == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - if: steps.detect.outputs.run_workflow == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.detect.outputs.run_workflow == 'true'
+        run: docker compose -f proxy/docker-compose.yml up -d
+      - if: steps.detect.outputs.run_workflow == 'true'
+        run: pnpm proxy:wait
+
+      # Attempt 1 of 2.
+      - name: workflow evals (attempt 1)
+        id: attempt1
+        if: steps.detect.outputs.run_workflow == 'true'
+        continue-on-error: true
+        run: pnpm eval:workflow
+      # Attempt 2 of 2 — only when attempt 1 failed. There is no attempt 3.
+      - name: workflow evals (attempt 2, retry)
+        if: steps.detect.outputs.run_workflow == 'true' && steps.attempt1.outcome == 'failure'
+        run: pnpm eval:workflow
+
+      - if: failure()
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+      - if: always() && steps.detect.outputs.run_workflow == 'true'
+        run: docker compose -f proxy/docker-compose.yml down

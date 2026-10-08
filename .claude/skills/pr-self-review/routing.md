@@ -42,6 +42,7 @@ can block on their own, so a failure there saves the cost of the rest.
 ## Skills with no lane
 
 `mermaid-diagram` and `engineering-insights` are never routed by a file glob.
+[`dependency-checker`](../dependency-checker/SKILL.md) is a read-only dependency audit (user-invoked `/dependency-checker`) — never routed.
 `run-plan` is a workflow runner (user-invoked `/run-plan`), not a review skill — never routed.
 [`workflow-retro`](../workflow-retro/SKILL.md) is a post-run retrospective (user-invoked `/workflow-retro`) — never routed.
 `engineering-insights` runs once at the end of a review that surfaced something
