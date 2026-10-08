@@ -113,6 +113,20 @@
       "when": 1790175597683,
       "tag": "0015_shiny_spyke",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790775104837,
+      "tag": "0016_famous_spot",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790781941493,
+      "tag": "0017_rich_korg",
+      "breakpoints": true
     }
   ]
 }

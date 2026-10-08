@@ -49,6 +49,16 @@ export interface StructuredRequest<T> {
   timeoutMs?: number;
   maxRetries?: number;
   /**
+   * HTTP-level retries of the underlying SDK, per request (429/5xx). Unset ⇒
+   * the provider default. `0` makes a single attempt end-to-end.
+   */
+  httpRetries?: number;
+  /**
+   * OpenRouter only: route exclusively to providers that support structured
+   * output (`provider.require_parameters`). Unset ⇒ unrestricted routing.
+   */
+  requireStructuredProviders?: boolean;
+  /**
    * OpenRouter session id — groups related generations (e.g. all map-reduce
    * chunks of one review) into a session in the OpenRouter dashboard. Sent as
    * the `session_id` body field; ignored by providers that don't support it.
@@ -201,6 +211,31 @@ export interface GitCommit {
   date: string;
 }
 
+/** One entry of `git ls-tree -r -l`. `size` is null for non-blobs (`-`). */
+export interface GitTreeEntry {
+  path: string;
+  mode: string;
+  type: 'blob' | 'tree' | 'commit';
+  oid: string;
+  size: number | null;
+}
+
+/** One `git grep` hit: file path (relative to the repo root) and 1-based line. */
+export interface GitGrepMatch {
+  path: string;
+  line: number;
+}
+
+export interface GitGrepOptions {
+  /** Restrict the search to these paths/globs (after `--`). */
+  pathspecs?: string[];
+  ignoreCase?: boolean;
+  /** `git grep -m`: stop after N matching lines per file. */
+  maxPerFile?: number;
+  /** Cap on returned matches overall. */
+  maxResults?: number;
+}
+
 export interface GitClient {
   clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }>;
   fetchPullHead(repo: RepoRef, n: number): Promise<void>;
@@ -238,7 +273,35 @@ export interface GitClient {
    * "too large" (e.g. `BlobTooLargeError`) rather than silently truncating.
    */
   showFileAt(repo: RepoRef, ref: string, path: string, maxBytes?: number): Promise<string>;
+  /**
+   * Recursive listing of the git tree at commit `sha` (`git ls-tree -r -l`).
+   * Reads git objects only — never the working tree. `sha` MUST be a hex sha
+   * (guarded before shelling out). Includes symlinks (mode `120000`) and
+   * gitlinks (type `commit`); the caller filters.
+   */
+  listTree(repo: RepoRef, sha: string): Promise<GitTreeEntry[]>;
+  /**
+   * Raw bytes of the blob `oid` (git object, not the working tree). `oid` MUST
+   * be a full 40/64-char hex object id. `maxBytes`, when given, is enforced
+   * BEFORE the read (`cat-file -s`) and rejects with `BlobTooLargeError`.
+   */
+  readBlob(repo: RepoRef, oid: string, maxBytes?: number): Promise<Uint8Array>;
+  /**
+   * `git grep` over the git tree at commit `sha` — git objects only, never the
+   * working tree; repo content is searched, never executed. `sha` MUST be a hex
+   * sha, every pattern is passed via `-e` (no NUL), `pathspecs` are relative,
+   * traversal-free paths (all guarded before shelling out). Binary files are
+   * skipped; no match ⇒ `[]`. Results are in git's (path, line) order, capped at
+   * `maxResults`.
+   */
+  grepAt(repo: RepoRef, sha: string, patterns: string[], opts?: GitGrepOptions): Promise<GitGrepMatch[]>;
   clonePathFor(repo: RepoRef): string;
+}
+
+// ---------- Tokenizer ----------
+/** Token counter (approximate, model-agnostic). Never throws. */
+export interface Tokenizer {
+  count(text: string): number;
 }
 
 // ---------- CodeIndex (ripgrep + tree-sitter) ----------

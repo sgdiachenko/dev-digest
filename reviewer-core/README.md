@@ -43,7 +43,9 @@ simply leaves those sections out.
 Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
 `groundFindings` / `groundingSummary` (grounding), `toJsonSchema` / `extractJson`
 / `parseWithRepair` (structured output), plus the `run` entrypoint and
-`reduce`. Contracts (`Review`, `Finding`, `Verdict`, …) come from
+`reduce`, and `NoEligibleProviderError` (thrown by `OpenRouterProvider` when no
+OpenRouter endpoint can serve a structured request; see
+[docs/pipeline.md](docs/pipeline.md#structured-request-options)). Contracts (`Review`, `Finding`, `Verdict`, …) come from
 `@devdigest/shared`.
 
 ## Testing

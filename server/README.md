@@ -88,11 +88,130 @@ flowchart TB
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
   end
+  subgraph ProjectContext["Project Context"]
+    projectContext["project-context<br/>GET /repos/:id/context · GET /repos/:id/context/file<br/>POST /repos/:id/context/rescan · job project-context-scan"]
+  end
+  subgraph Attachments["Project Context attachments"]
+    contextAttachments["context-attachments<br/>GET|PUT /agents/:id/context?repo_id=<br/>GET|PUT /skills/:id/context?repo_id="]
+  end
+  subgraph Tour["Onboarding Tour"]
+    onboarding["onboarding<br/>GET /repos/:id/tour<br/>POST /repos/:id/tour/narrative"]
+  end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]
     workspace["workspace<br/>/workspace"]
   end
   HEALTH["/health (liveness) · /health/ready (DB ping → 200/503)"]
+```
+
+### Project Context routes
+
+`modules/project-context/routes.ts:22-49`. Shapes and error details:
+[docs/api-contracts.md](docs/api-contracts.md#project-context). Design record:
+[docs/specs/2026-09-30-project-context-catalog.md](../docs/specs/2026-09-30-project-context-catalog.md).
+
+| Route | Purpose |
+|---|---|
+| `GET /repos/:id/context` | The repository's Markdown document catalog. The first open of a cloned repository starts a scan. |
+| `GET /repos/:id/context/file?path=` | One document's content, read from the git object at the scanned SHA. |
+| `POST /repos/:id/context/rescan` | `202`; fetch, advance the clone and rebuild the catalog in the background. |
+
+The `project-context-scan` job (`CONTEXT_SCAN_JOB_KIND`,
+`modules/project-context/constants.ts:8`) is enqueued after a clone
+(`modules/repos/service.ts:86`) and after a repo-intel resync
+(`modules/repo-intel/service.ts:168-174`). Migration `0016_famous_spot.sql`
+adds `context_catalogs` and `context_docs`; it is never applied on boot, so run
+`pnpm -C server db:migrate` by hand.
+
+### Project Context attachments routes
+
+`modules/context-attachments/routes.ts:27-70`. Shapes, status codes and
+versioning rules:
+[docs/api-contracts.md](docs/api-contracts.md#project-context-attachments).
+Wiring and the run-time flow (resolve, fit, inject, trace):
+[docs/architecture.md](docs/architecture.md#project-context-attachments-modulescontext-attachments).
+Design record:
+[docs/specs/2026-09-30-project-context-attachments.md](../docs/specs/2026-09-30-project-context-attachments.md#implementation).
+
+| Route | Purpose |
+|---|---|
+| `GET /agents/:id/context?repo_id=` | The agent's attachments, the documents inherited from its linked skills, and the token budget for one repository. |
+| `PUT /agents/:id/context?repo_id=` | Replace the agent's full ordered list; bumps the agent version only if the list changed. |
+| `GET /skills/:id/context?repo_id=` | The skill's attachments plus the exact `## Project context` block they serialize to. |
+| `PUT /skills/:id/context?repo_id=` | Replace the skill's full ordered list; the skill version is unchanged. |
+
+Migration `0017_rich_korg.sql` adds `agent_context_docs` and
+`skill_context_docs` (cascade foreign keys, no foreign key to `context_docs`).
+It is never applied on boot, so run `pnpm -C server db:migrate` by hand. A run
+reads the attached documents from git objects at the catalog's `scanned_sha`
+and adds them as an untrusted `## Project context` block (at most 8,000
+estimated tokens per LLM call).
+
+#### Run-time injection flow
+
+```mermaid
+sequenceDiagram
+  participant R as ReviewRunExecutor
+  participant A as ContextAttachmentsService
+  participant C as ProjectContextCatalog
+  participant G as Git objects (scanned_sha)
+  participant E as reviewer-core
+  R->>A: resolveForRun (once per agent run, 5 s timeout)
+  A->>C: resolveDocs(paths of agent + injected skills)
+  C->>G: readBlob(blobOid, 64 KB)
+  alt no clone / no catalog / timeout / error
+    A-->>R: unavailable (Live log line, run continues)
+  else resolved
+    A-->>R: docs + trace record
+    R->>R: fitProjectContext (48,000 chars), Live log line
+    R->>E: reviewPullRequest(specs only if non-empty)
+    E-->>R: review
+    R->>R: store specs_read + project_context in the trace
+  end
+```
+
+### Onboarding Tour routes
+
+`modules/onboarding/routes.ts:21-61`. Shapes, status codes and the four accepted
+deviations from the specs (D1-D4):
+[docs/api-contracts.md](docs/api-contracts.md#onboarding-tour). Wiring, storage and
+rules: [docs/architecture.md](docs/architecture.md#onboarding-tour-modulesonboarding).
+Design records: [facts spec](../docs/specs/2026-10-01-onboarding-tour-facts.md),
+[narrative spec](../docs/specs/2026-10-01-onboarding-tour-narrative.md).
+
+| Route | Purpose |
+|---|---|
+| `GET /repos/:id/tour` | The deterministic tour (five sections) read from git objects at the indexed SHA, plus the stored AI narrative and a cost estimate. Never calls an LLM. |
+| `POST /repos/:id/tour/narrative` | `202`; starts (or joins) a background generation. `404` unknown repo, `409` tour unavailable, `429` over 10 per minute per workspace. |
+
+No migration: the narrative is stored as `jsonb` in the existing `onboarding`
+table (`modules/onboarding/repository.ts`, `StoredNarrativeState`).
+
+#### Tour read and narrative generation flow
+
+```mermaid
+sequenceDiagram
+  participant UI as Client (tour page)
+  participant S as OnboardingService
+  participant N as OnboardingNarrativeService
+  participant G as Git objects (indexed SHA)
+  participant L as LLM (structured output)
+  UI->>S: GET /repos/:id/tour
+  S->>G: listTree, readBlob, grepAt (fixed patterns)
+  S-->>UI: facts (LRU cache per repo + index version)
+  S->>N: forTour (one row read + price estimate)
+  N-->>UI: narrative view + estimated_cost
+  UI->>N: POST /repos/:id/tour/narrative
+  N-->>UI: 202 accepted (single-flight per repo)
+  N->>L: one completeStructured call (60 s, no retries)
+  alt valid output
+    N->>N: ground paths, ids, links, diagram; store narrative
+  else failure or timeout
+    N->>N: store only generation.last_failure (last good narrative kept)
+  end
+  loop while status is generating
+    UI->>S: GET /repos/:id/tour (poll 1.5 s)
+  end
 ```
 
 ## Environment

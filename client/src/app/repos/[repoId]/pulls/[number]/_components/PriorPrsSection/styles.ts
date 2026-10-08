@@ -5,8 +5,9 @@ export const s = {
     display: "flex",
     flexDirection: "column",
     gap: 8,
-    paddingTop: 10,
-    borderTop: "1px solid var(--border)",
+    padding: 10,
+    border: "1px solid var(--border)",
+    borderRadius: 8,
   } satisfies CSSProperties,
   toggleRow: {
     display: "flex",

@@ -1,5 +1,6 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
-import type { Db } from '../../db/client.js';
+import type { Db, DbOrTx } from '../../db/client.js';
+import { NotFoundError } from '../../platform/errors.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
@@ -112,6 +113,24 @@ export interface LinkedSkillRow {
   order: number;
 }
 
+/** A Project Context document pinned to an agent (or skill), by repo + catalog path. */
+export interface ContextDocRef {
+  repoId: string;
+  path: string;
+}
+
+export interface AttachedContextDoc extends ContextDocRef {
+  position: number;
+}
+
+/** True when two ordered attachment lists differ — set OR order (order is the prompt order). */
+function contextDocsChanged(before: ContextDocRef[], after: ContextDocRef[]): boolean {
+  return (
+    before.length !== after.length ||
+    before.some((d, i) => d.repoId !== after[i]!.repoId || d.path !== after[i]!.path)
+  );
+}
+
 export class AgentsRepository {
   constructor(private db: Db) {}
 
@@ -124,6 +143,15 @@ export class AgentsRepository {
       .select()
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.enabled, true)));
+  }
+
+  /** Enabled agent ids in a stable order (`created_at`, `id`) — for deterministic attachment merges. */
+  async listEnabledIdsOrdered(workspaceId: string): Promise<{ id: string }[]> {
+    return this.db
+      .select({ id: t.agents.id })
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.enabled, true)))
+      .orderBy(asc(t.agents.createdAt), asc(t.agents.id));
   }
 
   async getById(workspaceId: string, id: string): Promise<AgentRow | undefined> {
@@ -209,9 +237,19 @@ export class AgentsRepository {
     return row;
   }
 
-  private async snapshotVersion(row: AgentRow, version: number): Promise<void> {
-    const skills = await this.skillIdsForAgent(row.id);
-    await this.db
+  private async snapshotVersion(
+    row: AgentRow,
+    version: number,
+    db: DbOrTx = this.db,
+  ): Promise<void> {
+    const links = await db
+      .select({ id: t.agentSkills.skillId })
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, row.id))
+      .orderBy(asc(t.agentSkills.order));
+    const skills = links.map((l) => l.id);
+    const contextDocs = await this.contextDocsOf(db, row.id);
+    await db
       .insert(t.agentVersions)
       .values({
         agentId: row.id,
@@ -225,9 +263,85 @@ export class AgentsRepository {
           ci_fail_on: row.ciFailOn,
           repo_intel: row.repoIntel,
           skills,
+          context_docs: contextDocs.map((d) => ({ repo_id: d.repoId, path: d.path })),
         },
       })
       .onConflictDoNothing();
+  }
+
+  // ---- agent_context_docs (Project Context attachments) -------------------
+
+  private async contextDocsOf(db: DbOrTx, agentId: string): Promise<AttachedContextDoc[]> {
+    return db
+      .select({
+        repoId: t.agentContextDocs.repoId,
+        path: t.agentContextDocs.path,
+        position: t.agentContextDocs.position,
+      })
+      .from(t.agentContextDocs)
+      .where(eq(t.agentContextDocs.agentId, agentId))
+      .orderBy(asc(t.agentContextDocs.position));
+  }
+
+  /** Attached documents of an agent (all repos), in prompt order. */
+  async listContextDocs(agentId: string): Promise<AttachedContextDoc[]> {
+    return this.contextDocsOf(this.db, agentId);
+  }
+
+  /**
+   * Replace the agent's full ordered attachment list — ONE transaction, so a reader never
+   * sees the list and the version disagree. The agent row is locked first: two concurrent
+   * PUTs serialize, the last one wins, and neither bumps the version twice from one base.
+   * Attachments are config: a changed ordered list bumps the version and snapshots it; an
+   * identical list does not. A never-snapshotted agent (raw-inserted seed) gets its v1 taken
+   * from the state BEFORE the change so the history has no gap.
+   */
+  async replaceContextDocs(
+    workspaceId: string,
+    agentId: string,
+    docs: ContextDocRef[],
+  ): Promise<{ changed: boolean; version: number }> {
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, agentId)))
+        .for('update');
+      if (!row) throw new NotFoundError('Agent not found');
+
+      const [hasSnapshot] = await tx
+        .select({ version: t.agentVersions.version })
+        .from(t.agentVersions)
+        .where(eq(t.agentVersions.agentId, agentId))
+        .limit(1);
+      if (!hasSnapshot) await this.snapshotVersion(row, row.version, tx);
+
+      const before = await this.contextDocsOf(tx, agentId);
+      const changed = contextDocsChanged(before, docs);
+
+      await tx.delete(t.agentContextDocs).where(eq(t.agentContextDocs.agentId, agentId));
+      if (docs.length > 0) {
+        await tx.insert(t.agentContextDocs).values(
+          docs.map((d, position) => ({
+            agentId,
+            workspaceId,
+            repoId: d.repoId,
+            path: d.path,
+            position,
+          })),
+        );
+      }
+      if (!changed) return { changed: false, version: row.version };
+
+      const nextVersion = row.version + 1;
+      const [updated] = await tx
+        .update(t.agents)
+        .set({ version: nextVersion })
+        .where(eq(t.agents.id, agentId))
+        .returning();
+      await this.snapshotVersion(updated!, nextVersion, tx);
+      return { changed: true, version: nextVersion };
+    });
   }
 
   // ---- agent_versions (immutable config snapshots) ------------------------

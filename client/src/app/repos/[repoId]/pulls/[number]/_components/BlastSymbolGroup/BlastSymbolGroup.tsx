@@ -1,8 +1,8 @@
 /* BlastSymbolGroup — one changed symbol's downstream impact: its known
    callers (file:line, clickable on GitHub when repoFullName/headSha are
    known), followed by the endpoints/crons those callers reach. Collapsible
-   (P3, 1:1 pattern with IntentCard's sourcesOpen/sourcesToggle) — defaults to
-   expanded so data isn't hidden on first paint. */
+   (P3, 1:1 pattern with IntentCard's sourcesOpen/sourcesToggle). The card
+   opens the first group and leaves later groups collapsed initially. */
 "use client";
 
 import React from "react";
@@ -16,13 +16,15 @@ export function BlastSymbolGroup({
   group,
   repoFullName,
   headSha,
+  initiallyOpen = true,
 }: {
   group: DownstreamImpact;
   repoFullName?: string | null;
   headSha?: string | null;
+  initiallyOpen?: boolean;
 }) {
   const t = useTranslations("blast");
-  const [open, setOpen] = React.useState(true);
+  const [open, setOpen] = React.useState(initiallyOpen);
   const bodyId = React.useId();
 
   return (
@@ -58,9 +60,11 @@ export function BlastSymbolGroup({
                   : undefined;
               return (
                 <div key={i} style={s.callerRow}>
-                  <MonoLink href={href}>
-                    {caller.file}:{caller.line}
-                  </MonoLink>
+                  <span style={s.callerPath}>
+                    <MonoLink href={href}>
+                      {caller.file}:{caller.line}
+                    </MonoLink>
+                  </span>
                   <span style={s.callerName}>{caller.name}</span>
                 </div>
               );
@@ -72,7 +76,7 @@ export function BlastSymbolGroup({
               {group.endpoints_affected.length > 0 && <div style={s.impactGroup}>
                   <span style={s.impactLabel}>{t("legend.endpoints")}</span>
                   <div style={s.subList}>{group.endpoints_affected.map((endpoint) => (
-                    <Badge key={endpoint} icon="Globe" color="var(--accent)" bg="var(--accent-bg)" mono>
+                    <Badge key={endpoint} icon="Globe" color="var(--accent-text)" bg="var(--accent-bg)" mono>
                       {endpoint}
                     </Badge>
                   ))}</div>

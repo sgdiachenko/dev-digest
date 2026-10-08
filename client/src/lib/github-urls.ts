@@ -35,3 +35,8 @@ export function githubBlobUrl(
   }
   return url;
 }
+
+/** https://github.com/{owner}/{repo}/tree/{sha}/{dir} — directory link pinned to a SHA. */
+export function githubTreeUrl(repoFullName: string, sha: string, dir: string): string {
+  return `${HOST}/${repoFullName}/tree/${sha}/${encPath(dir)}`;
+}

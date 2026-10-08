@@ -4,12 +4,19 @@ import type { CSSProperties } from "react";
 export const s = {
   wrap: {
     display: "flex",
+    flexWrap: "wrap",
     gap: 18,
     alignItems: "flex-start",
     padding: 18,
     borderRadius: 10,
     border: "1px solid var(--border)",
     background: "var(--bg-elevated)",
+  } satisfies CSSProperties,
+  embedded: {
+    padding: 0,
+    border: "none",
+    borderRadius: 0,
+    background: "transparent",
   } satisfies CSSProperties,
   iconBox: (bg: string, color: string): CSSProperties => ({
     width: 40,
@@ -21,7 +28,7 @@ export const s = {
     color,
     flexShrink: 0,
   }),
-  main: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  main: { flex: "1 1 180px", minWidth: 0 } satisfies CSSProperties,
   titleRow: {
     display: "flex",
     alignItems: "center",

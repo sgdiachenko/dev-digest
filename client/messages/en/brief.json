@@ -42,5 +42,94 @@
       "title": "Couldn't load the PR's intent",
       "deriveFailed": "Couldn't derive the PR's intent."
     }
+  },
+  "card": {
+    "title": "PR Brief",
+    "aiLabel": "AI-generated",
+    "empty": {
+      "title": "No brief yet",
+      "body": "A brief summarizes why this PR exists, what it risks, and where to start reading."
+    },
+    "modelHint": "Model: {model}",
+    "generate": "Generate brief",
+    "regenerate": "Regenerate",
+    "generating": "Generating…",
+    "provenance": "Generated {when} for commit {sha} · {model} · {cost}",
+    "costNotReported": "cost not reported",
+    "relativeTime": {
+      "justNow": "just now",
+      "minutes": "{count, plural, one {# minute ago} other {# minutes ago}}",
+      "hours": "{count, plural, one {# hour ago} other {# hours ago}}",
+      "days": "{count, plural, one {# day ago} other {# days ago}}"
+    },
+    "outdated": "Outdated — the PR has new commits since this brief",
+    "riskAreas": "Risk areas",
+    "noRisks": "No notable risks flagged.",
+    "severity": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "expandRisk": "Show explanation",
+    "collapseRisk": "Hide explanation",
+    "reviewFocus": {
+      "title": "Review focus — read these first",
+      "empty": "No specific lines to start from — read the diff in Smart order."
+    },
+    "notInDiff": "not in this PR's diff",
+    "fileNotInDiff": "File not in this PR's diff",
+    "lineNotInDiff": "Line {line} isn't part of this diff",
+    "missing": {
+      "title": "Generated without:",
+      "input": {
+        "intent": "Intent",
+        "blast": "Blast radius",
+        "linked_issue": "Linked issue",
+        "description": "Description",
+        "specs": "Spec documents",
+        "diff_stats": "Diff stats"
+      },
+      "reason": {
+        "not_derived": "not derived yet",
+        "stale": "stale",
+        "unavailable": "unavailable",
+        "timeout": "timed out",
+        "flag_off": "turned off",
+        "index_failed": "index failed",
+        "index_partial": "index partial",
+        "repo_too_large": "repository too large",
+        "no_data": "no data",
+        "github_unavailable": "GitHub unavailable",
+        "empty": "empty",
+        "no_catalog": "no Project Context catalog",
+        "not_cloned": "repository not cloned",
+        "none_attached": "none attached",
+        "truncated": "truncated",
+        "over_budget": "trimmed to fit the budget"
+      },
+      "fix": {
+        "intent": "Derive intent",
+        "specs": "Open Project Context"
+      }
+    },
+    "error": {
+      "llm_timeout": "The model took too long to respond. Try again.",
+      "llm_error": "The model request failed. Try again.",
+      "invalid_output": "The model returned an unusable answer. Try again.",
+      "no_diff_data": "This PR has no diff data yet.",
+      "input_over_budget": "The PR input is too large to brief.",
+      "generic": "Couldn't generate the brief.",
+      "missingKey": "Add an API key for {provider} in Settings",
+      "apiKeysLink": "Settings → API Keys",
+      "modelsLink": "Settings → Feature Models",
+      "rateLimited": "Too many brief requests — try again in a minute",
+      "loadFailed": "Couldn't load the brief"
+    },
+    "retry": "Retry",
+    "status": {
+      "generating": "Generating brief…",
+      "generated": "Brief generated",
+      "failed": "Brief generation failed"
+    }
   }
 }

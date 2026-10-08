@@ -12,31 +12,39 @@ import {
   topSeverity,
   type DiffCommentApi,
   type DiffFindingApi,
+  type DiffTarget,
 } from "@/components/diff-viewer";
-import { ROLE_META } from "../../constants";
+import { COLLAPSED_BY_DEFAULT, ROLE_META } from "../../constants";
 import { s } from "./styles";
 
 export function RoleGroup({
   role,
   smartFiles,
   files,
-  defaultCollapsed,
   commenting,
   findings,
   stickyTop,
+  target,
 }: {
   role: SmartDiffRole;
   /** The smart-diff response's own file entries for this group (finding_ids). */
   smartFiles: SmartDiffFile[];
   /** The resolved `PrFile`s (with patch text) to actually render. */
   files: PrFile[];
-  defaultCollapsed?: boolean;
   commenting?: DiffCommentApi;
   findings?: DiffFindingApi;
   stickyTop: number;
+  /** Set only on the group that contains the navigation target's file. */
+  target?: DiffTarget;
 }) {
   const t = useTranslations("prReview");
-  const [open, setOpen] = React.useState(!defaultCollapsed);
+  const [open, setOpen] = React.useState(!COLLAPSED_BY_DEFAULT[role]);
+  // A new target key opens a collapsed group (adjust-on-prop-change, no effect).
+  const [seenKey, setSeenKey] = React.useState<string | null>(null);
+  if (target && target.key !== seenKey) {
+    setSeenKey(target.key);
+    setOpen(true);
+  }
   const meta = ROLE_META[role];
 
   const findingFileCount = smartFiles.filter((f) => f.finding_ids.length > 0).length;
@@ -45,9 +53,10 @@ export function RoleGroup({
   const top = topSeverity(groupFindings);
 
   return (
-    <div style={s.group}>
+    <div style={s.group} data-role-group={role}>
       <button
         type="button"
+        data-role-header
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         style={{ ...s.header, top: stickyTop }}
@@ -69,7 +78,7 @@ export function RoleGroup({
           <span className="tnum">{t("smartDiff.filesCount", { count: files.length })}</span>
         </span>
       </button>
-      {open && <DiffViewer files={files} commenting={commenting} findings={findings} />}
+      {open && <DiffViewer files={files} commenting={commenting} findings={findings} target={target} />}
     </div>
   );
 }

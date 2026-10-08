@@ -28,6 +28,7 @@ export const s = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
+  fileNotice: { fontSize: 12, color: "var(--warn)", flexShrink: 0 } satisfies CSSProperties,
   fileStat: { fontSize: 12 } satisfies CSSProperties,
   addText: { color: "var(--code-add-text)" } satisfies CSSProperties,
   delText: { color: "var(--code-del-text)" } satisfies CSSProperties,
@@ -115,5 +116,16 @@ export function lineSignFor(kind: Line["kind"]): CSSProperties {
     textAlign: "center",
     color: kind === "add" ? "var(--code-add-text)" : kind === "del" ? "var(--code-del-text)" : "var(--text-muted)",
     flexShrink: 0,
+  };
+}
+
+/** Temporary emphasis for the navigation target line; the fade-out only
+ *  animates when the user has not asked for reduced motion. */
+export function highlightFor(reducedMotion: boolean): CSSProperties {
+  return {
+    outline: "2px solid var(--accent)",
+    outlineOffset: -2,
+    background: "var(--accent-bg)",
+    transition: reducedMotion ? undefined : "background .3s, outline-color .3s",
   };
 }

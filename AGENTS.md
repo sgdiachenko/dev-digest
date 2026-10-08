@@ -19,17 +19,26 @@ run on the host, not in a container).
 - `mcp-server/` — local MCP server (stdio) exposing the review flow to an AI agent → [mcp-server/AGENTS.md](mcp-server/AGENTS.md)
 - `e2e/` — deterministic browser e2e (agent-browser, no LLM) → [e2e/AGENTS.md](e2e/AGENTS.md)
 - `docs/` — cross-cutting reference docs (agent prompts, model choice) that don't belong to one package
-- `.claude/agents/` — Claude Code subagents: `researcher` (read-only
+- `.claude/agents/` — Claude Code subagents: `spec-creator` (SDD spec
+  `docs/specs/<YYYY-MM-DD>-*.md` with EARS criteria + registry
+  `docs/specs/README.md`; writes only there; research via parallel `researcher`s),
+  `researcher` (read-only
   evidence), `brainstorm` (read-only comparison of 2–3 implementation
-  options, optional), `planner` (read-only Development Plan), `implementer`
+  options, optional), `implementation-planner` (read-only requirements review +
+  Implementation Plan; asks multi- vs single-agent mode; never specs), `implementer`
   (executes the plan, runs the package checks), `test-writer` (adds test
-  coverage, test files only), `plan-verifier` (read-only traceability check),
+  coverage, test files only), `plan-verifier` (traceability check; writes only its own verification report),
   `architecture-reviewer` (read-only onion/layering review),
   `security-reviewer` (read-only OWASP-based security review), `doc-writer`
-  (Markdown docs + diagrams). Flow: researcher → [brainstorm → user picks
-  option] → planner → user approves → implementer → test-writer →
-  plan-verifier → architecture-reviewer ∥ security-reviewer → doc-writer →
-  `/pr-self-review`
+  (Markdown docs + diagrams). Flow: spec-creator (analyze → answers →
+  write → user approves) → researcher → [brainstorm → user picks
+  option] → implementation-planner (questions + mode → answers → plan) →
+  user approves — these three run by hand — then `/run-plan <plan>`
+  ([.claude/skills/run-plan/SKILL.md](.claude/skills/run-plan/SKILL.md)): implementer
+  (parallel per work package, or one pass) → plan-verifier →
+  architecture-reviewer ∥ security-reviewer ∥ `/code-review` → review-fix
+  loop → doc-writer → `/pr-self-review`. `test-writer` is on demand only,
+  outside `/run-plan`
 
 ## Commands
 
@@ -94,11 +103,14 @@ for the exact command (pnpm vs npm differs).
   [routing.md](.claude/skills/pr-self-review/routing.md) or it never runs.
   Deliberate bypass: `PR_SELF_REVIEW_OVERRIDE=1 <command>`, which is recorded
   in the report.
-- A new implementation skill also goes into the `skills:` list of **both**
-  [planner](.claude/agents/planner.md) and
-  [implementer](.claude/agents/implementer.md) — the two lists must stay
-  identical so a plan never assumes practices the implementer doesn't have.
-  `brainstorm`, `test-writer`, `architecture-reviewer`, `security-reviewer`,
+- A new implementation skill goes into the `skills:` list of
+  [implementation-planner](.claude/agents/implementation-planner.md) (it
+  preloads every one) and into the lane table of
+  [implementer](.claude/agents/implementer.md), which preloads only
+  `engineering-insights` and Reads per step the skills the plan's step names
+  plus the file's lane skills — so a plan never assumes practices the
+  implementer doesn't have, without every implementer paying for all of them.
+  `spec-creator`, `brainstorm`, `test-writer`, `architecture-reviewer`, `security-reviewer`,
   `plan-verifier` and `doc-writer` carry role-scoped `skills:` lists instead —
   each one justified in
   [`.claude/agents/README.md`](.claude/agents/README.md).

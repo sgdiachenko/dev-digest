@@ -105,16 +105,20 @@ export const PrDetailHeader = React.forwardRef<HTMLDivElement, PrDetailHeaderPro
           </span>
         </div>
       )}
-      <Tabs
-        value={tab}
-        onChange={onSetTab}
-        pad="0"
-        tabs={[
-          { key: "overview", label: "Overview", icon: "FileText" },
-          { key: "findings", label: "Agent runs", icon: "AlertOctagon", count: findingsCount || undefined },
-          { key: "diff", label: "Files changed", icon: "Code", count: pr.files_count },
-        ]}
-      />
+      <div style={{ overflowX: "auto" }}>
+        <div style={{ width: "max-content", minWidth: "100%" }}>
+          <Tabs
+            value={tab}
+            onChange={onSetTab}
+            pad="0"
+            tabs={[
+              { key: "overview", label: "Overview", icon: "FileText" },
+              { key: "findings", label: "Agent runs", icon: "AlertOctagon", count: findingsCount || undefined },
+              { key: "diff", label: "Files changed", icon: "Code", count: pr.files_count },
+            ]}
+          />
+        </div>
+      </div>
     </div>
   );
   },

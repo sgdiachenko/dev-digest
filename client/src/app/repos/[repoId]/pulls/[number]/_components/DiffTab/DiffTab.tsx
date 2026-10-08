@@ -13,14 +13,13 @@ import {
 import { usePrSmartDiff } from "@/lib/hooks/smart-diff";
 import { notify } from "@/lib/toast";
 import type { PrFile } from "@devdigest/shared";
-import { COLLAPSED_BY_DEFAULT } from "./constants";
 import { diffTotals, findingsForSmartDiff, orderFilesByRole, type DiffOrder } from "./helpers";
 import { DiffOrderToggle } from "./_components/DiffOrderToggle";
 import { RoleGroup } from "./_components/RoleGroup";
+import { useDiffTarget, type DiffTargetInput } from "./useDiffTarget";
 
 interface DiffTabProps {
   prId: string | null;
-  filesCount: number;
   files: PrFile[];
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
@@ -28,6 +27,8 @@ interface DiffTabProps {
   headSha?: string | null;
   /** PrDetailHeader's measured sticky height — see page.tsx. */
   headerHeight?: number;
+  /** Validated file (and line) to reveal — from the PR Brief or a shared URL. */
+  target?: DiffTargetInput | null;
 }
 
 export function DiffTab({
@@ -37,8 +38,10 @@ export function DiffTab({
   repoFullName,
   headSha,
   headerHeight = 0,
+  target: targetInput = null,
 }: DiffTabProps) {
   const t = useTranslations("prReview");
+  const tBrief = useTranslations("brief");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
   const { data: reviews } = usePrReviews(prId);
@@ -67,6 +70,15 @@ export function DiffTab({
   const totals = diffTotals(files);
   const resolvedGroups = smartDiff ? orderFilesByRole(smartDiff.groups, files) : [];
   const smartFilesByRole = new Map((smartDiff?.groups ?? []).map((g) => [g.role, g.files]));
+
+  // Held back while Smart Diff loads: its arrival swaps Original for Smart
+  // order and would remount the cards the target just expanded.
+  const target = useDiffTarget(
+    targetInput,
+    !smartDiffLoading,
+    headerHeight,
+    tBrief("card.lineNotInDiff", { line: targetInput?.line ?? 0 }),
+  );
 
   const commenting: DiffCommentApi = {
     comments: comments ?? [],
@@ -126,14 +138,14 @@ export function DiffTab({
             role={g.role}
             smartFiles={smartFilesByRole.get(g.role) ?? []}
             files={g.files}
-            defaultCollapsed={!!COLLAPSED_BY_DEFAULT[g.role]}
             commenting={commenting}
             findings={findingApi}
             stickyTop={headerHeight}
+            target={target && g.files.some((f) => f.path === target.path) ? target : undefined}
           />
         ))
       ) : (
-        <DiffViewer files={files} commenting={commenting} findings={findingApi} />
+        <DiffViewer files={files} commenting={commenting} findings={findingApi} target={target ?? undefined} />
       )}
     </section>
   );

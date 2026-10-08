@@ -23,17 +23,17 @@ function GraphLegend({ showCrons }: { showCrons: boolean }) {
   const t = useTranslations("blast");
   return (
     <div style={s.legend}>
-      <Badge dot color="var(--accent)" bg="var(--accent-bg)">
+      <Badge dot color="var(--accent-text)" bg="var(--accent-bg)">
         {t("legend.symbol")}
       </Badge>
       <Badge dot color="var(--text-secondary)" bg="var(--bg-elevated)">
         {t("legend.callers")}
       </Badge>
-      <Badge dot color="var(--accent)" bg="var(--accent-bg)">
+      <Badge dot color="var(--accent-text)" bg="var(--accent-bg)">
         {t("legend.endpoints")}
       </Badge>
       {showCrons && (
-        <Badge dot color="var(--accent)" bg="var(--accent-bg)">
+        <Badge dot color="var(--accent-text)" bg="var(--accent-bg)">
           {t("legend.crons")}
         </Badge>
       )}
@@ -61,8 +61,8 @@ export function BlastRadiusCard({
   if (isLoading) {
     return (
       <section>
-        <SectionLabel icon="Zap">{tBrief("block.blast")}</SectionLabel>
         <Card>
+          <SectionLabel icon="Zap">{tBrief("block.blast")}</SectionLabel>
           <Skeleton height={60} />
         </Card>
       </section>
@@ -72,8 +72,8 @@ export function BlastRadiusCard({
   if (isError) {
     return (
       <section>
-        <SectionLabel icon="Zap">{tBrief("block.blast")}</SectionLabel>
         <Card>
+          <SectionLabel icon="Zap">{tBrief("block.blast")}</SectionLabel>
           <ErrorState title={t("error.title")} onRetry={() => refetch()} />
         </Card>
       </section>
@@ -86,8 +86,8 @@ export function BlastRadiusCard({
 
   return (
     <section>
-      <SectionLabel icon="Zap">{tBrief("block.blast")}</SectionLabel>
       <Card style={s.card}>
+        <SectionLabel icon="Zap">{tBrief("block.blast")}</SectionLabel>
         <div style={s.header}>
           {data.downstream.length > 0 && (
             <div style={s.statsRow}>
@@ -125,23 +125,22 @@ export function BlastRadiusCard({
                 {resync.isPending ? t("resync.pending") : t("resync.action")}
               </Button>
             </div>}
+          {data.downstream.length > 0 && (
+            <div style={s.viewSwitch}>
+              <Chip active={view === "tree"} onClick={() => setView("tree")}>
+                {t("view.tree")}
+              </Chip>
+              <Chip active={view === "graph"} onClick={() => setView("graph")}>
+                {t("view.graph")}
+              </Chip>
+            </div>
+          )}
         </div>
 
         {data.degraded && data.reason && (
           <div style={s.degradedReason}>{t(`reason.${data.reason}`)}</div>
         )}
         {resync.isError && <div style={s.resyncError}>{t("resync.error")}</div>}
-
-        {data.downstream.length > 0 && (
-          <div style={s.viewSwitch}>
-            <Chip active={view === "tree"} onClick={() => setView("tree")}>
-              {t("view.tree")}
-            </Chip>
-            <Chip active={view === "graph"} onClick={() => setView("graph")}>
-              {t("view.graph")}
-            </Chip>
-          </div>
-        )}
 
         {data.downstream.length === 0 ? (
           <EmptyState
@@ -150,10 +149,11 @@ export function BlastRadiusCard({
           />
         ) : view === "tree" ? (
           <div style={s.groups}>
-            {data.downstream.map((group) => (
+            {data.downstream.map((group, index) => (
               <BlastSymbolGroup
                 key={group.symbol}
                 group={group}
+                initiallyOpen={index === 0}
                 repoFullName={repoFullName}
                 headSha={headSha}
               />

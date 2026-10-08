@@ -1,24 +1,143 @@
 {
   "title": "Project Context",
-  "chunks": "{count} chunks",
-  "reindex": "Re-index",
-  "indexing": "Indexing…",
-  "resync": "Resync",
-  "resyncing": "Resyncing…",
-  "indexStatus": "Index status: {status}",
-  "loadError": "Couldn’t load specs",
-  "kb": "{kb}kb",
+  "subtitle": "Markdown documents read from the repository's git history.",
+  "listLabel": "Documents",
+  "filter": {
+    "label": "Filter documents by path",
+    "placeholder": "Filter by path…",
+    "categoriesLabel": "Filter by category"
+  },
+  "categories": {
+    "specs": "Specs",
+    "docs": "Docs",
+    "insights": "Insights"
+  },
+  "tokens": {
+    "estimate": "≈{count, number}",
+    "none": "—",
+    "tooltip": "Tokenizer estimate — can differ by 10–30 % depending on the model"
+  },
+  "footer": {
+    "summary": "{count, plural, one {# file} other {# files}} · scanned {time}",
+    "ref": "{branch}@{sha}"
+  },
+  "rescan": "Rescan",
+  "rescanning": "Rescanning…",
+  "status": {
+    "started": "Scan started",
+    "finished": "Scan finished"
+  },
+  "scanning": {
+    "title": "Scanning documents…",
+    "body": "Reading the repository's markdown files. This page updates when the scan finishes."
+  },
+  "scanError": "Last scan failed: {reason}",
+  "rescanError": "Rescan failed: {reason}",
+  "notCloned": {
+    "title": "Repository not cloned yet",
+    "body": "Documents are read from the local clone. Resync to fetch the repository, then the catalog builds automatically.",
+    "resync": "Resync",
+    "resyncing": "Resyncing…"
+  },
   "empty": {
-    "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+    "title": "No documents found",
+    "body": "Add markdown files such as PRDs, tech specs and acceptance criteria under .devdigest/specs/ and rescan."
   },
-  "mode": {
-    "preview": "preview",
-    "edit": "edit"
+  "noMatch": {
+    "title": "No documents match",
+    "clear": "Clear filters"
   },
-  "editor": {
-    "loadError": "Couldn’t load spec",
-    "save": "Save",
-    "saving": "Saving…"
+  "truncated": "Showing first 1,000 of {total, number}",
+  "loadError": "Couldn't load documents",
+  "retry": "Retry",
+  "secretWarning": "Possible secret",
+  "docStatus": {
+    "empty": "Empty",
+    "too_large": "Too large",
+    "unreadable": "Unreadable"
+  },
+  "preview": {
+    "selectPrompt": "Select a document to preview it.",
+    "loading": "Loading document…",
+    "empty": "Empty document",
+    "tooLarge": "Too large to preview ({size})",
+    "unreadable": "Couldn't read this document as text ({size})",
+    "notFound": "Document not found in {branch}@{sha}",
+    "loadError": "Couldn't load this document",
+    "backToList": "Back to list"
+  },
+  "usedBy": {
+    "summary": "Used by {agents, plural, one {# agent} other {# agents}} · {skills, plural, one {# skill} other {# skills}}",
+    "none": "Not used",
+    "unavailable": "Usage unavailable",
+    "agentsHeading": "Agents",
+    "skillsHeading": "Skills"
+  },
+  "attachments": {
+    "title": "Project context",
+    "agentHint": "Attached documents are injected into this agent's runs. Order matters — documents earlier in the list are kept first when the budget runs out.",
+    "skillHint": "Documents attached to a skill are injected into every run of an agent that uses this skill. Changing them does not create a new skill version.",
+    "footer": "Injected as untrusted reference data into every run",
+    "repoLabel": "Repository",
+    "listLabel": "Attachable documents",
+    "filterLabel": "Filter documents by path",
+    "filterPlaceholder": "Filter by path…",
+    "attachedCount": "{count, plural, one {# document attached} other {# documents attached}}",
+    "maxDocs": "At most {max, number} documents can be attached.",
+    "noRepo": {
+      "title": "No repository selected",
+      "body": "Select a repository to attach its documents."
+    },
+    "noCatalog": {
+      "title": "No documents to attach",
+      "body": "The repository has no indexed documents yet. Open Project Context and rescan."
+    },
+    "noClone": {
+      "title": "Repository not cloned yet",
+      "body": "Documents are read from the local clone. Resync the repository, then attach documents."
+    },
+    "noMatch": "No documents match “{q}”.",
+    "noAttached": "Nothing is attached yet.",
+    "notFound": "Not found in {branch}@{sha}",
+    "detach": "Detach {path}",
+    "detachLabel": "Detach",
+    "preview": "Preview",
+    "previewLabel": "Preview {path}",
+    "attachLabel": "Attach {path}",
+    "moveUp": "Move {path} up",
+    "moveDown": "Move {path} down",
+    "dragHandle": "Drag to reorder {path}",
+    "blocked": {
+      "too_large": "Too large to attach",
+      "unreadable": "Not readable as text — can't be attached"
+    },
+    "pending": "Saving…",
+    "saved": "Saved",
+    "saveError": "Couldn't save attachments. The list was reverted.",
+    "retry": "Retry",
+    "loadError": "Couldn't load attached documents",
+    "budget": {
+      "label": "Prompt budget",
+      "total": "≈ {total, number} / {budget, number} tokens",
+      "over": "Over budget — these documents would be skipped: {paths}",
+      "overGeneric": "Over budget — some documents would be skipped.",
+      "wouldSkip": "Would be skipped: over budget"
+    },
+    "inherited": {
+      "title": "Inherited from skills",
+      "empty": "No inherited documents",
+      "from": "from skill {skill}",
+      "duplicate": "Already attached — injected once",
+      "inactive": {
+        "disabled": "Skill is disabled — its documents are not injected",
+        "unsafe": "Skill failed the safety check — its documents are not injected"
+      }
+    },
+    "skill": {
+      "serializedTitle": "Serializes as",
+      "serializedEmpty": "Nothing is added to the prompt",
+      "serializedTokens": "≈ {count, number} tokens",
+      "agentsNote": "Every agent that uses this skill also receives these documents."
+    }
   }
 }

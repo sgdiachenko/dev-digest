@@ -6,6 +6,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 | Skill | Scope | Description |
 |-------|-------|-------------|
+| [run-plan](run-plan/SKILL.md) | Workflow | `/run-plan <plan>` — from an approved plan: implementer waves → checks → plan-verifier → review-fix loop → docs → PR gate; state in `docs/plans/<slug>.impl.md` |
 | [pr-self-review](pr-self-review/SKILL.md) | Workflow | Routes the skills below at the local diff before a PR exists; a CRITICAL finding blocks `gh pr create`/`merge` |
 | [onion-architecture](onion-architecture/SKILL.md) | Backend | Ring map for `server/`/`reviewer-core/`, inward-only imports, ports, depcruise enforcement |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |

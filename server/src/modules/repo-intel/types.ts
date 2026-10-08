@@ -126,6 +126,20 @@ export interface FileRankRow {
   percentile: number;
 }
 
+/**
+ * Whole-repo graph snapshot for the onboarding tour. Arrays are sorted by path
+ * (code-unit order) so consumers are deterministic. Empty arrays mean "no
+ * graph" (flag off, never indexed, or no JS/TS files).
+ */
+export interface GraphFacts {
+  /** Import edges, importer → imported, sorted by (from, to). */
+  edges: Array<{ from: string; to: string }>;
+  /** `file_rank.rank` per file, sorted by path. */
+  ranks: Array<{ path: string; rank: number }>;
+  /** Declared routes/crons per file, sorted by path. */
+  fileFacts: Array<{ path: string; endpoints: string[]; crons: string[] }>;
+}
+
 export interface RepoMapResult {
   text: string;
   tokens: number;
@@ -174,6 +188,8 @@ export interface RepoIntel {
     opts?: { exclude?: string[] },
   ): Promise<string[]>;
   getCriticalPaths(repoId: string): Promise<string[][]>;
+  /** Whole-repo import edges + ranks + per-file facts; empty when degraded. */
+  getGraphFacts(repoId: string): Promise<GraphFacts>;
 }
 
 /**

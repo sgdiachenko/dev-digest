@@ -51,6 +51,7 @@ export const s = {
   viewSwitch: {
     display: "flex",
     gap: 6,
+    marginLeft: "auto",
   } satisfies CSSProperties,
   legend: {
     display: "flex",

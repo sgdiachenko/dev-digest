@@ -15,12 +15,14 @@ import { describe, it, expect } from 'vitest';
 import { RepoIntelService } from '../src/modules/repo-intel/service.js';
 import { MockGitClient } from '../src/adapters/mocks.js';
 import { INDEXER_VERSION } from '../src/modules/repo-intel/constants.js';
+import { CONTEXT_SCAN_JOB_KIND } from '../src/modules/project-context/constants.js';
 import type { RepoIntelRepository } from '../src/modules/repo-intel/repository.js';
 import type { IndexState } from '../src/modules/repo-intel/types.js';
 import type { Container } from '../src/platform/container.js';
 
 interface Basics {
   id: string;
+  workspaceId: string;
   owner: string;
   name: string;
   defaultBranch: string;
@@ -40,8 +42,16 @@ function makeService(opts: { basics: Basics | null; state?: IndexState | null; g
     },
   } as unknown as RepoIntelRepository;
 
+  const enqueued: { kind: string; payload: unknown }[] = [];
   const container = {
     git: opts.git,
+    jobs: {
+      register: () => {},
+      enqueue: async (_ws: string, kind: string, payload: unknown) => {
+        enqueued.push({ kind, payload });
+        return { id: 'j1' };
+      },
+    },
     db: {}, // never queried — service.repo is overridden below
     depgraph: { buildEdges: async () => [] },
     tokenizer: { count: (text: string) => Math.ceil(text.length / 4) },
@@ -49,7 +59,7 @@ function makeService(opts: { basics: Basics | null; state?: IndexState | null; g
 
   const service = new RepoIntelService(container);
   (service as unknown as { repo: RepoIntelRepository }).repo = repo;
-  return { service, touched };
+  return { service, touched, enqueued };
 }
 
 function stateAt(sha: string): IndexState {
@@ -69,7 +79,7 @@ describe('RepoIntelService.resyncRepo', () => {
   it('fetches the default branch, then delegates to the incremental indexer', async () => {
     const git = new MockGitClient({ head: 'sha-1', syncedHead: 'sha-1' });
     const { service, touched } = makeService({
-      basics: { id: 'r1', owner: 'acme', name: 'app', defaultBranch: 'develop', clonePath: '/mock/clone' },
+      basics: { id: 'r1', workspaceId: 'w1', owner: 'acme', name: 'app', defaultBranch: 'develop', clonePath: '/mock/clone' },
       state: stateAt('sha-1'),
       git,
     });
@@ -84,10 +94,24 @@ describe('RepoIntelService.resyncRepo', () => {
     expect(touched.n).toBe(1);
   });
 
+  it('enqueues a project-context scan after a successful sync; IndexResult unchanged', async () => {
+    const git = new MockGitClient({ head: 'sha-1', syncedHead: 'sha-1' });
+    const { service, enqueued } = makeService({
+      basics: { id: 'r1', workspaceId: 'w1', owner: 'acme', name: 'app', defaultBranch: 'main', clonePath: '/mock/clone' },
+      state: stateAt('sha-1'),
+      git,
+    });
+
+    const result = await service.resyncRepo('r1');
+
+    expect(enqueued).toEqual([{ kind: CONTEXT_SCAN_JOB_KIND, payload: { repoId: 'r1' } }]);
+    expect(result.reason).toBe('sha_unchanged');
+  });
+
   it('degrades to no_clone WITHOUT fetching when the repo is not cloned', async () => {
     const git = new MockGitClient({});
     const { service } = makeService({
-      basics: { id: 'r1', owner: 'acme', name: 'app', defaultBranch: 'main', clonePath: null },
+      basics: { id: 'r1', workspaceId: 'w1', owner: 'acme', name: 'app', defaultBranch: 'main', clonePath: null },
       git,
     });
 
@@ -103,8 +127,8 @@ describe('RepoIntelService.resyncRepo', () => {
     git.sync = async () => {
       throw new Error('network down');
     };
-    const { service } = makeService({
-      basics: { id: 'r1', owner: 'acme', name: 'app', defaultBranch: 'main', clonePath: '/mock/clone' },
+    const { service, enqueued } = makeService({
+      basics: { id: 'r1', workspaceId: 'w1', owner: 'acme', name: 'app', defaultBranch: 'main', clonePath: '/mock/clone' },
       git,
     });
 
@@ -112,5 +136,6 @@ describe('RepoIntelService.resyncRepo', () => {
 
     expect(result.status).toBe('degraded');
     expect(result.reason).toMatch(/^sync_failed:/);
+    expect(enqueued).toHaveLength(0);
   });
 });

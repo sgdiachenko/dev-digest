@@ -38,8 +38,14 @@ npm test            # vitest, hermetic, LLM stubbed — no keys, no network
   resolves an agent's linked, enabled skills to RESOLVED bodies (not slugs) and
   trust-per-source-wraps anything but a `manual` skill *before* calling this
   package (`ReviewRunExecutor.buildSkillBlocks`); `assemblePrompt` stays
-  agnostic to that distinction, it only joins and places the blocks. `memory`,
-  `specs`, and `callers` remain unfed by the starter server; `assemblePrompt`
+  agnostic to that distinction, it only joins and places the blocks. `specs` is
+  fed as of the Project Context attachments feature: a structured
+  `ProjectDoc[]` (`{ path, text }`), rendered by `renderProjectContext`, capped
+  by `fitProjectContext` at 48,000 characters, with `selectReviewMode`
+  exported so the server can count map-reduce calls (see
+  [docs/pipeline.md](docs/pipeline.md)). The server passes `specs` only when it
+  has documents, so an empty slot keeps the prompt byte-identical (AC-26).
+  `memory` and `callers` remain unfed by the starter server; `assemblePrompt`
   simply omits them — don't add server-side logic to "fill" those early.
 - Contracts (`Review`, `Finding`, `Verdict`, …) come from `@devdigest/shared`, not defined locally.
 

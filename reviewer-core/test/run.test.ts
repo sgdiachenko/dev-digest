@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { LLMProvider, StructuredResult } from '@devdigest/shared';
 import { MockLLMProvider, MockGitClient } from '../../server/src/adapters/mocks.js';
-import { reviewPullRequest } from '../src/index.js';
+import { reviewPullRequest, selectReviewMode } from '../src/index.js';
 
 /**
  * Engine-level test for reviewPullRequest (the core lifted out of the server's
@@ -134,5 +134,63 @@ describe('reviewPullRequest (engine)', () => {
     await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm: recorder, sessionId: 'sess-abc' });
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
+  });
+  describe('project context in map-reduce (NFR-2)', () => {
+    const twoFileDiff =
+      'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,1 +1,2 @@\n x\n+a1\n' +
+      'diff --git a/b.ts b/b.ts\n--- a/b.ts\n+++ b/b.ts\n@@ -1,1 +1,2 @@\n y\n+b1';
+    const clean = { verdict: 'approve', summary: 'ok', score: 100, findings: [] };
+
+    function recorder(users: string[]): LLMProvider {
+      return {
+        id: 'openrouter',
+        async completeStructured<T>(req): Promise<StructuredResult<T>> {
+          users.push(req.messages[1]!.content);
+          return { data: clean as unknown as T, model: req.model, tokensIn: 0, tokensOut: 0, costUsd: 0, raw: '', attempts: 1 };
+        },
+        async listModels() {
+          return [];
+        },
+        async complete() {
+          throw new Error('not used');
+        },
+        async embed() {
+          return [];
+        },
+      };
+    }
+
+    it('puts the Project context block in every chunk; one LLM call per file', async () => {
+      const users: string[] = [];
+      const diff = await new MockGitClient({ diff: twoFileDiff }).diff();
+      const outcome = await reviewPullRequest({
+        systemPrompt: 's',
+        model: 'm',
+        diff,
+        llm: recorder(users),
+        strategy: 'map-reduce',
+        specs: [{ path: 'docs/security.md', text: 'No secrets.' }],
+      });
+      expect(outcome.mode).toBe('map-reduce');
+      expect(outcome.chunks).toHaveLength(2);
+      expect(users).toHaveLength(2);
+      for (const u of users) {
+        expect(u).toContain('## Project context');
+        expect(u).toContain('<untrusted source="spec:docs/security.md">');
+      }
+      expect(outcome.assembly.specs).toContain('### docs/security.md');
+    });
+
+    it('selectReviewMode: strategy, file count and threshold decide the mode', async () => {
+      const multi = await new MockGitClient({ diff: twoFileDiff }).diff();
+      const single = await new MockGitClient().diff();
+      expect(selectReviewMode('single-pass', multi)).toBe('single-pass');
+      expect(selectReviewMode('map-reduce', multi)).toBe('map-reduce');
+      expect(selectReviewMode('map-reduce', single)).toBe('single-pass');
+      // auto: 2 changed lines — below the default 400 threshold, above a threshold of 1
+      expect(selectReviewMode('auto', multi)).toBe('single-pass');
+      expect(selectReviewMode('auto', multi, 1)).toBe('map-reduce');
+      expect(selectReviewMode('auto', single, 0)).toBe('single-pass');
+    });
   });
 });

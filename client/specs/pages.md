@@ -139,6 +139,56 @@ rewinding history — never available on the current version's own row).
 `api-keys` and `models` sections. Must never render a stored secret value —
 only whether a key is set.
 
+## `/repos/:repoId/tour`
+
+The Onboarding Tour of one repository, reached from the sidebar item
+**Onboarding Tour** (between Pull Requests and Project Context; active on this
+route only). Design records:
+[facts spec](../../docs/specs/2026-10-01-onboarding-tour-facts.md),
+[narrative spec](../../docs/specs/2026-10-01-onboarding-tour-narrative.md); wiring in
+[`../docs/ui-architecture.md`](../docs/ui-architecture.md#onboarding-tour-hooks-and-view).
+Reading the page must never trigger a model call.
+
+- **Facts sections.** Five collapsible sections in a fixed order: Architecture
+  overview, Critical paths, How to run locally, Reading path, First tasks, each
+  labelled "From repository facts" until its AI text exists. Paths are middle-truncated
+  and link to GitHub pinned to the tour's commit; run-locally commands are numbered,
+  show their source and a Copy button, and warn on lifecycle hooks and remote-code
+  pipes.
+- **Header.** Repository name, commit, "N indexed of M files", index status, Copy
+  link, Export as Markdown (a client-side download) and **Generate narrative**
+  with the model name and an approximate cost ("approx.").
+- **"On this page".** A sticky rail on wide screens with scroll-spy
+  (`aria-current` on the section in view); below 1,024 px it becomes a "Jump to"
+  select. Activating an item expands the section, updates the hash and moves focus
+  to the section heading. A known `#hash` scrolls to its section after load; an
+  unknown one is ignored.
+- **States.** Loading skeleton; load error with retry; `not_cloned` ("This
+  repository is not cloned yet" plus a Resync button that calls `/refresh`, D1);
+  `not_indexed` (polls the index state and reloads when a new SHA is indexed); a
+  status banner for a `partial`, `degraded` or `failed` index (its Resync calls
+  `/resync`).
+- **Narrative.** Generate starts a background run; the button shows "Generating…",
+  the page polls and announces the result in a polite live region without moving
+  focus. A section with AI text is labelled AI-written, shows the model and
+  generation time, and never replaces facts it cannot ground (it falls back to the
+  facts version). A failed run keeps the last good narrative, shows the reason with
+  Retry (plus a Settings link for `missing_key` and `no_structured_provider`), and a
+  narrative for an older commit shows an **Outdated** chip and marks paths no longer
+  in the index. A `429` shows a "too many requests" message. An invalid AI diagram
+  falls back to the facts diagram with "AI diagram unavailable".
+
+**Not verified.** In a live browser (read-only, no generation) these were checked:
+sidebar item and highlight, header, facts rendering and the facts diagram,
+"On this page" focus and scroll position, scroll-spy, the sticky rail (after a fix),
+the narrow "Jump to" select (in a 900 px iframe) and the `not_cloned` state. Not
+verified: live narrative generation with a real key (button state, polling,
+announcement, AI labels, Outdated chip, diagram fallback, the 300 ms acknowledgement),
+screen-reader, keyboard and contrast checks (facts NFR-6, narrative NFR-6), Export
+download, Copy link and both Resync buttons, load-time console errors, latency
+targets, and the e2e flow for this route (none exists; `06-onboarding` covers the
+add-repository form only). Source: `docs/plans/onboarding-tour.reports.md`, *Phase 4*.
+
 ## `/onboarding`
 
 Add-repository form. Submitting must not require the repo to already be
