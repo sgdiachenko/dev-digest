@@ -69,6 +69,8 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
     env: subscriptionEnv(),
+    // Per-session spend cap (USD) — a runaway agent loop on a metered backend stops here. CI sets it.
+    ...(Number(process.env.EVAL_SESSION_BUDGET_USD) > 0 ? { maxBudgetUsd: Number(process.env.EVAL_SESSION_BUDGET_USD) } : {}),
   };
 
   const textParts: string[] = [];

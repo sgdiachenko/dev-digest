@@ -14,6 +14,7 @@
     "eval:repeat": "tsx src/repeat.ts",
     "eval:delta": "tsx src/delta.ts",
     "eval:benchmark": "tsx src/records/benchmark.ts",
+    "eval:report": "node scripts/ci-report.mjs",
     "eval:scaffold": "tsx src/scaffold.ts",
     "proxy:up": "scripts/litellm-proxy.sh up",
     "proxy:down": "scripts/litellm-proxy.sh down",

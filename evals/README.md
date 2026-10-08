@@ -243,23 +243,40 @@ Notes:
   keep the case count small. For a stricter gate, split into a required `eval:agents`/`eval:skills`
   job and a non-blocking `eval:workflow` job (activation flakiness, above).
 
-### The repo's CI gate (`.github/workflows/evals.yml`)
+### The repo's CI (`.github/workflows/`)
 
-A merge gate, not a report. `detect` runs `scripts/ci-detect.mjs` on the PR diff, then:
+Four workflows, matching the lab layout. `ci-detect.mjs` maps a PR's changed files onto suites;
+a skill/agent without evals is logged as `SKIP (no evals)` (yellow annotation), never a failure.
 
-| Changed in the PR | Runs |
-|---|---|
-| `.claude/skills/<n>/**` or `evals/skills/<n>/**` | `skill-evals` → `evals/skills/<n>` (skipped with a visible note if `<n>` has no evals) |
-| `.claude/agents/<n>.md` or `evals/agents/<n>/**` | `agent-evals` → `evals/agents/<n>`, **and** the workflow tier |
-| `CLAUDE.md`, any `AGENTS.md`, `evals/workflow/**`, `evals/src/**` | `workflow-evals` |
+| Workflow | Runs when | What | Blocks? |
+|---|---|---|---|
+| `evals.yml` | every PR (no `paths:`) | `docs-static`: typecheck, **`eval:quality`**, harness-docs; `evals-gate` aggregates | **yes** — mark `evals-gate` required |
+| `eval-skills.yml` | `.claude/skills/**`, `evals/skills/**`, engine | one matrix job per changed skill with evals | report-only |
+| `eval-agents.yml` | `.claude/agents/**`, `evals/agents/**`, engine | one matrix job per changed agent with evals | report-only |
+| `eval-workflow.yml` | `CLAUDE.md`, any `AGENTS.md`, `.claude/agents/**`, `evals/workflow/**`, engine | whole-harness traces (dispatch, activation, negative control) | report-only |
 
-Every eval job gets at most two attempts. The single required check for branch protection is
-**`evals-gate`**: red if any job failed/was cancelled, green when jobs passed or were skipped.
-Fork PRs have no secrets, so the model jobs are skipped there.
+**Report-only** model runs publish a per-case table to the job summary and compare it with the
+committed baseline `evals/baseline.json` (`{ "<file> > <case>": "pass" | "fail" }`; regressions are
+flagged, a missing baseline is just noted). Set the repo variable `EVAL_BLOCKING=true` to make a
+red case fail its job. Model workflows use `paths:` filters, so they cannot be *required* checks
+(a skipped workflow never reports) — only `evals-gate` is. Recalibrate the baseline after changing
+a case or grader:
+
+```bash
+pnpm vitest run skills/<n>/ --reporter=default --reporter=json --outputFile.json=results/ci-report.json
+pnpm eval:report <label> results/ci-report.json --write-baseline   # merges into baseline.json; commit it
+```
+
+**Cost / safety controls:** `concurrency` cancels superseded runs; `timeout-minutes` per job; matrix
+`max-parallel: 2`; at most two attempts per case (`--retry=1`); `EVAL_SESSION_BUDGET_USD` (default
+`1`) caps each Claude session through the Agent SDK. The authoritative spend cap is the **credit
+limit on the OpenRouter key** — LiteLLM's proxy-wide `max_budget` is *not* enforced without a
+database, so none is configured. Workflows have `permissions: contents: read`, no
+`pull_request_target`, and fork PRs (no secrets) skip the model jobs.
 
 **Model switch** (no UI): `workflow_dispatch` input `model` / `judge_model` → repo variable
-`EVAL_MODEL` / `EVAL_JUDGE_MODEL` → default `deepseek/deepseek-v4-flash`. A manual dispatch runs
-every suite (`RUN_ALL=true`). Needs the `OPENROUTER_API_KEY` Actions secret.
+`EVAL_MODEL` / `EVAL_JUDGE_MODEL` → default `deepseek/deepseek-v4-flash`. Needs the
+`OPENROUTER_API_KEY` Actions secret. A manual dispatch runs every suite (`RUN_ALL=true`).
 
 ## Module layout — `src/` (the engine)
 

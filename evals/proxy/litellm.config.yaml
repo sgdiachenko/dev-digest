@@ -22,6 +22,9 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
 
 litellm_settings:
+  # NOTE: litellm's proxy-wide max_budget is NOT enforced without a database (it only warns), so no
+  # budget lives here. Spend is capped per session (EVAL_SESSION_BUDGET_USD → SDK maxBudgetUsd) and,
+  # authoritatively, by the credit limit set on the OpenRouter API key itself.
   # Deterministic evals: never retry-with-jitter behind our back; the runners own retries.
   drop_params: true
 
