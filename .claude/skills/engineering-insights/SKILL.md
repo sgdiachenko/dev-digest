@@ -5,9 +5,13 @@ metadata:
   tags: insights, learnings, session-start, wrap-up, documentation
 ---
 
+## Start of a task
+
 **Start of a task touching a module:** read that module's `INSIGHTS.md`
 first and note what's relevant before doing any work — don't re-derive
 something already recorded there.
+
+## End of a session
 
 **End of a substantive session** (a real problem solved, a decision made, a
 surprise hit — not a trivial edit): re-read the file again right before
@@ -16,6 +20,8 @@ writing. If the finding isn't already there, insert one dated bullet
 directly under the one existing heading it fits, placed after that
 section's last entry — never a new heading. Nothing substantive happened →
 write nothing.
+
+## Never overwrite
 
 **Never regenerate or overwrite the file.** Only ever insert a new line;
 every existing character — every prior entry, in every section — must come

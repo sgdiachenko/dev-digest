@@ -61,6 +61,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm vitest run src/harness-docs
+      # Static SKILL.md gate (no model, free) — blocking.
+      - run: pnpm eval:quality
 
   detect:
     runs-on: ubuntu-latest
