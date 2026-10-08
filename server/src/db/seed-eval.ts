@@ -86,6 +86,9 @@ export async function seedEval(db: Db, workspaceId: string): Promise<void> {
             summary: 'Security pass over the rate-limiting change: three items worth triaging.',
             score: 70,
             model: 'seed',
+            // Older than the base seed review: the PR detail opens the newest run by default,
+            // and e2e/specs/04-pr-findings.flow.json expects the base review there.
+            createdAt: new Date(Date.now() - 60 * 60 * 1000),
           })
           .returning();
         const now = new Date();
