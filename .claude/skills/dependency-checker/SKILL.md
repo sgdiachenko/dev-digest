@@ -159,3 +159,5 @@ apply nothing until the user answers.
 - Unranked finding lists, or a tier label that isn't P0/P1/P2/Info.
 - Flagging the pnpm-vs-npm split as a defect — it is by design.
 - Reading lock files or whole `node_modules` trees into context.
+
+<!-- ci-trigger: touched to exercise the evals workflow; revert before merge -->

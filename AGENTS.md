@@ -143,3 +143,5 @@ for the exact command (pnpm vs npm differs).
 - [README.md](README.md) — quick start, full architecture diagram, course lesson map
 - [TESTING.md](TESTING.md) — test strategy across all 5 CI workflows
 - [docs/](docs/) — cross-cutting reference docs (agent prompt library, model choice)
+
+<!-- ci-trigger: touched to exercise the evals workflow; revert before merge -->

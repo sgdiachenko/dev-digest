@@ -153,3 +153,5 @@ downgraded to `WARNING` before it reaches this report — never emitted as-is.
   filler.
 - Be concise: the findings array is the report; narrative is only in *Scope*,
   *Verdict* and *Config vs skill-doc drift observed*.
+
+<!-- ci-trigger: touched to exercise the evals workflow; revert before merge -->
