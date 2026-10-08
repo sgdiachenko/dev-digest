@@ -32,6 +32,16 @@ export function subscriptionEnv(): Record<string, string> {
     env.ANTHROPIC_BASE_URL = (process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api").replace(/\/$/, "");
     env.ANTHROPIC_AUTH_TOKEN = key;
     env.ANTHROPIC_API_KEY = ""; // blank, not deleted — stops the SDK falling back to Anthropic auth
+    // Subagents declare `model: sonnet|opus|haiku` in their frontmatter; the SDK resolves those aliases
+    // to claude-* ids, which the proxy would forward to OpenRouter as an invalid model. Pin every alias
+    // (and the subagent override) to the model under test so dispatch works on any OpenRouter slug.
+    const model = process.env.EVAL_MODEL;
+    if (model) {
+      env.ANTHROPIC_DEFAULT_OPUS_MODEL = model;
+      env.ANTHROPIC_DEFAULT_SONNET_MODEL = model;
+      env.ANTHROPIC_DEFAULT_HAIKU_MODEL = model;
+      env.CLAUDE_CODE_SUBAGENT_MODEL = model;
+    }
     return env;
   }
 

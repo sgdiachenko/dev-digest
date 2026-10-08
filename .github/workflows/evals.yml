@@ -9,7 +9,7 @@
 #
 # All real-model jobs run on OpenRouter through the LiteLLM proxy. The model is switchable
 # (no UI): workflow_dispatch input  >  repo variable EVAL_MODEL  >  the default below.
-# Each eval job gets AT MOST two attempts (one retry only if the first failed). Superseded
+# Each eval CASE gets AT MOST two attempts (vitest --retry=1, only failing cases re-run). Superseded
 # pushes cancel the in-flight run.
 name: evals
 
@@ -37,6 +37,7 @@ concurrency:
 
 env:
   EVAL_BACKEND: openrouter
+  EVAL_TEST_TIMEOUT_MS: '600000'
   OPENROUTER_BASE_URL: http://localhost:4000
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-v4-flash' }}
@@ -110,7 +111,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.skills != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 2 # OpenRouter rate limits degrade parallel tool-tier runs
@@ -119,17 +120,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/evals-setup
-      - name: skill evals (attempt 1)
-        id: attempt1
-        continue-on-error: true
+      # --retry=1: a failing CASE is re-run once (at most 2 attempts per case), not the whole file.
+      - name: skill evals
         working-directory: evals
         env: { SUITE: '${{ matrix.skill }}' }
-        run: pnpm exec vitest run "skills/$SUITE/"
-      - name: skill evals (attempt 2, retry)
-        if: steps.attempt1.outcome == 'failure'
-        working-directory: evals
-        env: { SUITE: '${{ matrix.skill }}' }
-        run: pnpm exec vitest run "skills/$SUITE/"
+        run: pnpm exec vitest run "skills/$SUITE/" --retry=1
       - if: failure()
         run: docker compose -f evals/proxy/docker-compose.yml logs --tail 100
       - if: always()
@@ -145,7 +140,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.agents != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -154,17 +149,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/evals-setup
-      - name: agent evals (attempt 1)
-        id: attempt1
-        continue-on-error: true
+      # --retry=1: a failing CASE is re-run once (at most 2 attempts per case), not the whole file.
+      - name: agent evals
         working-directory: evals
         env: { SUITE: '${{ matrix.agent }}' }
-        run: pnpm exec vitest run "agents/$SUITE/"
-      - name: agent evals (attempt 2, retry)
-        if: steps.attempt1.outcome == 'failure'
-        working-directory: evals
-        env: { SUITE: '${{ matrix.agent }}' }
-        run: pnpm exec vitest run "agents/$SUITE/"
+        run: pnpm exec vitest run "agents/$SUITE/" --retry=1
       - if: failure()
         run: docker compose -f evals/proxy/docker-compose.yml logs --tail 100
       - if: always()
@@ -180,19 +169,14 @@ jobs:
     needs: detect
     if: needs.detect.outputs.run_workflow == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/evals-setup
-      - name: workflow evals (attempt 1)
-        id: attempt1
-        continue-on-error: true
+      # --retry=1: a failing CASE is re-run once (at most 2 attempts per case), not the whole file.
+      - name: workflow evals
         working-directory: evals
-        run: pnpm eval:workflow
-      - name: workflow evals (attempt 2, retry)
-        if: steps.attempt1.outcome == 'failure'
-        working-directory: evals
-        run: pnpm eval:workflow
+        run: pnpm eval:workflow --retry=1
       - if: failure()
         run: docker compose -f evals/proxy/docker-compose.yml logs --tail 100
       - if: always()
