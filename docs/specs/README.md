@@ -27,3 +27,4 @@ creation date + a kebab-case slug); an ID is never reused.
 | [2026-10-01-onboarding-tour-narrative](2026-10-01-onboarding-tour-narrative.md) | Onboarding Tour — AI narrative and Regenerate | implemented | server, client | none | — |
 | [2026-10-02-pr-brief](2026-10-02-pr-brief.md) | PR Brief — Why + Risk brief on the Overview tab | approved | server, client | none | — |
 | [2026-10-08-eval-pipeline](2026-10-08-eval-pipeline.md) | Eval Pipeline — eval cases from findings, agent suite runs, metrics, Eval Dashboard and run comparison | approved | server, client, reviewer-core, e2e | none | — |
+| [2026-10-09-export-to-ci](2026-10-09-export-to-ci.md) | Export to CI — run a tuned agent on pull requests through GitHub Actions | approved | server, client, reviewer-core, CI runner (new standalone package) | none | — |
