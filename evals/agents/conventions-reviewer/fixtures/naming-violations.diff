@@ -1,0 +1,36 @@
+diff --git a/server/src/db/schema.ts b/server/src/db/schema.ts
+index 1111111..2222222 100644
+--- a/server/src/db/schema.ts
++++ b/server/src/db/schema.ts
+@@ -40,3 +40,4 @@ export const agentRuns = pgTable("agent_runs", {
+   id: uuid("id").primaryKey(),
++  costUsd: doublePrecision('costUsd'),
+ });
+diff --git a/server/src/vendor/shared/contracts/finding.ts b/server/src/vendor/shared/contracts/finding.ts
+index 3333333..4444444 100644
+--- a/server/src/vendor/shared/contracts/finding.ts
++++ b/server/src/vendor/shared/contracts/finding.ts
+@@ -1,3 +1,4 @@
+ import { z } from "zod";
++export const severity = z.enum(['critical','Warning']);
++export type Severity = z.infer<typeof severity>;
+diff --git a/client/src/app/repos/_components/prCard/PrCard.tsx b/client/src/app/repos/_components/prCard/PrCard.tsx
+new file mode 100644
+index 0000000..5555555
+--- /dev/null
++++ b/client/src/app/repos/_components/prCard/PrCard.tsx
+@@ -0,0 +1,9 @@
++export function PrCard() {
++  return <div />;
++}
++
++export function PrCardBadge() {
++  return <span />;
++}
+diff --git a/server/src/db/migrations/0042_AddCost.sql b/server/src/db/migrations/0042_AddCost.sql
+new file mode 100644
+index 0000000..6666666
+--- /dev/null
++++ b/server/src/db/migrations/0042_AddCost.sql
+@@ -0,0 +1 @@
++ALTER TABLE agent_runs ADD COLUMN cost_usd double precision;

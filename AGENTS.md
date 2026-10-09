@@ -29,7 +29,9 @@ run on the host, not in a container).
   (executes the plan, runs the package checks), `test-writer` (adds test
   coverage, test files only), `plan-verifier` (traceability check; writes only its own verification report),
   `architecture-reviewer` (read-only onion/layering review),
-  `security-reviewer` (read-only OWASP-based security review), `doc-writer`
+  `security-reviewer` (read-only OWASP-based security review),
+  `stack-reviewer` (read-only stack-idiom review, on demand),
+  `conventions-reviewer` (read-only naming and structure review, on demand), `doc-writer`
   (Markdown docs + diagrams). Flow: spec-creator (analyze → answers →
   write → user approves) → researcher → [brainstorm → user picks
   option] → implementation-planner (questions + mode → answers → plan) →
@@ -134,7 +136,7 @@ for the exact command (pnpm vs npm differs).
   plus the file's lane skills — so a plan never assumes practices the
   implementer doesn't have, without every implementer paying for all of them.
   `spec-creator`, `brainstorm`, `test-writer`, `architecture-reviewer`, `security-reviewer`,
-  `plan-verifier` and `doc-writer` carry role-scoped `skills:` lists instead —
+  `stack-reviewer`, `conventions-reviewer`, `plan-verifier` and `doc-writer` carry role-scoped `skills:` lists instead —
   each one justified in
   [`.claude/agents/README.md`](.claude/agents/README.md).
 - Secrets (LLM keys, `GITHUB_TOKEN`) live in `~/.devdigest/secrets.json`

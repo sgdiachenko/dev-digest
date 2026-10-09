@@ -1,0 +1,17 @@
+diff --git a/server/src/vendor/shared/contracts/finding.ts b/server/src/vendor/shared/contracts/finding.ts
+index 3333333..4444444 100644
+--- a/server/src/vendor/shared/contracts/finding.ts
++++ b/server/src/vendor/shared/contracts/finding.ts
+@@ -1,3 +1,4 @@
+ import { z } from "zod";
+ export const Finding = z.object({
+   id: z.string(),
++  confidence: z.number(),
+ });
+diff --git a/server/pnpm-lock.yaml b/server/pnpm-lock.yaml
+index 7777777..8888888 100644
+--- a/server/pnpm-lock.yaml
++++ b/server/pnpm-lock.yaml
+@@ -10,3 +10,3 @@
+-  zod: 3.23.8
++  zod: 3.24.1

@@ -1,0 +1,48 @@
+diff --git a/server/src/modules/notes/routes.ts b/server/src/modules/notes/routes.ts
+new file mode 100644
+index 0000000..aaaaaaa
+--- /dev/null
++++ b/server/src/modules/notes/routes.ts
+@@ -0,0 +1,18 @@
++import type { FastifyInstance } from "fastify";
++import { CreateNoteBody } from "@devdigest/shared";
++
++export async function noteRoutes(app: FastifyInstance) {
++  app.post("/notes", async (req, reply) => {
++    const body = CreateNoteBody.parse(req.body);
++    const note = await app.container.notes.create(body);
++    reply.send(note);
++    return note;
++  });
++}
+diff --git a/client/src/app/repos/[id]/page.tsx b/client/src/app/repos/[id]/page.tsx
+new file mode 100644
+index 0000000..bbbbbbb
+--- /dev/null
++++ b/client/src/app/repos/[id]/page.tsx
+@@ -0,0 +1,8 @@
++import { RepoHeader } from "./_components/RepoHeader/RepoHeader";
++
++export default async function RepoPage({ params }: { params: Promise<{ id: string }> }) {
++  return <RepoHeader repoId={params.id} />;
++}
+diff --git a/client/src/app/repos/[id]/_components/FindingList/FindingList.tsx b/client/src/app/repos/[id]/_components/FindingList/FindingList.tsx
+new file mode 100644
+index 0000000..ccccccc
+--- /dev/null
++++ b/client/src/app/repos/[id]/_components/FindingList/FindingList.tsx
+@@ -0,0 +1,16 @@
++export function FindingList({ items, count }: { items: { title: string; hidden: boolean }[]; count: number }) {
++  return (
++    <div>
++      {count && <span>{count} findings</span>}
++      <ul>
++        {items
++          .filter((item) => !item.hidden)
++          .map((item, index) => (
++            <li key={index}>{item.title}</li>
++          ))}
++      </ul>
++    </div>
++  );
++}
