@@ -64,6 +64,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   app.setSerializerCompiler(serializerCompiler);
 
   const container = new Container(config, db, opts.overrides);
+  container.logger = app.log;
   app.decorate('container', container);
 
   // Reap runs left 'running' by a previous (now-dead) process — otherwise they
@@ -81,6 +82,15 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
   } catch (err) {
     app.log.warn({ err: (err as Error).message }, 'stale-run reaping failed (non-fatal)');
+  }
+
+  // Same for eval suite runs: queued/running rows of a dead process become
+  // `interrupted` (never resumed). Own try/catch: a missing eval migration must
+  // not stop the server from booting.
+  try {
+    await container.evalSuiteRunService().reapOnBoot();
+  } catch (err) {
+    app.log.warn({ err: (err as Error).message }, 'eval run reaping failed (non-fatal)');
   }
 
   // Security headers (X-Content-Type-Options, X-Frame-Options, …). The API

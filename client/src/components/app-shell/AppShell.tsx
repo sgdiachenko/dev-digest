@@ -26,7 +26,11 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
 
   useGlobalShortcuts({ onOpenPalette: openPalette, onOpenHelp: openHelp });
   const commands = useShellCommands();
-  const ctx = useShellContext({ onOpenCommandPalette: openPalette });
+  const baseCtx = useShellContext({ onOpenCommandPalette: openPalette });
+  const ctx = React.useMemo(
+    () => ({ ...baseCtx, labelFor: (key: string, fallback: string) => (t.has(key) ? t(key) : fallback) }),
+    [baseCtx, t],
+  );
 
   return (
     <>

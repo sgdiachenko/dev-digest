@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Severity } from './findings.js';
 
 /**
  * Conformance, Onboarding, Eval, Memory, Conventions, Skills,
@@ -299,9 +300,10 @@ export const EvalPerTrace = z.object({
 export type EvalPerTrace = z.infer<typeof EvalPerTrace>;
 
 export const EvalRun = z.object({
-  recall: z.number().min(0).max(1),
-  precision: z.number().min(0).max(1),
-  citation_accuracy: z.number().min(0).max(1),
+  // A metric is `null` when its denominator is 0 (no must-find cases / no findings).
+  recall: z.number().min(0).max(1).nullable(),
+  precision: z.number().min(0).max(1).nullable(),
+  citation_accuracy: z.number().min(0).max(1).nullable(),
   traces_passed: z.number().int(),
   traces_total: z.number().int(),
   duration_ms: z.number().int(),
@@ -313,16 +315,92 @@ export type EvalRun = z.infer<typeof EvalRun>;
 export const EvalOwnerKind = z.enum(['skill', 'agent']);
 export type EvalOwnerKind = z.infer<typeof EvalOwnerKind>;
 
-export const EvalCase = z.object({
+/** What the case asserts: the agent MUST report the range, or MUST stay silent on it. */
+export const EvalCaseType = z.enum(['must_find', 'must_not_flag']);
+export type EvalCaseType = z.infer<typeof EvalCaseType>;
+
+/** Where the case diff fragment was cut from. */
+export const EvalDiffSource = z.enum(['run_trace', 'current_pr_files', 'manual']);
+export type EvalDiffSource = z.infer<typeof EvalDiffSource>;
+
+/**
+ * One expectation of a case: a file plus an inclusive new-side line range.
+ * `severity`, `category` and `title` are informational only (scoring uses
+ * file + range). For `must_not_flag` it is a forbidden range.
+ */
+export const EvalExpectation = z
+  .object({
+    file: z.string().min(1),
+    start_line: z.number().int().min(1),
+    end_line: z.number().int().min(1),
+    severity: Severity.nullable(),
+    category: z.string().nullable(),
+    title: z.string().nullable(),
+  })
+  .strict();
+export type EvalExpectation = z.infer<typeof EvalExpectation>;
+
+/** Provenance of a case created from a finding (AC-69). */
+export const EvalCaseSource = z.object({
+  finding_title: z.string(),
+  pr_number: z.number().int(),
+  repo_id: z.string(),
+  triage: z.enum(['accepted', 'dismissed']),
+});
+export type EvalCaseSource = z.infer<typeof EvalCaseSource>;
+
+/** Fixed PR meta an eval review sees (title/body are untrusted prompt content). */
+export const EvalInputMeta = z.object({
+  pr_title: z.string(),
+  pr_body: z.string().nullable(),
+  pr_number: z.number().int().nullable(),
+  repo_full_name: z.string().nullable(),
+});
+export type EvalInputMeta = z.infer<typeof EvalInputMeta>;
+
+export const EVAL_MAX_DIFF_BYTES = 65_536;
+export const EVAL_MAX_NAME_LENGTH = 120;
+export const EVAL_MAX_EXPECTATIONS = 20;
+
+/**
+ * The editable fields of an eval case, WITHOUT cross-field validation. Lives
+ * here (not in eval-ci.ts) so `EvalCase` below can extend it without a
+ * knowledge.ts -> eval-ci.ts import cycle (the mcp-server mirrors this file
+ * alone). `EvalCaseInput` in eval-ci.ts adds the expectation `superRefine`.
+ */
+export const EvalCaseBase = z.object({
+  name: z.string().min(1).max(EVAL_MAX_NAME_LENGTH),
+  type: EvalCaseType,
+  input_diff: z
+    .string()
+    .refine((v) => new TextEncoder().encode(v).length <= EVAL_MAX_DIFF_BYTES, {
+      message: `input_diff exceeds ${EVAL_MAX_DIFF_BYTES} bytes`,
+    }),
+  input_meta: EvalInputMeta,
+  expectations: z.array(EvalExpectation).min(1).max(EVAL_MAX_EXPECTATIONS),
+  source_finding_id: z.string().nullable().default(null),
+  diff_source: EvalDiffSource,
+  notes: z.string().nullable().default(null),
+});
+export type EvalCaseBase = z.infer<typeof EvalCaseBase>;
+
+export const EvalCaseLastResult = z.object({
+  run_id: z.string().nullable(),
+  status: z.enum(['pass', 'fail', 'error']),
+  expected_count: z.number().int(),
+  actual_count: z.number().int(),
+  ran_at: z.string(),
+});
+export type EvalCaseLastResult = z.infer<typeof EvalCaseLastResult>;
+
+export const EvalCase = EvalCaseBase.extend({
   id: z.string(),
   owner_kind: EvalOwnerKind,
   owner_id: z.string(),
-  name: z.string(),
-  input_diff: z.string(),
-  input_files: z.unknown(),
-  input_meta: z.unknown(),
-  expected_output: z.unknown(),
-  notes: z.string().nullish(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  last_result: EvalCaseLastResult.nullable(),
+  source: EvalCaseSource.nullable(),
 });
 export type EvalCase = z.infer<typeof EvalCase>;
 

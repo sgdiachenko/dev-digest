@@ -1,0 +1,56 @@
+# Static harness gate — no model, free, BLOCKING. No `paths:` filter on purpose: this is the
+# check to mark "required" in branch protection, and a required check that never reports (workflow
+# skipped by paths) blocks the PR forever.
+#
+# The model-backed evals live in their own report-only workflows with paths filters:
+#   eval-skills.yml · eval-agents.yml · eval-workflow.yml
+name: evals
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-static-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # Static SKILL.md gate (no model, free).
+      - run: pnpm eval:quality
+      # AGENTS.md/CLAUDE.md symlinks, links and anchors.
+      - run: pnpm vitest run src/harness-docs
+
+  # Single stable name for branch protection.
+  evals-gate:
+    if: always()
+    needs: [docs-static]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "upstream results: $RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then
+            echo "::error::static harness checks failed — merge blocked"
+            exit 1
+          fi

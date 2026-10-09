@@ -24,6 +24,7 @@ import {
 } from './seed-skills.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
+import { seedEval } from './seed-eval.js';
 import { parseImport } from '../modules/skills/helpers.js';
 import type { SkillType } from '@devdigest/shared';
 
@@ -382,6 +383,9 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
   }
+
+  // ---- eval-pipeline fixtures (triaged findings, Performance cases + runs) ----
+  await seedEval(db, workspaceId);
 
   // ---- L02: built-in skills ----
   // Bodies live in ./seed-skills.ts (mirrored in docs/agent-prompts/skills/*.md).

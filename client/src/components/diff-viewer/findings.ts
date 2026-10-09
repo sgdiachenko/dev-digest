@@ -12,6 +12,10 @@ export interface DiffFindingApi {
   onAction?: (findingId: string, action: FindingActionKind, reply?: string) => void;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Shows "Turn into eval case" on each finding card; absent = no button (C20). */
+  onTurnIntoEvalCase?: (findingId: string) => void;
+  /** Why the eval button is disabled for a finding; null = enabled. */
+  evalDisabledReason?: (f: FindingRecord) => string | null;
 }
 
 /** `RIGHT:${start_line}` — findings are always anchored to the new/RIGHT

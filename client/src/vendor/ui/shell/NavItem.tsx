@@ -2,18 +2,20 @@ import React from "react";
 import { Icon } from "../icons";
 import { resolveHref, type NavItemDef } from "../nav";
 import { DefaultLink } from "./DefaultLink";
-import type { LinkLike } from "./types";
+import type { LinkLike, ShellContext } from "./types";
 
 export function NavItem({
   item,
   active,
   repoId,
   Link = DefaultLink,
+  labelFor,
 }: {
   item: NavItemDef;
   active?: boolean;
   repoId?: string | null;
   Link?: LinkLike;
+  labelFor?: ShellContext["labelFor"];
 }) {
   const I = Icon[item.icon];
   const [h, setH] = React.useState(false);
@@ -51,7 +53,7 @@ export function NavItem({
           />
         )}
         <I size={16} style={{ color: active ? "var(--accent)" : "inherit" }} />
-        <span style={{ flex: 1 }}>{item.label}</span>
+        <span style={{ flex: 1 }}>{(item.labelKey ? labelFor?.(item.labelKey, item.label) : undefined) ?? item.label}</span>
         {item.badge && (
           <span
             className="tnum"

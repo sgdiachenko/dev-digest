@@ -11,18 +11,10 @@ import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
+import { isReasoningModel } from '../../platform/llm-params.js';
 
 const DEFAULT_TIMEOUT = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
-
-/**
- * GPT-5 and the o-series reasoning models reject a custom `temperature` (only
- * the default is allowed) and use `max_completion_tokens` instead of
- * `max_tokens`. Detect them so we can omit/remap those params.
- */
-function isReasoningModel(model: string): boolean {
-  return /^(gpt-5|o1|o3|o4)/.test(model);
-}
 
 /** Build the temperature + token-cap params appropriate for the given model. */
 function tuningParams(

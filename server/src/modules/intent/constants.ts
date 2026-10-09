@@ -48,7 +48,7 @@ export const EXTRACT_TEMPERATURE = 0;
 // Headroom for reasoning models: their hidden reasoning tokens count against max_tokens, and a
 // 600 cap can truncate the JSON mid-object (→ "failed schema validation").
 export const EXTRACT_MAX_TOKENS = 2000;
-export const EXTRACT_TIMEOUT_MS = 30_000;
+export const EXTRACT_TIMEOUT_MS = 90_000;
 export const EXTRACT_MAX_RETRIES = 1;
 
 // ---- clampExtraction bounds --------------------------------------------------

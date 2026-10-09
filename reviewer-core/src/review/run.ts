@@ -81,6 +81,12 @@ export interface ReviewInput {
   task?: string;
   /** Override the structured-output retry budget. */
   maxRetries?: number;
+  /** Sampling temperature; forwarded to the provider only when set. */
+  temperature?: number;
+  /** Per-call timeout (ms); forwarded to the provider only when set. */
+  timeoutMs?: number;
+  /** HTTP-level SDK retries per call; forwarded only when set (0 = single attempt). */
+  httpRetries?: number;
   /** Override the map-reduce line threshold. */
   mapThresholdLines?: number;
   /**
@@ -128,6 +134,14 @@ export interface ReviewOutcome {
   costUsd: number | null;
   /** Joined raw model outputs (for the run trace). */
   raw: string;
+  /** The LLM request parameters actually sent (null = provider default). */
+  request: {
+    model: string;
+    temperature: number | null;
+    max_retries: number;
+    timeout_ms: number | null;
+    http_retries: number | null;
+  };
 }
 
 export function selectReviewMode(
@@ -212,6 +226,9 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       schemaName: 'Review',
       messages: a.messages,
       maxRetries,
+      ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+      ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+      ...(input.httpRetries !== undefined ? { httpRetries: input.httpRetries } : {}),
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     });
     tokensIn += res.tokensIn;
@@ -250,5 +267,12 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensOut,
     costUsd,
     raw: raws.join('\n---\n'),
+    request: {
+      model: input.model,
+      temperature: input.temperature ?? null,
+      max_retries: maxRetries,
+      timeout_ms: input.timeoutMs ?? null,
+      http_retries: input.httpRetries ?? null,
+    },
   };
 }

@@ -1,7 +1,7 @@
 /* useModalFocus — keyboard behaviour for a fullscreen dialog built on the vendored
    `Modal`, which sets role="dialog" + aria-modal but does not move focus into the dialog,
    close on Escape or keep Tab inside. The vendored primitive is shared by ~8 dialogs and
-   is composed, not patched (client/AGENTS.md), so this lives next to its one caller. */
+   is composed, not patched (client/AGENTS.md). Shared by every dialog that needs real keyboard behaviour. */
 "use client";
 
 import React from "react";

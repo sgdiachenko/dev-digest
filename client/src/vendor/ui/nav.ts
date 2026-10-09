@@ -5,6 +5,8 @@ import type { IconName } from "./icons";
 export interface NavItemDef {
   key: string;
   label: string;
+  /** Optional i18n key; the app resolves it via ShellContext.labelFor, falling back to `label`. */
+  labelKey?: string;
   icon: IconName;
   /** Route template; :repoId is replaced with the active repo id by the app. */
   href: string;
@@ -33,6 +35,7 @@ export const NAV: NavGroup[] = [
       { key: "skills", label: "Skills", icon: "Sparkles", href: "/skills", gKey: "s" },
       { key: "agents", label: "Agents", icon: "Cpu", href: "/agents", gKey: "a" },
       { key: "conventions", label: "Conventions", icon: "ListChecks", href: "/conventions", gKey: "c" },
+      { key: "eval", label: "Eval Dashboard", labelKey: "nav.evalDashboard", icon: "Gauge", href: "/eval" },
     ],
   },
 ];

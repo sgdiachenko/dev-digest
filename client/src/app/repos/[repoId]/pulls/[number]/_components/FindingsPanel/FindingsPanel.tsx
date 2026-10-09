@@ -5,8 +5,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Toggle, EmptyState } from "@devdigest/ui";
-import type { FindingRecord, Severity } from "@devdigest/shared";
+import type { Agent, FindingRecord, ReviewRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "@/components/finding-card/FindingCard";
+import { EvalCaseModal, useEvalCaseLauncher } from "@/components/eval-case-modal";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings, countBySeverity, hideLowConfidence } from "./helpers";
@@ -18,14 +19,20 @@ export function FindingsPanel({
   prId,
   repoFullName,
   headSha,
+  reviews = [],
+  agents = [],
 }: {
   findings: FindingRecord[];
   prId: string;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Reviews (for each finding's agent) and agents — they decide whether "Turn into eval case" is enabled. */
+  reviews?: ReviewRecord[];
+  agents?: Agent[];
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
+  const evalLauncher = useEvalCaseLauncher(reviews, agents);
   const [hideLow, setHideLow] = React.useState(false);
   const [severityFilter, setSeverityFilter] = React.useState<Severity | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
@@ -86,10 +93,15 @@ export function FindingsPanel({
               repoFullName={repoFullName}
               headSha={headSha}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
+              onTurnIntoEvalCase={() => evalLauncher.open(f.id)}
+              evalDisabledReason={evalLauncher.reasonFor(f)}
             />
           ))
         )}
       </div>
+      {evalLauncher.openFindingId && (
+        <EvalCaseModal source={{ kind: "finding", findingId: evalLauncher.openFindingId }} onClose={evalLauncher.close} />
+      )}
     </div>
   );
 }

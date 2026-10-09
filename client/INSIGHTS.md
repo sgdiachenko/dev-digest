@@ -62,6 +62,8 @@ don't write it here.
 
 **2026-10-01** — In the browser-automation tab `document.visibilityState` is `hidden`, so Next's streamed Suspense replacement is never swapped in: the hidden copy (`div#S:0`, `display:none`, titled with the raw repo id) stays in the DOM and a DOM probe sees every section id twice. That is an artefact of the hidden tab, not a duplicated-id bug in the page; real browsers swap the copy. Count ids with this in mind before filing a bug. Evidence: Phase 4 notes in `docs/plans/onboarding-tour.reports.md` (manual verification of `/repos/:repoId/tour`).
 
+**2026-10-08** — The agent page's `VALID_TABS` is now exported from `app/agents/[id]/constants.ts` and guarded by `constants.test.ts` (every `AgentEditor` `TABS.key` must be in it), closing the gap noted on 2026-09-30; the Evals tab was added in both places. Evidence: `client/src/app/agents/[id]/constants.test.ts`.
+
 ## Open Questions
 
 ## Session Notes

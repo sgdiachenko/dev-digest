@@ -103,3 +103,33 @@ describe("FindingsPanel — severity filter pills", () => {
     expect(screen.queryByRole("button", { name: /Critical|Warning|Suggestion/i })).not.toBeInTheDocument();
   });
 });
+
+describe("FindingsPanel — Turn into eval case", () => {
+  it("enables the button for a triaged finding of an existing agent and disables it otherwise (AC-1, AC-2, AC-4)", () => {
+    const triaged = finding({ id: "t1", title: "Triaged", accepted_at: "2026-06-13T20:00:00.000Z" });
+    const open = finding({ id: "o1", title: "Still open" });
+    const review = {
+      id: "r1",
+      pr_id: "pr1",
+      agent_id: "ag1",
+      run_id: null,
+      kind: "review" as const,
+      verdict: null,
+      summary: null,
+      score: null,
+      model: null,
+      created_at: "",
+      findings: [triaged, open],
+    };
+    renderWithIntl(
+      <FindingsPanel findings={[triaged, open]} prId="pr1" reviews={[review]} agents={[{ id: "ag1" } as never]} />,
+    );
+    // the first card starts expanded; open the second one
+    fireEvent.click(screen.getByText("Still open"));
+    const buttons = screen.getAllByRole("button", { name: /Turn into eval case/ });
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toBeEnabled();
+    expect(buttons[1]).toBeDisabled();
+    expect(buttons[1]).toHaveAccessibleDescription("Accept or dismiss this finding first");
+  });
+});

@@ -1,0 +1,82 @@
+# Whole-harness workflow evals (dispatch, activation, negative control). Runs when CLAUDE.md, any
+# AGENTS.md, an agent definition or the workflow cases change. REPORT-ONLY by default.
+name: eval-workflow
+
+on:
+  pull_request:
+    paths:
+      - 'CLAUDE.md'
+      - '.claude/CLAUDE.md'
+      - '**/AGENTS.md'
+      - '.claude/agents/**'
+      - 'evals/workflow/**'
+      - 'evals/src/**'
+      - 'evals/scripts/**'
+      - 'evals/proxy/**'
+      - 'evals/package.json'
+      - '.github/actions/evals-*/**'
+      - '.github/workflows/eval-workflow.yml'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'OpenRouter slug for the tasks (empty = repo variable EVAL_MODEL, then the default)'
+        required: false
+        default: ''
+      judge_model:
+        description: 'OpenRouter slug for the LLM judge (empty = same as the task model)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-workflow-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EVAL_BACKEND: openrouter
+  EVAL_TEST_TIMEOUT_MS: '600000'
+  # Per-session spend cap (USD) -> Agent SDK maxBudgetUsd. The authoritative cap is the credit limit on the
+  # OpenRouter key itself (litellm's proxy-wide budget is not enforced without a database).
+  EVAL_SESSION_BUDGET_USD: '1'
+  OPENROUTER_BASE_URL: http://localhost:4000
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-v4-flash' }}
+  EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-v4-flash' }}
+  # Report-only by default (lab: model runs first PUBLISH a report). Set repo variable
+  # EVAL_BLOCKING=true to make a red case fail the job.
+  EVAL_BLOCKING: ${{ vars.EVAL_BLOCKING || 'false' }}
+
+jobs:
+  workflow-evals:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/evals-setup
+      - name: workflow evals
+        id: run
+        continue-on-error: true
+        working-directory: evals
+        run: pnpm exec vitest run workflow --retry=1 --reporter=default --reporter=json --outputFile.json=results/ci-report.json
+      - if: steps.run.outcome == 'failure'
+        run: docker compose -f evals/proxy/docker-compose.yml logs --tail 100
+      - name: report (summary + baseline comparison)
+        if: always()
+        working-directory: evals
+        run: node scripts/ci-report.mjs "workflow" results/ci-report.json
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-workflow
+          path: |
+            evals/results/ci-report.json
+            evals/results/records.jsonl
+          if-no-files-found: ignore
+      - if: always()
+        run: docker compose -f evals/proxy/docker-compose.yml down
+      # Report-only unless EVAL_BLOCKING=true.
+      - if: env.EVAL_BLOCKING == 'true' && steps.run.outcome == 'failure'
+        run: echo "::error::eval cases failed and EVAL_BLOCKING=true" && exit 1

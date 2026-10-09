@@ -1,0 +1,41 @@
+name: evals-detect
+description: Map the PR's changed files (or everything, on workflow_dispatch) onto eval suites via evals/scripts/ci-detect.mjs.
+outputs:
+  skills:
+    description: JSON array of changed skills that have evals
+    value: ${{ steps.d.outputs.skills }}
+  agents:
+    description: JSON array of changed agents that have evals
+    value: ${{ steps.d.outputs.agents }}
+runs:
+  using: composite
+  steps:
+    - id: d
+      shell: bash
+      env:
+        RUN_ALL: ${{ github.event_name == 'workflow_dispatch' }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        if [ "$RUN_ALL" != "true" ]; then
+          CHANGED_FILES="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          export CHANGED_FILES
+        fi
+        node evals/scripts/ci-detect.mjs
+    - name: Report skips
+      shell: bash
+      env:
+        SKILLS: ${{ steps.d.outputs.skills }}
+        AGENTS: ${{ steps.d.outputs.agents }}
+        SKIPPED_SKILLS: ${{ steps.d.outputs.skipped_skills }}
+        SKIPPED_AGENTS: ${{ steps.d.outputs.skipped_agents }}
+      run: |
+        {
+          echo "#### detect"
+          echo "- skills: \`$SKILLS\` · agents: \`$AGENTS\`"
+          [ -n "$SKIPPED_SKILLS" ] && echo "- SKIP skills (no evals): $SKIPPED_SKILLS"
+          [ -n "$SKIPPED_AGENTS" ] && echo "- SKIP agents (no evals): $SKIPPED_AGENTS"
+          true
+        } >> "$GITHUB_STEP_SUMMARY"
+        # A skip is never a failure — yellow annotation only.
+        for n in $SKIPPED_SKILLS; do echo "::notice title=SKIP skill $n::no evals written for skill '$n' — nothing to run"; done
+        for n in $SKIPPED_AGENTS; do echo "::notice title=SKIP agent $n::no evals written for agent '$n' — nothing to run"; done

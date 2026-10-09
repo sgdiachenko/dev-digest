@@ -15,6 +15,7 @@
 export {
   assemblePrompt,
   wrapUntrusted,
+  unwrapUntrusted,
   renderIntentBlock,
   MAX_INTENT_CHARS,
   renderProjectContext,
@@ -38,7 +39,13 @@ export {
 } from './prompt-log.js';
 
 // Citation grounding — the mandatory mechanical gate for diff findings.
-export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';
+export {
+  groundFindings,
+  groundingSummary,
+  isFullFileKind,
+  buildLineIndex,
+  type GroundingResult,
+} from './grounding.js';
 
 // Structured-output helpers (Zod → JSON Schema + parse-with-repair).
 export {

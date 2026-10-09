@@ -34,6 +34,8 @@ export interface ShellContext {
   onRemoveRepo?: (id: string) => void;
   onRefresh?: () => void;
   prCount?: number;
+  /** Resolves a nav item's `labelKey` to display text; items without a key keep their `label`. */
+  labelFor?: (key: string, fallback: string) => string;
 }
 
 export interface Crumb {

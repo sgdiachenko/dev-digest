@@ -121,6 +121,10 @@ export function CodeLine({
               repoFullName={findingApi.repoFullName}
               headSha={findingApi.headSha}
               onAction={(action, reply) => findingApi.onAction?.(f.id, action, reply)}
+              onTurnIntoEvalCase={
+                findingApi.onTurnIntoEvalCase ? () => findingApi.onTurnIntoEvalCase?.(f.id) : undefined
+              }
+              evalDisabledReason={findingApi.evalDisabledReason?.(f)}
             />
           </div>
         ))}

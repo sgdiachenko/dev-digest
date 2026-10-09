@@ -31,6 +31,8 @@ export function FindingCard({
   pending,
   repoFullName,
   headSha,
+  onTurnIntoEvalCase,
+  evalDisabledReason,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -39,6 +41,10 @@ export function FindingCard({
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Shows "Turn into eval case"; without it the button is not rendered at all. */
+  onTurnIntoEvalCase?: () => void;
+  /** Why the eval button is disabled; null/undefined = enabled. */
+  evalDisabledReason?: string | null;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
@@ -50,6 +56,7 @@ export function FindingCard({
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;
   const muted = accepted || dismissed;
+  const evalReasonId = `eval-reason-${f.id}`;
 
   return (
     <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
@@ -109,6 +116,26 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
+            {onTurnIntoEvalCase && (
+              <>
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  icon="FlaskConical"
+                  disabled={!!evalDisabledReason}
+                  title={evalDisabledReason ?? undefined}
+                  aria-describedby={evalDisabledReason ? evalReasonId : undefined}
+                  onClick={onTurnIntoEvalCase}
+                >
+                  {t("finding.turnIntoEvalCase")}
+                </Button>
+                {evalDisabledReason && (
+                  <span id={evalReasonId} style={s.visuallyHidden}>
+                    {evalDisabledReason}
+                  </span>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

@@ -41,6 +41,11 @@ import { BriefService } from '../modules/brief/service.js';
 import { PrHistoryService } from '../modules/pr-history/service.js';
 import { ProjectContextRepository } from '../modules/project-context/repository.js';
 import { ProjectContextService } from '../modules/project-context/service.js';
+import { EvalRepository } from '../modules/eval/repository.js';
+import { EvalService } from '../modules/eval/service.js';
+import { EvalAttemptService } from '../modules/eval/attempt-service.js';
+import { EvalSuiteRunService } from '../modules/eval/suite-run-service.js';
+import type { EvalAgentReader, EvalLogger, EvalSkillsReader } from '../modules/eval/types.js';
 import { OnboardingRepository } from '../modules/onboarding/repository.js';
 import { OnboardingService } from '../modules/onboarding/service.js';
 import { OnboardingNarrativeService } from '../modules/onboarding/narrative-service.js';
@@ -105,6 +110,10 @@ export class Container {
   private _prHistoryService?: PrHistoryService;
   private _projectContext?: ProjectContextService;
   private _contextAttachments?: ContextAttachmentsService;
+  private _evalRepo?: EvalRepository;
+  private _evalService?: EvalService;
+  private _evalAttemptService?: EvalAttemptService;
+  private _evalSuiteRunService?: EvalSuiteRunService;
   private _onboarding?: OnboardingService;
   private _onboardingNarrative?: OnboardingNarrativeService;
   private _repoIntel?: RepoIntel;
@@ -316,6 +325,82 @@ export class Container {
       (text) => this.tokenizer.count(text),
       wrapUntrusted,
       () => loadPromptTemplate('onboarding.system.md'),
+    ));
+  }
+
+  get evalRepo(): EvalRepository {
+    return (this._evalRepo ??= new EvalRepository(this.db));
+  }
+
+  /** Agent lookup for the eval module, adapted from the agents repository. */
+  private get evalAgents(): EvalAgentReader {
+    return {
+      get: async (workspaceId, agentId) => {
+        const a = await this.agentsRepo.getById(workspaceId, agentId);
+        return a
+          ? {
+              id: a.id,
+              name: a.name,
+              version: a.version,
+              provider: a.provider,
+              model: a.model,
+              strategy: a.strategy,
+              system_prompt: a.systemPrompt,
+            }
+          : null;
+      },
+    };
+  }
+
+  /** Skills selected exactly like a PR review does, plus the version each had. */
+  private get evalSkills(): EvalSkillsReader {
+    return {
+      forAgentWithVersion: async (agentId) => {
+        const skills = await this.skillsRepo.forAgent(agentId);
+        const versions = await this.evalRepo.skillVersions(skills.map((s) => s.id));
+        return skills.map((s) => ({ ...s, version: versions.get(s.id) ?? 1 }));
+      },
+    };
+  }
+
+  /**
+   * Structured logger handed to the eval services (ids and numbers only, never
+   * content). `app.ts` sets it to the Fastify logger right after construction;
+   * a bare container (tests) falls back to JSON lines on stdout.
+   */
+  logger?: EvalLogger;
+
+  private get evalLogger(): EvalLogger {
+    if (this.logger) return this.logger;
+    const log = (level: 'info' | 'warn' | 'error') => (obj: Record<string, unknown>, msg?: string) =>
+      void process.stdout.write(`${JSON.stringify({ level, msg, ...obj })}\n`);
+    return { info: log('info'), warn: log('warn'), error: log('error') };
+  }
+
+  /** Eval cases / drafts / overview / compare. Memoized with its siblings below. */
+  evalService(): EvalService {
+    return (this._evalService ??= new EvalService(this.evalRepo, this.evalAgents));
+  }
+
+  /** In-memory "Run case" attempts. MEMOIZED: the attempt map lives in the instance. */
+  evalAttemptService(): EvalAttemptService {
+    return (this._evalAttemptService ??= new EvalAttemptService(
+      this.evalRepo,
+      this.evalAgents,
+      this.evalSkills,
+      (provider) => this.llm(provider),
+      this.evalLogger,
+    ));
+  }
+
+  /** Sequential suite runs. MEMOIZED: the cancel flags and in-flight jobs live in the instance. */
+  evalSuiteRunService(): EvalSuiteRunService {
+    return (this._evalSuiteRunService ??= new EvalSuiteRunService(
+      this.evalRepo,
+      this.evalAgents,
+      this.evalSkills,
+      (provider) => this.llm(provider),
+      this.evalLogger,
     ));
   }
 

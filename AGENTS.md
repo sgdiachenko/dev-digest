@@ -54,6 +54,29 @@ run on the host, not in a container).
 .claude/skills/pr-self-review/assets/gate.sh check   # the gate's verdict, standalone
 ```
 
+### Harness evals (`evals/`, pnpm)
+
+```sh
+cd evals && pnpm install
+pnpm eval:quality     # static SKILL.md gate, no model — blocking in CI (docs-static job)
+pnpm eval:skills      # content evals per skill   (evals/skills/<name>/)
+pnpm eval:agents      # content + tool evals per agent (evals/agents/<name>/)
+pnpm eval:workflow    # whole-harness traces: dispatch, activation, negative control
+```
+
+Which change → which minimum check (CI does the same via `evals/scripts/ci-detect.mjs`):
+
+| Change | Minimum check |
+|---|---|
+| `.claude/skills/<n>/**` | `pnpm eval:quality` + `pnpm vitest run skills/<n>/` |
+| `.claude/agents/<n>.md` | `pnpm vitest run agents/<n>/` + `pnpm eval:workflow` |
+| `CLAUDE.md` / any `AGENTS.md` / routing rules | `pnpm eval:workflow` |
+| an eval case (`*.cases.ts`) or grader (`src/scoring/**`) | re-calibrate the baseline: `pnpm eval:repeat` → `pnpm eval:delta` |
+
+A skill/agent without evals is reported as `SKIP (no evals)` in CI, never a failure. Model runs go
+through OpenRouter in CI; switch the model via the `EVAL_MODEL` repo variable or the
+`workflow_dispatch` input (details: [evals/README.md](evals/README.md)).
+
 Per-package `dev` / `test` / `typecheck` — see that package's own `AGENTS.md`
 for the exact command (pnpm vs npm differs).
 
@@ -143,3 +166,5 @@ for the exact command (pnpm vs npm differs).
 - [README.md](README.md) — quick start, full architecture diagram, course lesson map
 - [TESTING.md](TESTING.md) — test strategy across all 5 CI workflows
 - [docs/](docs/) — cross-cutting reference docs (agent prompt library, model choice)
+
+<!-- ci-trigger: touched to exercise the evals workflow; revert before merge -->
