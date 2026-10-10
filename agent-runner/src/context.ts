@@ -1,94 +1,89 @@
 import { readFileSync } from 'node:fs';
-import { RunnerError } from './errors.js';
+import { z } from 'zod';
 
 /**
- * Resolves the PR context (owner/repo/number/title/body/fork) from the
- * GitHub-Actions-injected env vars + the standard `pull_request` event
- * payload — "the CI context" the runner assembles the diff + PR body/title
- * from (T8 action). `GITHUB_REPOSITORY` and `PR_NUMBER` are explicit env vars
- * the generated workflow sets (`server/src/modules/ci/workflow.ts`);
- * `GITHUB_EVENT_PATH` is a default GitHub Actions runtime var (always present)
- * pointing at the JSON payload for the triggering event, which carries the
- * (untrusted, author-controlled) PR title/body and the fork flag.
+ * PR context for the run, taken from the `pull_request` event payload that
+ * GitHub Actions writes to `GITHUB_EVENT_PATH` plus `GITHUB_REPOSITORY`. The
+ * payload is `safeParse`d (C12); title, body and branch names are
+ * author-controlled and reach the model only inside the untrusted PR block.
  */
 
-export interface CiEnv {
-  GITHUB_REPOSITORY?: string;
-  PR_NUMBER?: string;
-  GITHUB_EVENT_PATH?: string;
-  [key: string]: string | undefined;
-}
+const RepoRef = z.object({ id: z.number().int() });
+const Side = z.object({
+  sha: z.string().optional(),
+  ref: z.string().optional(),
+  repo: RepoRef.nullish(),
+});
+const EventPayload = z.object({
+  action: z.string().optional(),
+  pull_request: z.object({
+    number: z.number().int().positive(),
+    title: z.string().nullish(),
+    body: z.string().nullish(),
+    base: Side,
+    head: Side,
+  }),
+});
 
 export interface PrContext {
   owner: string;
   repo: string;
   prNumber: number;
-  /** PR title (untrusted, author-controlled). */
+  /** Event activity type (`opened`, `synchronize`, ...). */
+  action: string;
   title: string;
-  /** PR body/description (untrusted, author-controlled). */
   body: string;
-  /** True when the PR head is a fork — informational only; the workflow
-   *  itself is responsible for never scheduling this job for fork PRs. */
+  baseRef: string;
+  headRef: string;
+  /** Event commits: the diff is read between these, not from the live PR (EC-47). */
+  baseSha: string | null;
+  headSha: string | null;
+  /** Head repo id differs from base repo id, or head repo is null (AC-162, AC-163). */
   isFork: boolean;
 }
 
-interface PullRequestEventPayload {
-  pull_request?: {
-    number?: number;
-    title?: string;
-    body?: string | null;
-    head?: { repo?: { fork?: boolean } | null };
-  };
-}
+export type ContextResult = { ok: true; ctx: PrContext } | { ok: false; message: string };
 
-function readEventPayload(
-  eventPath: string | undefined,
-  readFile: typeof readFileSync,
-): PullRequestEventPayload | null {
-  if (!eventPath) return null;
-  let raw: string;
-  try {
-    raw = readFile(eventPath, 'utf8') as unknown as string;
-  } catch {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as PullRequestEventPayload;
-  } catch {
-    return null;
-  }
-}
+const REPO_NAME = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+const SHA40 = /^[0-9a-f]{40}$/i;
 
-/** Resolve the PR context from env + (best-effort) event payload. */
-export function resolvePrContext(
-  env: CiEnv,
-  readFile: typeof readFileSync = readFileSync,
-): PrContext {
+export function resolvePrContext(env: Record<string, string | undefined>): ContextResult {
   const repository = env.GITHUB_REPOSITORY;
-  if (!repository || !repository.includes('/')) {
-    throw new RunnerError(
-      `GITHUB_REPOSITORY must be set to "owner/name" (got: ${JSON.stringify(repository)})`,
-    );
+  if (!repository || !REPO_NAME.test(repository)) {
+    return { ok: false, message: 'GITHUB_REPOSITORY must be set to "owner/name"' };
   }
-  const [owner, repo] = repository.split('/', 2) as [string, string];
+  const [owner, repo] = repository.split('/') as [string, string];
 
-  const event = readEventPayload(env.GITHUB_EVENT_PATH, readFile);
-  const pr = event?.pull_request;
-
-  const prNumberRaw = env.PR_NUMBER ?? (pr?.number != null ? String(pr.number) : undefined);
-  const prNumber = prNumberRaw ? Number(prNumberRaw) : NaN;
-  if (!Number.isInteger(prNumber) || prNumber <= 0) {
-    throw new RunnerError(
-      `PR_NUMBER must resolve to a positive integer (env PR_NUMBER=${JSON.stringify(env.PR_NUMBER)}, event pull_request.number=${JSON.stringify(pr?.number)})`,
-    );
+  const eventPath = env.GITHUB_EVENT_PATH;
+  if (!eventPath) return { ok: false, message: 'GITHUB_EVENT_PATH is not set' };
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(eventPath, 'utf8'));
+  } catch (err) {
+    return { ok: false, message: `cannot read the event payload: ${(err as Error).message}` };
   }
+  const parsed = EventPayload.safeParse(json);
+  if (!parsed.success) return { ok: false, message: 'the event payload is not a pull_request event' };
 
+  const pr = parsed.data.pull_request;
+  const baseId = pr.base.repo?.id;
+  const headId = pr.head.repo?.id;
+  // Fail closed: an unknown base or head repository is treated as a fork.
+  const isFork = baseId === undefined || headId === undefined || baseId !== headId;
   return {
-    owner,
-    repo,
-    prNumber,
-    title: pr?.title ?? '',
-    body: pr?.body ?? '',
-    isFork: pr?.head?.repo?.fork ?? false,
+    ok: true,
+    ctx: {
+      owner,
+      repo,
+      prNumber: pr.number,
+      action: parsed.data.action ?? '',
+      title: pr.title ?? '',
+      body: pr.body ?? '',
+      baseRef: pr.base.ref ?? '',
+      headRef: pr.head.ref ?? '',
+      baseSha: pr.base.sha && SHA40.test(pr.base.sha) ? pr.base.sha : null,
+      headSha: pr.head.sha && SHA40.test(pr.head.sha) ? pr.head.sha : null,
+      isFork,
+    },
   };
 }

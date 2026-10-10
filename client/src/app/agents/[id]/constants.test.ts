@@ -7,5 +7,6 @@ describe("agent editor tabs", () => {
     for (const tab of TABS) expect(VALID_TABS).toContain(tab.key);
     const keys = TABS.map((tab) => tab.key);
     expect(keys[keys.indexOf("context") + 1]).toBe("evals");
+    expect(keys[keys.indexOf("evals") + 1]).toBe("ci");
   });
 });

@@ -1,13 +1,13 @@
 # AGENTS.md — dev-digest
 
-Local-first AI PR review. **Course starter**: 5 standalone packages, no
+Local-first AI PR review. **Course starter**: 6 standalone packages, no
 workspace tool (no pnpm workspaces / turborepo) — each has its own
 `package.json` + lockfile. Cross-package types via tsconfig path aliases, not
 published modules.
 
 ## Stack
 
-Node ≥22 · pnpm ≥10 (`server/`, `client/`) · npm (`reviewer-core/`, `e2e/` —
+Node ≥22 · pnpm ≥10 (`server/`, `client/`, `agent-runner/`) · npm (`reviewer-core/`, `e2e/` —
 see their own `AGENTS.md`) · Docker (Postgres + pgvector only — API and web
 run on the host, not in a container).
 
@@ -17,6 +17,7 @@ run on the host, not in a container).
 - `client/` — Next.js 15 studio, App Router (`:3000`) → [client/AGENTS.md](client/AGENTS.md)
 - `reviewer-core/` — pure review engine (diff → LLM → findings), no DB/FS → [reviewer-core/AGENTS.md](reviewer-core/AGENTS.md)
 - `mcp-server/` — local MCP server (stdio) exposing the review flow to an AI agent → [mcp-server/AGENTS.md](mcp-server/AGENTS.md)
+- `agent-runner/` — standalone CI runner (own `package.json` + pnpm lockfile), bundled with `ncc` and shipped into target repos as `.devdigest/runner/` (three files: `index.js`, `300.index.js`, `package.json`) by the Export to CI flow → [agent-runner/README.md](agent-runner/README.md)
 - `e2e/` — deterministic browser e2e (agent-browser, no LLM) → [e2e/AGENTS.md](e2e/AGENTS.md)
 - `docs/` — cross-cutting reference docs (agent prompts, model choice) that don't belong to one package
 - `.claude/agents/` — Claude Code subagents: `spec-creator` (SDD spec

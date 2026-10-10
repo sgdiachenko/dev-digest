@@ -1,0 +1,9 @@
+diff --git a/src/config.ts b/src/config.ts
+index 1111111..2222222 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -9,3 +9,4 @@
+ host: 'localhost',
++apiKey: 'sk_live_abcdef123456',
+ port: 3000,
+ timeout: 30,

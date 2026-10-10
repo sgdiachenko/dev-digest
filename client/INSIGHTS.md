@@ -64,6 +64,8 @@ don't write it here.
 
 **2026-10-08** — The agent page's `VALID_TABS` is now exported from `app/agents/[id]/constants.ts` and guarded by `constants.test.ts` (every `AgentEditor` `TABS.key` must be in it), closing the gap noted on 2026-09-30; the Evals tab was added in both places. Evidence: `client/src/app/agents/[id]/constants.test.ts`.
 
+**2026-10-09** — `beforeEach(() => fetchMock.mockReset())` (an arrow returning the mock) makes vitest treat the returned `vi.fn` as the test's TEARDOWN function and call it after each test with no arguments, so a router-style `fetchMock.mockImplementation((url) => new URL(url)...)` set up in the next test throws `Invalid URL: undefined` from the previous test's cleanup — every test after the first fails with a baffling error. Use a block body (`beforeEach(() => { fetchMock.mockReset(); })`). Evidence: `client/src/app/agents/[id]/_components/AgentEditor/_components/CiTab/CiTab.test.tsx`.
+
 ## Open Questions
 
 ## Session Notes
