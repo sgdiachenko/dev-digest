@@ -135,6 +135,8 @@ export interface CommitFilesPayload {
   base: string;
   message: string;
   files: CommitFile[];
+  /** Paths removed from the branch in the same commit; each must exist on it. */
+  deletes?: string[];
 }
 
 export interface GitHubClient {
@@ -173,6 +175,83 @@ export interface GitHubClient {
     repo: RepoRef,
     sha: string,
   ): Promise<{ number: number; title: string; merged_at: string | null; author: string }[]>;
+}
+
+// ---------- GitHub CI reads (Export to CI) ----------
+/** A workflow run as the CI sync needs it — identity + timing from the API only. */
+export interface CiWorkflowRun {
+  id: number;
+  /** `null` when GitHub omits the field (treated as attempt 1). */
+  runAttempt: number | null;
+  headSha: string;
+  /** `owner/name` of the head repository; `null` when it was deleted. */
+  headRepo: string | null;
+  /** Id of the repository the run belongs to. */
+  repositoryId: number;
+  /** Workflow file path as GitHub reports it (may carry an `@ref` suffix). */
+  path: string;
+  status: string | null;
+  conclusion: string | null;
+  htmlUrl: string;
+  runStartedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  /** PR numbers GitHub attached to the run (empty for fork-PR runs). */
+  pullRequests: number[];
+}
+
+export interface CiRunArtifact {
+  id: number;
+  name: string;
+  expired: boolean;
+  sizeInBytes: number;
+}
+
+/**
+ * Read-side GitHub port for Export to CI. The write side (`commitFiles`,
+ * `openPullRequest`, `findOpenPr`) stays on `GitHubClient`. No method retries
+ * (NFR-5); errors carry the HTTP `status` for the caller to map.
+ */
+export interface GitHubCiClient {
+  /** Repository id + default branch. A missing/forbidden repo rejects with status 404. */
+  getRepo(repo: RepoRef): Promise<{ id: number; defaultBranch: string }>;
+  branchExists(repo: RepoRef, branch: string): Promise<boolean>;
+  /**
+   * Git blob SHA of each requested path at the head of `branch` (`null` when
+   * the path is absent) — compared with locally computed blob SHAs so an
+   * unchanged bundle adds no commit.
+   */
+  readBranchFiles(
+    repo: RepoRef,
+    branch: string,
+    paths: string[],
+  ): Promise<Record<string, string | null>>;
+  /** Newest-first runs of the workflow file `workflowFile` (basename). */
+  listWorkflowRuns(repo: RepoRef, workflowFile: string, perPage: number): Promise<CiWorkflowRun[]>;
+  listRunArtifacts(repo: RepoRef, runId: number): Promise<CiRunArtifact[]>;
+  /**
+   * Download an artifact archive. Follows the short-lived redirect at once and
+   * never returns or logs its URL. `null` = gone (410). Rejects with an
+   * `AppError` code `artifact_too_large` when the body exceeds `maxBytes`.
+   */
+  downloadArtifact(repo: RepoRef, artifactId: number, maxBytes: number): Promise<Uint8Array | null>;
+  /** PR number whose head SHA and head repository match, else `null`. */
+  findPrByHead(repo: RepoRef, headSha: string, headRepo: string | null): Promise<number | null>;
+}
+
+// ---------- Runner bundle (prebuilt agent-runner files) ----------
+export interface RunnerBundleFile {
+  /** File name inside `.devdigest/runner/` (e.g. `index.js`). */
+  name: string;
+  contents: string;
+}
+
+export interface RunnerBundleSource {
+  /**
+   * Every shipped runner file, in `CI_PATHS.RUNNER_FILES` order. Rejects with
+   * an `AppError` (`runner_bundle_unavailable`, 503) when any file is missing.
+   */
+  read(): Promise<RunnerBundleFile[]>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

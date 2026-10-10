@@ -1,0 +1,14 @@
+diff --git a/old/name.ts b/new/name.ts
+similarity index 90%
+rename from old/name.ts
+rename to new/name.ts
+index 9999999..aaaaaaa 100644
+--- a/old/name.ts
++++ b/new/name.ts
+@@ -1,2 +1,3 @@
+ head
++added line
+ tail
+diff --git a/script.sh b/script.sh
+old mode 100644
+new mode 100755

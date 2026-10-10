@@ -1,6 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import { parseUnifiedDiff, stripIgnoredFiles } from './diff.js';
 
+describe('added and removed lines that look like file headers', () => {
+  // Inside a hunk, "+++ x" is an added line whose content starts with "++ x";
+  // it must not be read as a new file header or dropped from the counts.
+  const raw = [
+    'diff --git a/docs/CHANGELOG.md b/docs/CHANGELOG.md',
+    '--- a/docs/CHANGELOG.md',
+    '+++ b/docs/CHANGELOG.md',
+    '@@ -1,2 +1,4 @@',
+    ' item one',
+    '+++ fix',
+    '--- old note',
+    '+added',
+    ' item two',
+    '',
+  ].join('\n');
+
+  it('keeps the file path and counts the added and removed lines', () => {
+    const file = parseUnifiedDiff(raw).files[0]!;
+    expect(file.path).toBe('docs/CHANGELOG.md');
+    expect(file.additions).toBe(2);
+    expect(file.deletions).toBe(1);
+  });
+
+  it('numbers the new-side lines of the hunk without a gap', () => {
+    const hunk = parseUnifiedDiff(raw).files[0]!.hunks[0]!;
+    expect(hunk.newLineNumbers).toEqual([1, 2, 3, 4]);
+  });
+});
+
 /**
  * Sanity test for the self-authored unified-diff parser (agent-runner cannot
  * import the server's `git/diff-parser.ts` — outside owned paths and would

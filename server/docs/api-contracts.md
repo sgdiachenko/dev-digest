@@ -3,7 +3,8 @@
 Wire contracts are Zod schemas in `src/vendor/shared/contracts/`, hand-mirrored
 into `client/src/vendor/shared/contracts/` (see the root [AGENTS.md](../../AGENTS.md)).
 All wire fields are `snake_case`. This file currently documents the Project
-Context routes (catalog and attachments) and the Onboarding Tour routes; the
+Context routes (catalog and attachments), the Onboarding Tour routes and the
+Export to CI routes; the
 other modules' shapes live in their `modules/<name>/routes.ts` and
 `contracts/*.ts`.
 
@@ -291,3 +292,79 @@ No live narrative generation with a real key was run, so token counts, cost, the
 `NoEligibleProviderError` mapping and the 300 ms acceptance target are unmeasured.
 The `*.it.test.ts` files for these routes (`test/onboarding.it.test.ts`,
 `test/onboarding-narrative.it.test.ts`) were type-checked but never run.
+
+## Export to CI
+
+Spec: [2026-10-09-export-to-ci-v2](../../docs/specs/2026-10-09-export-to-ci-v2.md).
+Schemas: `src/vendor/shared/contracts/eval-ci.ts`. Routes:
+`src/modules/ci/routes.ts`. Errors are `AppError`s, sent as
+`{ error: { code, message } }`.
+
+### `POST /agents/:id/export-ci` -> `CiExport` (200)
+
+Body `CiExportInput`:
+
+| Field | Type |
+|---|---|
+| `repo` | string, `owner/name` |
+| `target` | `gha` (default) |
+| `action` | `open_pr` (default) \| `files` |
+| `post_as` | `github_review` (default) \| `pr_comment` \| `none` |
+| `triggers` | non-empty `CiTrigger[]`, default `opened`, `synchronize`, `reopened` |
+| `workflow_contents` | string \| null, edited workflow (size cap `CI_LIMITS.WORKFLOW_EDIT_MAX_BYTES`) |
+
+Response `CiExport`: `installation` (`CiInstallation`, null for `files`),
+`files` (`CiFile[]`), `pr_url`, `pr_number` (both null for `files`),
+`pr_reused` (an open setup PR was reused).
+
+- `files` has no side effect and takes no export lock (`service.ts:73`).
+- `open_pr` commits to the fixed setup branch and opens or reuses the PR. It
+  also deletes files of the agent's previous export that the new bundle no
+  longer has; a skill another agent still exports is kept.
+- One `open_pr` export per repository runs at a time (in-process lock).
+
+| Status | `error.code` | Meaning |
+|---|---|---|
+| 400 | `github_token_missing` | No GitHub token is stored; no GitHub call was made. |
+| 400 | `github_token_invalid` | GitHub answered 401 (`helpers.ts:120`). |
+| 403 | `github_scope_missing` | GitHub answered 403 (token lacks the `workflow` scope or `Workflows: write`). |
+| 404 | `repo_not_accessible` | The repository does not exist or the token cannot see it; also an unknown agent (`NotFoundError`). |
+| 409 | `export_in_progress` | Another export to the same repository is running. |
+| 409 | `agent_slug_conflict` | Another agent installed in the repository uses the same slug. |
+| 409 | `branch_exists_without_pr` | The setup branch exists with no open PR. |
+| 422 | `provider_not_supported` | The agent's provider is not OpenRouter. |
+| 422 | `validation_error` | Bad `repo`, unsupported target, empty or oversized workflow. |
+| 502 | `github_error` | GitHub rejected the request with another 4xx. |
+| 503 | `github_unavailable` | Rate limit, 5xx, timeout or network error. |
+| 503 | `runner_bundle_unavailable` | The runner files are missing on the server; checked before any GitHub call. |
+
+### `GET /agents/:id/ci-installations` -> `CiInstallation[]` (200)
+
+An array, not an envelope. Each item carries the export-time snapshot
+(`exported_model`, `exported_skills`, `agent_version`), the computed flags
+`outdated` and `pending_update`, and `latest_run` (`CiRun` or null). An
+unknown agent returns `404`.
+
+### `GET /ci-runs?limit=` -> `CiRun[]` (200)
+
+`limit` is an integer from 1 to `CI_LIMITS.RUNS_PAGE_MAX` (100), default 100;
+an out-of-range value fails query validation. Runs are not workspace-scoped in storage (no
+workspace column), so this is correct only for the single-workspace MVP
+(W2 open issues in the
+[reports](../../docs/plans/export-to-ci-v2.reports.md)).
+
+### `POST /ci-runs/refresh` -> `CiRefreshResponse` (200)
+
+`{ results: CiRefreshResult[] }`, one item per installation:
+`installation_id`, `repo`, `stored` (runs stored), `error_code` (null = ok).
+A failing installation does not fail the request; its `error_code` is one of
+`github_scope_missing`, `repo_not_accessible`, `github_unavailable` or
+`sync_failed` (`constants.ts:34`).
+
+### Not verified
+
+No live GitHub run was made: the 403 mapping for classic and fine-grained
+tokens (spec AC-110) and the 30 s refresh target (NFR-2) are manual rows. The
+persistence test `test/ci-repository.it.test.ts` is written but not run
+because no migration was generated yet (see the spec's *Implementation*
+section).

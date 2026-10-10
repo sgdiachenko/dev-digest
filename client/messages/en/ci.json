@@ -19,14 +19,50 @@
       "source": "Source",
       "findings": "Findings",
       "cost": "Cost",
-      "status": "Status"
+      "status": "Status",
+      "agent": "Agent",
+      "duration": "Dur.",
+      "verdict": "Verdict",
+      "link": "GitHub"
     },
     "view": "View",
     "status": {
       "succeeded": "Succeeded",
       "noFindings": "No findings",
       "failed": "Failed",
-      "running": "Running"
+      "running": "Running",
+      "skipped": "Skipped",
+      "cancelled": "Cancelled"
+    },
+    "emptyCta": "Set up CI for an agent",
+    "loading": "Loading CI runs",
+    "loadFailed": "Couldn’t load CI runs",
+    "loadFailedBody": "The CI runs could not be loaded. Try again.",
+    "sourceGha": "GitHub Actions",
+    "unlinked": "unlinked",
+    "differsFromExport": "differs from export",
+    "viewOnGitHub": "View on GitHub",
+    "viewOnGitHubFor": "View on GitHub: {repo}, run {run}",
+    "refreshed": "Refresh finished — {count, plural, one {# run} other {# runs}} stored.",
+    "refreshFailed": "Refresh failed: {message}",
+    "refreshErrorsTitle": "Repositories that failed to refresh",
+    "verdict": {
+      "approve": "Approve",
+      "comment": "Comment",
+      "request_changes": "Request changes"
+    },
+    "reason": {
+      "artifact_expired": "Artifact expired",
+      "artifact_missing": "No artifact found",
+      "artifact_invalid": "Artifact invalid",
+      "artifact_too_large": "Artifact too large"
+    },
+    "errorCodes": {
+      "github_token_missing": "A GitHub token is required to refresh CI runs.",
+      "github_scope_missing": "GitHub refused access to workflow runs. The token needs classic “repo” or fine-grained “Actions: read”.",
+      "repo_not_accessible": "The repository does not exist or the token cannot access it.",
+      "github_unavailable": "GitHub is rate-limiting or unavailable. Try again later.",
+      "unknown": "Sync failed ({code})."
     }
   },
   "exportWizard": {
@@ -70,19 +106,87 @@
     "blockMergeTitle": "Block merge on findings",
     "blockMergeDesc": "Requires a GitHub App — not available with PAT in local mode",
     "installCardTitle": "Open a PR with these files",
-    "installCardBody": "DevDigest opens a PR in {repo} titled “Add DevDigest CI review” with the {count} generated files.",
+    "installCardBody": "DevDigest opens a PR in {repo} from the branch {branch} titled “Add DevDigest CI review” with the {count} generated files.",
     "ownerRepo": "owner/repo",
-    "secretNote": "Add {key} to the repo's Actions secrets before the workflow runs."
+    "secretNote": "Add {key} to the repo's Actions secrets before the workflow runs.",
+    "cancel": "Cancel",
+    "close": "Close",
+    "targetLabel": "Target",
+    "providerNotice": "CI runs use OpenRouter. Switch this agent’s provider to OpenRouter on the Config tab first.",
+    "noRepos": "Import a repository first.",
+    "noReposLink": "Go to repositories",
+    "triggerRequired": "Select at least one trigger.",
+    "readOnly": "read-only",
+    "editWorkflow": "Edit workflow: {path}",
+    "readOnlyFile": "File contents (read-only): {path}",
+    "workflowTooLarge": "The workflow is larger than {max} KB; the server will reject it.",
+    "workflowEmpty": "The workflow can’t be empty.",
+    "previewFailed": "Couldn’t generate the files",
+    "errors": {
+      "runnerBundleUnavailable": "The CI runner files are not built on the server. Run “pnpm -C agent-runner build” and try again."
+    },
+    "zipCardTitle": "Copy files as a zip",
+    "zipCardBody": "Downloads exactly the files from the preview. Nothing is sent to GitHub.",
+    "permissionsTitle": "Token permissions needed",
+    "permissions": {
+      "classic": "Classic token: repo and workflow",
+      "fineGrained": "Fine-grained token: Contents: write, Workflows: write, Pull requests: write, Actions: read"
+    },
+    "doneTitle": "Pull request ready",
+    "doneBody": "DevDigest opened a pull request with the CI files.",
+    "doneReused": "An open setup pull request was updated.",
+    "openPr": "View pull request",
+    "zipDoneTitle": "Zip downloaded",
+    "zipDoneBody": "Add the files to your repository to enable CI.",
+    "checklist": {
+      "secret": "Add {key} to the repository’s Actions secrets.",
+      "merge": "Merge the pull request.",
+      "required": "Optionally make the check required to block merges.",
+      "refresh": "Use Refresh on the CI Runs page."
+    },
+    "regenerateTitle": "Replace edited workflow?",
+    "regenerateBody": "The triggers or post mode changed, so the workflow will be regenerated and your edits to it will be lost.",
+    "regenerateReplace": "Replace with regenerated",
+    "regenerateKeep": "Keep editing"
   },
   "ciTab": {
     "heading": "Continuous Integration",
     "subtitle": "Run this agent automatically on pull requests in a target repo.",
     "exportToCi": "Export to CI",
     "publish": "Publish to CI",
-    "update": "Update CI",
+    "update": {
+      "heading": "Update CI config results",
+      "success": "Updated.",
+      "failure": "Failed: {message}"
+    },
     "noRepo": "Connect a repository first",
     "empty": "Not deployed to CI yet. Use “Publish to CI” to open a PR that adds the workflow + agent config.",
-    "installed": "installed {date}"
+    "installed": "installed {date}",
+    "loading": "Loading CI installations",
+    "loadFailed": "Couldn’t load CI installations",
+    "loadFailedBody": "The installations could not be loaded. Try again.",
+    "emptyTitle": "Not in CI yet",
+    "emptyBody": "Run this agent automatically on every pull request in a repository’s CI pipeline.",
+    "addToCi": "Add to CI",
+    "deployment": "CI deployment",
+    "installedIn": "Installed in {count, plural, one {# repo} other {# repos}}",
+    "updateConfig": "Update CI config",
+    "updating": "Updating…",
+    "addRepository": "Add repository",
+    "githubActions": "GitHub Actions",
+    "prLink": "Setup PR",
+    "noRuns": "No runs yet",
+    "outdated": "outdated",
+    "pendingUpdate": "pending update",
+    "failOn": {
+      "title": "Fail CI on",
+      "hint": "Fail the check when a finding at or above this severity lands. Pair it with a required status check to block merges.",
+      "critical": "Critical",
+      "warning": "Warning +",
+      "never": "Never",
+      "any": "Any finding (set on the Config tab)",
+      "saveFailed": "Couldn’t save: {message}"
+    }
   },
   "publishDialog": {
     "title": "Publish to CI",
@@ -101,6 +205,8 @@
     "close": "Close"
   },
   "page": {
-    "crumb": "CI Runs"
-  }
+    "crumb": "CI Runs",
+    "crumbLab": "Skills Lab"
+  },
+  "settingsLink": "Open Settings"
 }

@@ -27,16 +27,20 @@ gets the answers and re-invokes you. You work in explicit modes; never skip
 
 ## Hard limits
 
-- **Write scope — exactly two targets:** files matching
-  `docs/specs/<YYYY-MM-DD>-*.md`, and the registry `docs/specs/README.md`. Nothing
+- **Write scope — exactly two targets (plus the analysis file above):** files
+  matching `docs/specs/<YYYY-MM-DD>-*.md`, and the registry `docs/specs/README.md`. Nothing
   else: not code, not tests, not `docs/specs/conventions.md` or any other
   file in `docs/specs/`, not `<pkg>/specs/**` (those are `doc-writer`'s
   post-implementation guarantees), not `docs/plans/**`, not other READMEs,
   `AGENTS.md`, `INSIGHTS.md`, and never the design files you were given. If
   the work seems to need a change outside that scope, list it under
   *Handoff* in your report instead of making it.
-- **`analyze` writes nothing.** Only `write`, `revise` and `approve` touch a
-  file.
+- **`analyze` writes nothing, except its own analysis file when the prompt
+  names one.** When the main session gives an analysis path
+  `docs/specs/<YYYY-MM-DD>-<slug>.analysis.md`, write the full analysis there
+  and return only the path plus the questions. The next pass receives that
+  path and reads it; nobody receives the analysis as pasted text. Only
+  `write`, `revise` and `approve` touch the spec file.
 - **Lifecycle of an existing spec:**
   - `Status: draft` → you may edit it (`revise`).
   - `Status: approved` or `implemented` → **read-only for you.** A changed
@@ -228,6 +232,11 @@ Q1. <question> — options: (a) … (b) … — recommended: (x), because …
 ```
 
 ## Mode `write`
+
+Before returning, split every line copied from a previous version of the spec
+that has more than one response into one AC per response (next free IDs),
+exactly as for new lines. A copied line keeps its meaning but not its
+multi-response shape: an `approve` pass fails on it otherwise.
 
 Using the analysis, `Research:` and `Answers:`, write
 `docs/specs/<YYYY-MM-DD>-<slug>.md` (`<YYYY-MM-DD>` is the day the spec is first written; `<slug>` is

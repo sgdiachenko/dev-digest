@@ -92,13 +92,14 @@ export function parseUnifiedDiff(raw: string): UnifiedDiff {
       current = { path: '', additions: 0, deletions: 0, hunks: [] };
       continue;
     }
-    if (line.startsWith('+++ ')) {
+    // File headers only exist outside a hunk: inside one, "+++ x" is an added line.
+    if (line.startsWith('+++ ') && !hunk) {
       if (!current) current = { path: '', additions: 0, deletions: 0, hunks: [] };
       const p = line.slice(4).replace(/^b\//, '').trim();
       current.path = p === '/dev/null' ? current.path : p;
       continue;
     }
-    if (line.startsWith('--- ')) continue;
+    if (line.startsWith('--- ') && !hunk) continue;
     const hh = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
     if (hh) {
       flushHunk();
@@ -116,11 +117,11 @@ export function parseUnifiedDiff(raw: string): UnifiedDiff {
       continue;
     }
     if (!current || !hunk) continue;
-    if (line.startsWith('+') && !line.startsWith('+++')) {
+    if (line.startsWith('+')) {
       current.additions++;
       hunk.newLineNumbers.push(newLineCursor);
       newLineCursor++;
-    } else if (line.startsWith('-') && !line.startsWith('---')) {
+    } else if (line.startsWith('-')) {
       current.deletions++;
       // deletion: no new-side line consumed
     } else {

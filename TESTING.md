@@ -1,6 +1,6 @@
 # Testing & CI strategy
 
-DevDigest is five independent packages (no workspace), so testing is organised
+DevDigest is six independent packages (no workspace), so testing is organised
 as **one suite per package**, each with its own CI workflow, runner, and path
 filter. A package's suite runs only when that package (or a package it depends
 on at type-check time) changes.
@@ -31,6 +31,7 @@ If a test wouldn't catch a class of regression we care about, we don't write it.
 | server-integration | `server/` | integration (real Postgres) | vitest | `server-integration.yml` | **yes** |
 | reviewer-core | `reviewer-core/` | unit (engine) | vitest | `reviewer-core.yml` | no |
 | mcp-server | `mcp-server/` | unit (hermetic, mocked API) | vitest | `mcp-server.yml` | no |
+| agent-runner | `agent-runner/` | typecheck + unit (hermetic) + ncc build | vitest | **none yet** | no |
 | e2e web | `e2e/` | browser e2e (deterministic) | agent-browser + `run.ts` | `e2e-web.yml` | yes (stack) |
 
 ## What each suite covers
@@ -59,6 +60,17 @@ timers), the compact response shapes, and the actionable error text for each
 failure mode (unknown repo/pr/agent/run_id, still running, timed out). No
 network, no real DevDigest API.
 
+**agent-runner** — the CI runner that Export to CI ships into target repos.
+Unit tests (vitest, no network, no real LLM) cover the gates in spec order
+(manifest, fork, trigger, key, skills, memory — each asserting zero LLM calls),
+the diff parser (including a parity test against the server's parser), the
+result artifact and `runner_build` hash, and `runCi` with stubbed GitHub and
+model. Local checks: `pnpm typecheck`, `pnpm test`, `pnpm build` (the `ncc`
+bundle must build; copied into an empty directory it must start without a
+module error). **Gap: no workflow runs these checks in CI yet**, and the
+suite map above lists no workflow for it. A real run against GitHub Actions
+(live key, test repo) is a manual check only.
+
 **e2e web** — see `e2e/README.md`. Deterministic agent-browser flows over the
 main journeys (boot → PR list → PR detail; agents) against a real seeded stack.
 No `chat`, no model key.
@@ -70,6 +82,7 @@ No `chat`, no model key.
 cd client        && pnpm test           # + pnpm typecheck
 cd reviewer-core && npm test
 cd mcp-server    && pnpm test           # + pnpm typecheck
+cd agent-runner  && pnpm test           # + pnpm typecheck, pnpm build
 
 # server — the unit/integration split (see note below)
 cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'   # unit, no Docker

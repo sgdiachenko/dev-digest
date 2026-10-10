@@ -8,6 +8,11 @@ import type {
   StructuredResult,
   Embedder,
   GitHubClient,
+  GitHubCiClient,
+  CiWorkflowRun,
+  CiRunArtifact,
+  RunnerBundleSource,
+  RunnerBundleFile,
   RepoRef,
   PrMeta,
   PrDetail,
@@ -264,6 +269,104 @@ export class MockGitHubClient implements GitHubClient {
     sha: string,
   ): Promise<{ number: number; title: string; merged_at: string | null; author: string }[]> {
     return this.opts.pullsByCommit?.[sha] ?? [];
+  }
+}
+
+// ---------- Mock GitHub CI reads ----------
+export interface MockGitHubCiOptions {
+  repo?: { id: number; defaultBranch: string };
+  /** Whether `devdigest/ci` exists. */
+  branchExists?: boolean;
+  /** Blob SHA per path on the branch; unlisted ⇒ absent. */
+  branchBlobs?: Record<string, string>;
+  runs?: CiWorkflowRun[];
+  artifactsByRun?: Record<number, CiRunArtifact[]>;
+  /** Archive bytes per artifact id; `null` ⇒ 410 gone. */
+  archives?: Record<number, Uint8Array | null>;
+  prByHead?: Record<string, number>;
+  /** Make any method reject with this (e.g. an error carrying `status`). */
+  error?: Error;
+}
+
+export class MockGitHubCiClient implements GitHubCiClient {
+  public calls: string[] = [];
+  public downloads: number[] = [];
+
+  constructor(public opts: MockGitHubCiOptions = {}) {}
+
+  private hit(name: string): void {
+    this.calls.push(name);
+    if (this.opts.error) throw this.opts.error;
+  }
+
+  async getRepo(_repo: RepoRef): Promise<{ id: number; defaultBranch: string }> {
+    this.hit('getRepo');
+    return this.opts.repo ?? { id: 1001, defaultBranch: 'main' };
+  }
+
+  async branchExists(_repo: RepoRef, _branch: string): Promise<boolean> {
+    this.hit('branchExists');
+    return this.opts.branchExists ?? false;
+  }
+
+  async readBranchFiles(
+    _repo: RepoRef,
+    _branch: string,
+    paths: string[],
+  ): Promise<Record<string, string | null>> {
+    this.hit('readBranchFiles');
+    return Object.fromEntries(paths.map((p) => [p, this.opts.branchBlobs?.[p] ?? null]));
+  }
+
+  async listWorkflowRuns(
+    _repo: RepoRef,
+    _workflowFile: string,
+    perPage: number,
+  ): Promise<CiWorkflowRun[]> {
+    this.hit('listWorkflowRuns');
+    return (this.opts.runs ?? []).slice(0, perPage);
+  }
+
+  async listRunArtifacts(_repo: RepoRef, runId: number): Promise<CiRunArtifact[]> {
+    this.hit('listRunArtifacts');
+    return this.opts.artifactsByRun?.[runId] ?? [];
+  }
+
+  async downloadArtifact(
+    _repo: RepoRef,
+    artifactId: number,
+    _maxBytes: number,
+  ): Promise<Uint8Array | null> {
+    this.hit('downloadArtifact');
+    this.downloads.push(artifactId);
+    const archive = this.opts.archives?.[artifactId];
+    return archive === undefined ? null : archive;
+  }
+
+  async findPrByHead(
+    _repo: RepoRef,
+    headSha: string,
+    _headRepo: string | null,
+  ): Promise<number | null> {
+    this.hit('findPrByHead');
+    return this.opts.prByHead?.[headSha] ?? null;
+  }
+}
+
+// ---------- Mock runner bundle ----------
+export class MockRunnerBundleSource implements RunnerBundleSource {
+  public reads = 0;
+
+  constructor(private files: RunnerBundleFile[] | Error = [
+    { name: 'index.js', contents: '// runner index\n' },
+    { name: '300.index.js', contents: '// runner chunk\n' },
+    { name: 'package.json', contents: '{"type":"module"}\n' },
+  ]) {}
+
+  async read(): Promise<RunnerBundleFile[]> {
+    this.reads += 1;
+    if (this.files instanceof Error) throw this.files;
+    return this.files;
   }
 }
 
