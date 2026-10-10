@@ -6,6 +6,7 @@
 "use client";
 
 import React from "react";
+import { formatCostTrimmed as formatCost } from "@/lib/format";
 import { Icon, Badge } from "@devdigest/ui";
 import type { ReviewRecord, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
@@ -22,14 +23,6 @@ const VERDICT_COLOR: Record<string, string> = {
 function formatWhen(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
-
-/** Compact USD cost (e.g. "$0.0013"); "—" when unknown (no data yet, or a failed run). */
-function formatCost(usd: number | null | undefined): string {
-  if (usd == null) return "—";
-  if (usd === 0) return "$0.00";
-  const rounded = Number(usd.toPrecision(2));
-  return `$${rounded >= 1 ? rounded.toFixed(2) : String(rounded)}`;
 }
 
 export function ReviewRunAccordion({

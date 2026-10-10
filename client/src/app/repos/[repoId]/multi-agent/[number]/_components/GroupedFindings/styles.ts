@@ -1,0 +1,37 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  root: { display: "flex", flexDirection: "column", gap: 10 },
+  heading: { fontSize: 14, fontWeight: 600, margin: 0 },
+  empty: { fontSize: 13, color: "var(--text-muted)", margin: 0 },
+  list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 },
+  group: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    padding: 12,
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    background: "var(--bg-elevated)",
+    minWidth: 0,
+  },
+  where: { fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono, monospace)" },
+  members: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 },
+  member: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 28,
+    padding: "2px 6px",
+    border: "none",
+    borderRadius: 4,
+    background: "transparent",
+    color: "var(--text-primary)",
+    textAlign: "left",
+    cursor: "pointer",
+    fontSize: 13,
+    width: "100%",
+  },
+  agent: { fontWeight: 600, flexShrink: 0 },
+  title: { minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+} satisfies Record<string, CSSProperties>;

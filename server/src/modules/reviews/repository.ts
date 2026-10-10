@@ -21,6 +21,12 @@ export type ReviewRow = typeof t.reviews.$inferSelect;
 import * as reviewRepo from './repository/review.repo.js';
 import * as runRepo from './repository/run.repo.js';
 import * as pullRepo from './repository/pull.repo.js';
+import * as multiAgentRepo from './repository/multi-agent.repo.js';
+export type {
+  CreateGroupResult,
+  GroupMemberRow,
+  GroupRow,
+} from './repository/multi-agent.repo.js';
 
 export class ReviewRepository {
   constructor(private db: Db) {}
@@ -189,5 +195,31 @@ export class ReviewRepository {
 
   getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return runRepo.getRunTrace(this.db, runId);
+  }
+
+  // ---- multi-agent groups --------------------------------------------------
+
+  /** Group row + N member `agent_runs` in ONE transaction (PR row locked); see the repo fn. */
+  createGroupWithRuns(
+    values: Parameters<typeof multiAgentRepo.createGroupWithRuns>[1],
+  ): Promise<multiAgentRepo.CreateGroupResult> {
+    return multiAgentRepo.createGroupWithRuns(this.db, values);
+  }
+
+  latestGroupForPull(workspaceId: string, prId: string): Promise<multiAgentRepo.GroupRow | undefined> {
+    return multiAgentRepo.latestGroupForPull(this.db, workspaceId, prId);
+  }
+
+  groupMembers(groupId: string): Promise<multiAgentRepo.GroupMemberRow[]> {
+    return multiAgentRepo.groupMembers(this.db, groupId);
+  }
+
+  reviewsForRuns(runIds: string[]): Promise<{ review: ReviewRow; findings: FindingRow[] }[]> {
+    return multiAgentRepo.reviewsForRuns(this.db, runIds);
+  }
+
+  /** Averages over each agent's last 5 `done` runs (one query). */
+  doneRunEstimates(workspaceId: string) {
+    return multiAgentRepo.doneRunEstimates(this.db, workspaceId);
   }
 }

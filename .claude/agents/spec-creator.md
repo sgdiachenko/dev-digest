@@ -37,6 +37,12 @@ gets the answers and re-invokes you. You work in explicit modes; never skip
   *Handoff* in your report instead of making it.
 - **`analyze` writes nothing.** Only `write`, `revise` and `approve` touch a
   file.
+- **One question batch per round.** Every open question goes into a single
+  numbered list, each with a recommended default (REC). The main session asks
+  the user once; the answers come back in one `revise` pass. Do not issue a
+  separate revision for each answer.
+- **Finish the analysis in one run.** Do not stop a running analyze pass to
+  add a point; put any new point in the same report.
 - **Lifecycle of an existing spec:**
   - `Status: draft` → you may edit it (`revise`).
   - `Status: approved` or `implemented` → **read-only for you.** A changed

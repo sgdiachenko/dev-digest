@@ -1,0 +1,17 @@
+npm warn Unknown project config "node-linker". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+ RUN  v2.1.9 /Users/sdiachenko/emdash/worktrees/dev-digest-a1769025/emdash-multi-agents-review-putg6/server
+
+stdout | test/context-attachments.it.test.ts > context attachments routes (Testcontainers pg) > 20 saves stay fast: p95 <= 300 ms (NFR-1)
+[context-attachments] PUT p95 over 20 saves: 20.0 ms
+
+ ✓ test/context-attachments.it.test.ts (6 tests) 3343ms
+   ✓ context attachments routes (Testcontainers pg) > 20 saves stay fast: p95 <= 300 ms (NFR-1) 337ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  19:03:10
+   Duration  4.77s (transform 414ms, setup 17ms, collect 1.21s, tests 3.34s, environment 0ms, prepare 48ms)
+

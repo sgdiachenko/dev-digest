@@ -3,7 +3,8 @@
 Wire contracts are Zod schemas in `src/vendor/shared/contracts/`, hand-mirrored
 into `client/src/vendor/shared/contracts/` (see the root [AGENTS.md](../../AGENTS.md)).
 All wire fields are `snake_case`. This file currently documents the Project
-Context routes (catalog and attachments) and the Onboarding Tour routes; the
+Context routes (catalog and attachments), the Onboarding Tour routes and the
+Multi-Agent Review routes; the
 other modules' shapes live in their `modules/<name>/routes.ts` and
 `contracts/*.ts`.
 
@@ -291,3 +292,56 @@ No live narrative generation with a real key was run, so token counts, cost, the
 `NoEligibleProviderError` mapping and the 300 ms acceptance target are unmeasured.
 The `*.it.test.ts` files for these routes (`test/onboarding.it.test.ts`,
 `test/onboarding-narrative.it.test.ts`) were type-checked but never run.
+
+## Multi-Agent Review
+
+Schemas: `RunRequest` in `src/vendor/shared/contracts/platform.ts:289-294`;
+`MultiAgentRun` and `AgentRunEstimate` in `contracts/observability.ts:94-117`.
+Routes: `src/modules/reviews/routes.ts`; logic: `modules/reviews/service.ts`
+(`resolveGroupTargets`, `runGroupReview`, `multiAgentForPull`).
+
+### `POST /pulls/:id/review` (200)
+
+Body is one of `{ agentId }`, `{ all: true }` or `{ agent_ids: string[] }` (the
+last starts one parallel group). Mixing `agent_ids` with `agentId` or `all` is a `422`
+(`service.ts:171-173`). Response: `{ pr_id, runs, reviews, multi_agent_run_id }`;
+`multi_agent_run_id` is a string for `agent_ids` and `null` for `agentId` and
+`all` (`routes.ts:35-42`, `:62-80`). For a group, `reviews` is `[]` and the runs
+execute in the background (`service.ts:243-245`); follow them with
+`GET /runs/:id/events`.
+
+| Code | When |
+|---|---|
+| `200` | Group created; members run in parallel. |
+| `404` | Unknown pull request or repo (`service.ts:211-214`). |
+| `409` | The PR's latest group still has a running member. `details.multi_agent_run_id` is that group's id (`service.ts:224-227`). |
+| `422` | `agent_ids` has fewer than 2 distinct ids (duplicates are collapsed); or reason `agent not found` (unknown, foreign-workspace or non-uuid id; checked first); `agent is disabled`; `too many agents` (more distinct ids than the workspace has enabled agents). `service.ts:171-192`. |
+
+The route keeps the per-route limit of 10 requests per minute (`routes.ts:57`).
+
+### `GET /pulls/:id/multi-agent` -> `MultiAgentRun | null`
+
+| Code | When |
+|---|---|
+| `200` with a group | The PR's latest group: `id`, `pr_id`, `pr_number`, `ran_at`, `agent_count`, `total_duration_ms` (max of members), `total_cost_usd` (sum, null if none known), `columns`, `finding_groups`, `conflicts` (`observability.ts:94-106`). |
+| `200` with `null` | The PR never had a group (`service.ts:253`). |
+| `404` | Unknown pull request (`service.ts:251`). |
+
+### `GET /runs/estimates` -> `AgentRunEstimate[]` (200)
+
+Per agent of the workspace: `{ agent_id, runs, avg_duration_ms, avg_cost_usd }`,
+averaged over the agent's last 5 `done` runs; the averages are `null` without
+data (`observability.ts:111-116`, `service.ts:260-268`). The picker uses it for
+the pre-run time and cost estimate.
+
+### Compatibility (multi-agent)
+
+Additive: `agent_ids` is a new optional body field, `multi_agent_run_id` a new
+response field (null for the old modes), and the two `GET` routes are new.
+Requests with `agentId` or `all` behave as before.
+
+### Not verified
+
+No live multi-agent run with a real LLM key was done. Times and costs in the
+estimates are not measured against a real provider yet; the tests cover the
+logic with mocked adapters.

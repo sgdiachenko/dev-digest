@@ -156,6 +156,7 @@ export default function PRDetailPage() {
       <PrDetailHeader
         ref={setHeaderEl}
         pr={pr}
+        repoId={repoId}
         prId={prId}
         tab={tab}
         findingsCount={findingsCount}

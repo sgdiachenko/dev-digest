@@ -1,0 +1,2 @@
+✓ @devdigest/shared contracts are in sync (client)
+✓ @devdigest/shared contracts are in sync (mcp-server subset)

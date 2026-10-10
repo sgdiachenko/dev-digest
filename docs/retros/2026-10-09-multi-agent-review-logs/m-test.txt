@@ -1,0 +1,15 @@
+$ vitest run
+
+ RUN  v2.1.9 /Users/sdiachenko/emdash/worktrees/dev-digest-a1769025/emdash-multi-agents-review-putg6/mcp-server
+
+ ✓ test/poll.test.ts (2 tests) 3ms
+ ✓ test/resolve.test.ts (3 tests) 4ms
+ ✓ test/api-client.test.ts (4 tests) 4ms
+ ✓ test/tools.test.ts (10 tests) 26ms
+ ✓ test/server.test.ts (7 tests) 24ms
+
+ Test Files  5 passed (5)
+      Tests  26 passed (26)
+   Start at  19:01:23
+   Duration  370ms (transform 211ms, setup 0ms, collect 466ms, tests 61ms, environment 0ms, prepare 234ms)
+

@@ -38,6 +38,12 @@ export const NAV: NavGroup[] = [
       { key: "eval", label: "Eval Dashboard", labelKey: "nav.evalDashboard", icon: "Gauge", href: "/eval" },
     ],
   },
+  {
+    section: "GLOBAL",
+    items: [
+      { key: "multi-agent", label: "Multi-Agent Review", labelKey: "nav.multi-agent", icon: "Layers", href: "/repos/:repoId/multi-agent" },
+    ],
+  },
 ];
 
 export const SETTINGS_ITEM: NavItemDef = {

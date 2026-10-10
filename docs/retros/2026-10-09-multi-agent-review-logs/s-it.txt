@@ -1,0 +1,13 @@
+npm warn Unknown project config "node-linker". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+ RUN  v2.1.9 /Users/sdiachenko/emdash/worktrees/dev-digest-a1769025/emdash-multi-agents-review-putg6/server
+
+ ✓ test/multi-agent.it.test.ts (12 tests) 2899ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  19:02:00
+   Duration  5.08s (transform 415ms, setup 16ms, collect 1.95s, tests 2.90s, environment 0ms, prepare 42ms)
+

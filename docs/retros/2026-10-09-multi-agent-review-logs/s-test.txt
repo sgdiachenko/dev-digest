@@ -1,0 +1,93 @@
+
+ RUN  v2.1.9 /Users/sdiachenko/emdash/worktrees/dev-digest-a1769025/emdash-multi-agents-review-putg6/server
+
+ ✓ test/onboarding-narrative-service.test.ts (20 tests) 44ms
+ ✓ test/indexer-pipeline.test.ts (11 tests) 33ms
+ ✓ test/brief-helpers.test.ts (22 tests) 13ms
+ ✓ test/run-executor-project-context.test.ts (14 tests) 9ms
+ ✓ test/context-attachments-service.test.ts (34 tests) 15ms
+ ✓ test/eval-suite-executor.test.ts (12 tests) 115ms
+ ✓ test/contracts.test.ts (10 tests) 8ms
+ ✓ test/conventions-helpers.test.ts (26 tests) 9ms
+ ✓ test/astgrep.test.ts (13 tests) 14ms
+ ✓ test/eval-service.test.ts (14 tests) 12ms
+ ✓ test/onboarding-service.test.ts (16 tests) 25ms
+ ✓ test/onboarding-facts-ecosystems.test.ts (13 tests) 10ms
+ ✓ test/project-context-service.test.ts (30 tests) 546ms
+ ✓ test/multi-agent-service.test.ts (15 tests) 10ms
+ ✓ test/multi-agent-helpers.test.ts (11 tests) 7ms
+ ✓ test/eval-fixed-inputs.test.ts (8 tests) 10ms
+ ✓ test/eval-scoring.test.ts (17 tests) 9ms
+ ✓ test/brief-service.test.ts (34 tests) 711ms
+ ✓ test/onboarding-narrative-ground.test.ts (6 tests) 4ms
+ ✓ test/eval-helpers.test.ts (12 tests) 4ms
+ ✓ test/skill-import.test.ts (19 tests) 71ms
+ ✓ test/onboarding-narrative-input.test.ts (7 tests) 10ms
+ ✓ test/pr-history-service.test.ts (7 tests) 7ms
+ ✓ test/eval-attempts.test.ts (7 tests) 272ms
+ ✓ test/reviews-helpers.test.ts (13 tests) 3ms
+ ✓ test/pulls-helpers.test.ts (11 tests) 3ms
+ ✓ test/conventions-config-rules.test.ts (15 tests) 4ms
+ ✓ test/run-executor-parallel.test.ts (8 tests) 664ms
+   ✓ executeRuns parallel mode > the sequential default never has two calls in flight (AC-7) and cannot pass the barrier 623ms
+ ✓ test/extract.test.ts (9 tests) 12ms
+ ✓ test/project-context-helpers.test.ts (31 tests) 7ms
+ ✓ test/eval-contracts.test.ts (12 tests) 10ms
+ ✓ test/repo-intel-facade-degraded.test.ts (11 tests) 3ms
+ ✓ test/indexer-walk.test.ts (6 tests) 63ms
+ ✓ test/git-grep.test.ts (9 tests) 438ms
+ ✓ test/onboarding-narrative-overlay.test.ts (7 tests) 5ms
+ ✓ test/repo-intel-rank-map.test.ts (9 tests) 279ms
+ ✓ test/blast-helpers.test.ts (3 tests) 2ms
+ ✓ test/repo-intel-resync.test.ts (4 tests) 2ms
+ ✓ test/onboarding-facts-criticality.test.ts (5 tests) 5ms
+ ✓ test/onboarding-facts-run-locally.test.ts (5 tests) 12ms
+ ✓ test/smart-diff-service.test.ts (4 tests) 7ms
+ ✓ test/skill-stats.test.ts (10 tests) 18ms
+ ✓ test/smart-diff-classify.test.ts (47 tests) 4ms
+ ✓ test/onboarding-facts-tour.test.ts (5 tests) 13ms
+ ✓ test/project-context-contracts.test.ts (9 tests) 4ms
+ ✓ test/context-attachments-helpers.test.ts (12 tests) 2ms
+ ✓ test/smart-diff-helpers.test.ts (6 tests) 2ms
+ ✓ test/onboarding-facts-architecture.test.ts (5 tests) 4ms
+ ✓ test/prompt-callers.test.ts (5 tests) 3ms
+ ✓ test/adapters.test.ts (5 tests) 7ms
+ ✓ test/onboarding-facts-reading-path.test.ts (4 tests) 4ms
+ ✓ test/conventions-frequency.test.ts (8 tests) 3ms
+ ✓ test/pulls-status.test.ts (6 tests) 4ms
+ ✓ test/onboarding-narrative-markdown.test.ts (9 tests) 7ms
+ ✓ test/grounding.test.ts (7 tests) 5ms
+ ✓ test/onboarding-facts-first-tasks.test.ts (3 tests) 4ms
+ ✓ test/prompt-structured.test.ts (5 tests) 9ms
+ ✓ test/onboarding-facts-paths.test.ts (6 tests) 2ms
+ ✓ test/shared-review-rounds.test.ts (4 tests) 4ms
+ ✓ test/project-context-triggers.test.ts (3 tests) 6ms
+ ✓ test/onboarding-facts-readme.test.ts (5 tests) 7ms
+ ✓ test/run-logger.test.ts (3 tests) 3ms
+ ✓ test/git-tree.test.ts (4 tests) 513ms
+ ✓ test/price-book.test.ts (3 tests) 1ms
+ ✓ test/onboarding-facts-availability.test.ts (4 tests) 3ms
+ ✓ test/skill-safety.test.ts (5 tests) 8ms
+ ✓ test/brief-contracts.test.ts (6 tests) 4ms
+ ✓ test/skill-diff.test.ts (5 tests) 2ms
+ ✓ test/llm-params.test.ts (3 tests) 1ms
+ ✓ test/repo-intel-graph-facts.test.ts (2 tests) 2ms
+ ✓ test/eval-contract-parity.test.ts (2 tests) 1ms
+ ✓ test/jobs.test.ts (1 test) 3ms
+ ✓ test/llm-http-retries.test.ts (8 tests) 788ms
+   ✓ openai completeStructured httpRetries > unset: withRetry behaviour preserved (retries a 429) and no request options 352ms
+   ✓ anthropic completeStructured httpRetries > unset: withRetry behaviour preserved (retries a 429) and no request options 428ms
+ ✓ test/tokenizer.test.ts (2 tests) 301ms
+ ✓ test/pr-history-routes.test.ts (1 test) 102ms
+ ✓ test/smart-diff-routes.test.ts (1 test) 71ms
+ ✓ test/routes-smoke.test.ts (4 tests) 183ms
+ ✓ test/brief-prompt.test.ts (15 tests) 5075ms
+   ✓ buildBriefInput — terminal policy and guard (real tokenizer) > trims symbols and shortens (never removes) the intent; stays within budget 343ms
+   ✓ buildBriefInput — terminal policy and guard (real tokenizer) > worst case under the fixed caps (dense title and summary, intent at the ceiling) still fits: the guard is unreachable 4169ms
+   ✓ buildBriefInput — terminal policy and guard (real tokenizer) > a large ordinary PR stays within 8,000 tokens on the real tokenizer (EC-17) 359ms
+
+ Test Files  78 passed (78)
+      Tests  773 passed (773)
+   Start at  19:00:09
+   Duration  5.62s (transform 1.59s, setup 1.07s, collect 10.68s, tests 10.66s, environment 8ms, prepare 3.77s)
+

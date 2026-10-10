@@ -135,6 +135,12 @@ export class ReviewRunExecutor {
     repo: typeof schema.repos.$inferSelect,
     jobs: { agent: AgentRow; runId: string }[],
     logger?: Logger,
+    /**
+     * `parallel` runs the jobs concurrently (multi-agent group); the default
+     * keeps the sequential loop used by `agentId` / `all`. `groupId` is only
+     * used for the one group-level log line.
+     */
+    opts?: { parallel?: boolean; groupId?: string },
   ): Promise<void> {
     // ONE logger fanned out over every queued run: shared pre-work (diff +
     // intent) is streamed into each target agent's Live Log and persisted into
@@ -200,7 +206,15 @@ export class ReviewRunExecutor {
       logger?.warn({ prId: pull.id, err: (err as Error).message }, 'intent: derivation failed');
     }
 
-    for (const { agent, runId } of jobs) {
+    // Per-job state lives only in this closure and in `runLog.forRun(runId)`
+    // (inside runOneAgent) — nothing shared between concurrently running jobs.
+    const runJob = async ({
+      agent,
+      runId,
+    }: {
+      agent: AgentRow;
+      runId: string;
+    }): Promise<'done' | 'failed' | 'cancelled'> => {
       const agentStart = Date.now();
       logger?.info(
         { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
@@ -228,6 +242,7 @@ export class ReviewRunExecutor {
           },
           `review: agent "${agent.name}" done — ${outcome.findings.length} finding(s)`,
         );
+        return 'done';
       } catch (err) {
         // runOneAgent already persisted the failure/cancel (status + error +
         // trace) and completed the bus; here we only log at the run level.
@@ -236,8 +251,28 @@ export class ReviewRunExecutor {
           { runId, agent: agent.name, err: (err as Error).message, durationMs: Date.now() - agentStart },
           `review: agent "${agent.name}" ${cancelled ? 'cancelled' : 'failed'}`,
         );
+        return cancelled ? 'cancelled' : 'failed';
       }
+    };
+
+    if (!opts?.parallel) {
+      for (const job of jobs) await runJob(job);
+      return;
     }
+
+    // Multi-agent group: every member runs at once; each job catches its own
+    // error, and allSettled guarantees one member can never reject the batch.
+    const settled = await Promise.allSettled(jobs.map(runJob));
+    logger?.info(
+      {
+        multiAgentRunId: opts.groupId ?? null,
+        runs: jobs.map((j, i) => {
+          const r = settled[i]!;
+          return { runId: j.runId, status: r.status === 'fulfilled' ? r.value : 'failed' };
+        }),
+      },
+      'review: group finished',
+    );
   }
 
   /** Execute a single agent's review against a PR, streaming progress. */
