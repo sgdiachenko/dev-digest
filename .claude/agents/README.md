@@ -172,6 +172,8 @@ drive the flow above. Confirmed on a measured feature; see
 | [plan-verifier](plan-verifier.md) | Traceability check of finished work (writes only its own report file) against the approved plan and the original requirements — every requirement, `C#`, `S#` done-when and Test-plan item gets a verdict with evidence. Flags unplanned changes. Does not re-judge the plan | `sonnet` | Read, Grep, Glob, read-only Bash, Write for `docs/plans/<slug>.verification.md` only. No Edit/Skill/Agent/Web | The plan, the Implementation Report(s) and the requirements/spec — inline or as paths | **Verification Report** written to `docs/plans/<slug>.verification.md` (overall verdict + counts, traceability matrix, skill sources read, checks re-run, report discrepancies, unplanned changes, not-verifiable items); the reply is only the verdict, the open rows and the path — or *Clarifying questions* |
 | [architecture-reviewer](architecture-reviewer.md) | Read-only review of onion-ring direction and ports/DI (`server/`, `reviewer-core/`) and layer direction/placement (`client/`) on the diff. Findings in the `pr-self-review` finding shape | `sonnet` (user decision 2026-09-29, cost; the mechanical checks `arch:check`/lint carry most of the signal) | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally the plan's Review handoff + Implementation Report | **Architecture Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape), verdict, config-vs-skill-doc drift, gaps |
 | [security-reviewer](security-reviewer.md) | Read-only security review of a diff (`server/`, `client/`, `reviewer-core/`): traces attacker-controlled input to sinks (routes, SQL, process spawns, filesystem paths, tokens/secrets, LLM prompt input, HTML) and reports confidence-gated findings in the `pr-self-review` finding shape | `sonnet` | Read, Grep, Glob, Bash (`maxTurns: 48`). No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally the plan's Review handoff + Implementation Report | **Security Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape + `confidence`), verdict, phase-2 handoff, checked-nothing-found, gaps |
+| [stack-reviewer](stack-reviewer.md) | Read-only review of a diff against stack idioms (Fastify 5, Drizzle/Postgres, Next.js 15, React, Zod, TypeScript, RTL) in `server/`, `client/`, `reviewer-core/`, `mcp-server/`, `e2e/`. Maps files to `routing.md` lanes and reads the lane's `SKILL.md` on demand. Onion/placement, security and correctness stay with other reviewers. On demand, not in `/run-plan` | `sonnet` | Read, Grep, Glob, read-only Bash (package `typecheck`/`lint` only). No Write/Edit/Skill/Agent/Web | A base ref or "all open changes"; optionally an Implementation Report | **Stack Review**: scope, mechanical checks with exit codes, findings (JSON, `report.md` shape; `WARNING` at most for skills without their own scale), verdict, skill sources read, gaps |
+| [conventions-reviewer](conventions-reviewer.md) | Read-only review of a diff against the naming and structure rules of the root `AGENTS.md` "Naming conventions" (R1-R7: DB columns, wire fields, Zod names/values, component layout, route segments, auto-named migrations). Deterministic checks first (one allowed `git diff \| grep` pipe). Not the in-app Conventions Extractor. On demand, not in `/run-plan` | `sonnet` | Read, Grep, Glob, read-only Bash. No Write/Edit/Skill/Agent/Web | A base ref or "all open changes" | **Conventions Review**: scope, deterministic checks, findings (JSON, `WARNING` at most, each citing an `AGENTS.md` line), verdict, gaps |
 | [doc-writer](doc-writer.md) | Documents already-implemented, already-verified work as repo Markdown + Mermaid diagrams, routed to the right `docs/`/`specs/`/`README.md`/`AGENTS.md` location, with its indexes updated. Edits Markdown only | `sonnet` | Read, Edit, Write, Grep, Glob, Bash; `permissionMode: acceptEdits`. No Skill/Agent/Web | Source material (plan/report/memo/code) + feature name + packages | **Documentation Report**: files written, diagrams, indexes updated, claims → evidence, link check, open issues — or *Clarifying questions* |
 
 **implementer ↔ test-writer split**: the implementer writes the tests each
@@ -208,7 +210,7 @@ Which skill applies to which file is decided by
 [`routing.md`](../skills/pr-self-review/routing.md), the same table
 `/pr-self-review` uses.
 
-### Role-scoped skills (spec-creator, brainstorm, test-writer, architecture-reviewer, security-reviewer, plan-verifier, doc-writer)
+### Role-scoped skills (spec-creator, brainstorm, test-writer, architecture-reviewer, security-reviewer, stack-reviewer, conventions-reviewer, plan-verifier, doc-writer)
 
 Each of the other agents preloads a smaller, role-scoped list; every skill
 on a list is justified here.
@@ -241,6 +243,9 @@ on a list is justified here.
 | security-reviewer | `security` | its entire job — OWASP Top 10:2025, confidence-gated reporting |
 | security-reviewer | `fastify-best-practices` | stack-correct routes/CORS/schema rules, since `security/SKILL.md`'s own examples are Express-shaped |
 | security-reviewer | `engineering-insights` | reads `INSIGHTS.md` as review context (read-only — see the agent file), e.g. the zip-bomb gotcha it checks for |
+| stack-reviewer | `engineering-insights` | reads `INSIGHTS.md` as review context (read-only — see the agent file); the only preloaded skill |
+| stack-reviewer | stack skills (not preloaded) | Read on demand per changed file's `routing.md` lane (`zod`, `fastify-best-practices`, `drizzle-orm-patterns`, `postgresql-table-design`, `next-best-practices`, `react-best-practices`, `react-testing-library`, `typescript-expert`), once per run |
+| conventions-reviewer | `engineering-insights` | reads `INSIGHTS.md` as review context (read-only); the rules it applies live in the root `AGENTS.md`, so no other skill is needed |
 | plan-verifier | `engineering-insights` | reads `INSIGHTS.md`; the only skill it needs unconditionally |
 | plan-verifier | `onion-architecture` | most plans touch `server/`/`reviewer-core/`, so this is preloaded rather than Read on demand |
 | plan-verifier | `frontend-architecture` | most plans touch `client/`, for the same reason |
@@ -258,7 +263,7 @@ skill "just in case", it Reads `.claude/skills/<name>/SKILL.md` on demand,
 driven by each Constraint's own `C#: <rule> — source: <skill>` field — see
 "Skill loading rule" in [plan-verifier.md](plan-verifier.md). This keeps its
 preloaded cost low while still grounding every judgment in the skill the plan
-actually cited. `brainstorm` reads other skills on demand the same way: when
+actually cited. `stack-reviewer` does the same, driven by `routing.md` lanes for the changed files rather than a plan. `brainstorm` reads other skills on demand the same way: when
 an option's difference is better judged by a skill outside its own preloaded
 three, it looks up the lane in `routing.md` for the files that option would
 touch and Reads that skill's `SKILL.md` before scoring the option against it.
@@ -301,6 +306,24 @@ touch and Reads that skill's `SKILL.md` before scoring the option against it.
 | Read-only, no web; `permissionMode: plan`; *Clarifying questions* instead of `AskUserQuestion` | [Create custom subagents](https://code.claude.com/docs/en/sub-agents); pattern from `implementation-planner.md`, `researcher.md` |
 | Report handed to `implementation-planner` via `docs/plans/<feature>.options.md` | in-repo: Orchestration practices above (context-pack pattern) |
 | Skills outside the preload read on demand | in-repo: `plan-verifier.md` "Skill loading rule" |
+
+### stack-reviewer
+
+| Rule | Source |
+|---|---|
+| Read-only reviewer shape, Step 0, finding format, delta re-review | [architecture-reviewer.md](architecture-reviewer.md), [security-reviewer.md](security-reviewer.md) |
+| Skills without a severity scale give `WARNING` at most; evidence rule for `CRITICAL` | [severity.md](../skills/pr-self-review/severity.md) |
+| File -> skill mapping; skills read on demand per lane | [routing.md](../skills/pr-self-review/routing.md) |
+| On demand, not a `/run-plan` phase; ownership boundaries with the other reviewers | user decision, 2026-10-09 |
+
+### conventions-reviewer
+
+| Rule | Source |
+|---|---|
+| Rules R1-R7 | root [AGENTS.md](../../AGENTS.md) "Naming conventions" |
+| Deterministic checks before the manual pass; one allowed `git diff \| grep` pipe | [security-reviewer.md](security-reviewer.md), [severity.md](../skills/pr-self-review/severity.md) |
+| `WARNING` at most (naming is a preference, no blocking invariant) | [severity.md](../skills/pr-self-review/severity.md) |
+| On demand, not a `/run-plan` phase | user decision, 2026-10-09 |
 
 ### implementation-planner
 
@@ -398,7 +421,7 @@ touch and Reads that skill's `SKILL.md` before scoring the option against it.
   to the lane table in `implementer.md` ("Which skill applies where") and to
   `routing.md` (see root `AGENTS.md`).
 - New skill → also decide whether it belongs in `brainstorm` / `test-writer` /
-  `architecture-reviewer` / `security-reviewer` / `plan-verifier` /
+  `architecture-reviewer` / `security-reviewer` / `stack-reviewer` / `conventions-reviewer` / `plan-verifier` /
   `doc-writer`'s role-scoped list,
   and update its rationale row in the table above.
 - New agent → add a catalog row and, if it joins the flow, update the diagram.

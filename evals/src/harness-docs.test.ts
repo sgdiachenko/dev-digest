@@ -75,6 +75,8 @@ describe("root AGENTS.md", () => {
     "plan-verifier",
     "architecture-reviewer",
     "security-reviewer",
+    "stack-reviewer",
+    "conventions-reviewer",
     "doc-writer",
   ])("subagent %s is named in the doc and exists", (name) => {
     expect(root, `${name} not mentioned`).toContain(name);

