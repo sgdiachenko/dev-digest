@@ -1,0 +1,113 @@
+import type { CSSProperties } from "react";
+
+export const card = (focused: boolean, color: string, muted: boolean): CSSProperties => ({
+  // All-longhand: never mix `border` shorthand with `borderLeft*` (React warns on rerender).
+  borderStyle: "solid",
+  borderWidth: 1,
+  borderLeftWidth: 3,
+  borderColor: focused ? color : "var(--border)",
+  borderLeftColor: color,
+  borderRadius: 10,
+  background: "var(--bg-elevated)",
+  overflow: "hidden",
+  opacity: muted ? 0.6 : 1,
+  boxShadow: focused ? `0 0 0 1px ${color}` : "none",
+});
+
+export const tile = (color: string): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 32,
+  height: 32,
+  flexShrink: 0,
+  borderRadius: 8,
+  color,
+  background: `color-mix(in srgb, ${color} 15%, transparent)`,
+});
+
+export const action = (active: boolean): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "7px 14px",
+  border: `1px solid ${active ? "var(--text-secondary)" : "var(--border)"}`,
+  borderRadius: 8,
+  background: active ? "var(--bg-hover)" : "transparent",
+  color: "var(--text-primary)",
+  fontSize: 14,
+  cursor: "pointer",
+});
+
+export const s = {
+  header: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    width: "100%",
+    padding: "14px 16px",
+    border: "none",
+    background: "transparent",
+    color: "inherit",
+    font: "inherit",
+    textAlign: "left",
+    cursor: "pointer",
+  } satisfies CSSProperties,
+  main: { display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 } satisfies CSSProperties,
+  titleRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } satisfies CSSProperties,
+  title: (dismissed: boolean): CSSProperties => ({
+    fontSize: 15,
+    fontWeight: 600,
+    color: "var(--text-primary)",
+    textDecoration: dismissed ? "line-through" : "none",
+    overflowWrap: "anywhere",
+  }),
+  category: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    fontSize: 13,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  state: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)" } satisfies CSSProperties,
+  metaRow: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } satisfies CSSProperties,
+  path: { fontSize: 13, color: "var(--text-secondary)", overflowWrap: "anywhere" } satisfies CSSProperties,
+  conf: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  dot: (color: string): CSSProperties => ({ width: 6, height: 6, borderRadius: 99, background: color }),
+  chevron: (expanded: boolean): CSSProperties => ({
+    color: "var(--text-muted)",
+    transform: expanded ? "rotate(180deg)" : "none",
+    transition: "transform .15s",
+    flexShrink: 0,
+    marginTop: 6,
+  }),
+  body: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    padding: "16px 20px 18px",
+    borderTop: "1px solid var(--border)",
+    fontSize: 14,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  fixLabel: {
+    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  actions: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } satisfies CSSProperties,
+  learnWrap: { display: "inline-flex", alignItems: "center", gap: 8 } satisfies CSSProperties,
+  soon: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  disabled: { opacity: 0.55, cursor: "not-allowed" } satisfies CSSProperties,
+  visuallyHidden: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    overflow: "hidden",
+    clip: "rect(0 0 0 0)",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+};

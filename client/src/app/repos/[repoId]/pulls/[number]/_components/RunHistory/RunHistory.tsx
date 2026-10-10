@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { formatCostTrimmed as formatCost } from "@/lib/format";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit, ReviewRecord } from "@devdigest/shared";
@@ -24,14 +25,6 @@ import {
  */
 
 type Outcome = { key: string; color: string; bg: string; icon: IconName };
-
-/** Compact USD cost (e.g. "$0.0013"); "—" when unknown (no data yet, or a failed run). */
-function formatCost(usd: number | null | undefined): string {
-  if (usd == null) return "—";
-  if (usd === 0) return "$0.00";
-  const rounded = Number(usd.toPrecision(2));
-  return `$${rounded >= 1 ? rounded.toFixed(2) : String(rounded)}`;
-}
 
 function outcomeOf(run: RunSummary): Outcome {
   const status = run.status ?? "";

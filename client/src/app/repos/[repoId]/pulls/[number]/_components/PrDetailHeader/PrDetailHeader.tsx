@@ -8,6 +8,7 @@ import type { PrDetail } from "@/lib/types";
 
 interface PrDetailHeaderProps {
   pr: PrDetail;
+  repoId: string;
   prId: string | null;
   tab: string;
   findingsCount: number;
@@ -20,7 +21,7 @@ interface PrDetailHeaderProps {
 
 export const PrDetailHeader = React.forwardRef<HTMLDivElement, PrDetailHeaderProps>(
   function PrDetailHeader(
-    { pr, prId, tab, findingsCount, githubUrl, onSetTab, onRunStart, onRunsStarted },
+    { pr, repoId, prId, tab, findingsCount, githubUrl, onSetTab, onRunStart, onRunsStarted },
     ref,
   ) {
   const handleRunStart = useCallback(() => {
@@ -89,6 +90,8 @@ export const PrDetailHeader = React.forwardRef<HTMLDivElement, PrDetailHeaderPro
           {prId && (
             <RunReviewDropdown
               prId={prId}
+              repoId={repoId}
+              prNumber={pr.number}
               warnMerged={pr.status === "merged" || pr.status === "closed"}
               onRunStart={handleRunStart}
               onRunsStarted={handleRunsStarted}

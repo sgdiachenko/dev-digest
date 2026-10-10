@@ -1,0 +1,1 @@
+export { TabFindingCard } from "./TabFindingCard";

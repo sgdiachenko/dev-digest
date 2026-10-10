@@ -56,3 +56,22 @@ describe("Eval Dashboard sidebar item (AC-100, AC-101, NFR-16)", () => {
     expect(screen.getByRole("link", { name: /Evals \(i18n\)/ })).toBeInTheDocument();
   });
 });
+
+describe("Multi-Agent Review sidebar item (AC-43, NFR-11)", () => {
+  it("is the only GLOBAL item, with the shell-catalog label, linking to the repo's multi-agent route", () => {
+    const globals = NAV.filter((g) => g.section === "GLOBAL");
+    expect(globals).toHaveLength(1);
+    expect(globals[0]!.items).toHaveLength(1);
+    expect(globals[0]!.items[0]).toMatchObject({ key: "multi-agent", href: "/repos/:repoId/multi-agent" });
+
+    const messages = { shell: { ...shellMessages, nav: { ...shellMessages.nav, "multi-agent": "Multi (i18n)" } } };
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <AppShell>content</AppShell>
+      </NextIntlClientProvider>,
+    );
+    const link = screen.getByRole("link", { name: /Multi \(i18n\)/ });
+    // No active repo in this test, so the :repoId token resolves to "_".
+    expect(link).toHaveAttribute("href", "/repos/_/multi-agent");
+  });
+});
