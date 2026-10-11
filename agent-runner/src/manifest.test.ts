@@ -1,77 +1,55 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { describe, it, expect, afterEach } from 'vitest';
+import { AgentManifest } from '@devdigest/shared';
+import { listManifests, loadManifest } from './manifest.js';
+import { sha256Hex } from './hash.js';
+import { Workspace, manifestYaml } from './test-helpers.js';
 import path from 'node:path';
-import { loadManifest, findManifestPath, loadAgentManifest } from './manifest.js';
-import { RunnerError } from './errors.js';
+import { readFileSync } from 'node:fs';
 
-const VALID_MANIFEST_YAML = `
-name: "Security Reviewer"
-provider: "openrouter"
-model: "deepseek/deepseek-v4-flash"
-system_prompt: "Review this PR for security issues."
-skills: ["security-basics"]
-strategy: "auto"
-ci_fail_on: "critical"
-`;
+/** T6 — manifest loading (AC-52, 53, 118, 151, 152, 173). */
+describe('manifest loading', () => {
+  let ws: Workspace;
+  afterEach(() => ws.cleanup());
 
-describe('manifest loading + validation (AC-20)', () => {
-  let dir: string;
-
-  beforeEach(() => {
-    dir = mkdtempSync(path.join(tmpdir(), 'devdigest-runner-manifest-'));
-    mkdirSync(path.join(dir, 'agents'), { recursive: true });
+  it('AC-118: lists every .devdigest/agents/*.yaml, sorted, ignoring other files', () => {
+    ws = new Workspace().agent('b-agent').agent('a-agent');
+    ws.skill('x', 'not a manifest');
+    const slugs = listManifests(ws.devdigestDir).map((m) => m.slug);
+    expect(slugs).toEqual(['a-agent', 'b-agent']);
   });
 
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+  it('AC-52 + AC-173: a valid manifest parses with AgentManifest and carries the sha256 of its bytes', () => {
+    ws = new Workspace().agent('sec');
+    const file = path.join(ws.devdigestDir, 'agents', 'sec.yaml');
+    const loaded = loadManifest(file);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+    expect(AgentManifest.safeParse(loaded.manifest).success).toBe(true);
+    expect(loaded.manifest.post_as).toBe('github_review');
+    expect(loaded.manifest.agent_version).toBe(3);
+    expect(loaded.sha256).toBe(sha256Hex(readFileSync(file)));
   });
 
-  it('loads and validates a well-formed manifest against the AgentManifest schema', () => {
-    writeFileSync(path.join(dir, 'agents', 'security-reviewer.yaml'), VALID_MANIFEST_YAML);
-
-    const manifest = loadManifest(dir);
-
-    expect(manifest.name).toBe('Security Reviewer');
-    expect(manifest.model).toBe('deepseek/deepseek-v4-flash');
-    expect(manifest.skills).toEqual(['security-basics']);
-    expect(manifest.ci_fail_on).toBe('critical');
+  it('AC-151: a manifest without post_as is invalid', () => {
+    ws = new Workspace().agent('sec', manifestYaml({ post_as: null }));
+    const loaded = loadManifest(path.join(ws.devdigestDir, 'agents', 'sec.yaml'));
+    expect(loaded.ok).toBe(false);
+    if (!loaded.ok) expect(loaded.message).toContain('post_as');
   });
 
-  it('fails clearly when the manifest fails schema validation (bad ci_fail_on)', () => {
-    writeFileSync(
-      path.join(dir, 'agents', 'bad.yaml'),
-      `
-name: "Bad Agent"
-model: "gpt-4.1"
-system_prompt: "review"
-ci_fail_on: "sometimes"
-`,
-    );
-
-    expect(() => loadManifest(dir)).toThrow(RunnerError);
-    expect(() => loadManifest(dir)).toThrow(/failed validation/i);
+  it('AC-151: a post_as outside the three modes is invalid', () => {
+    ws = new Workspace().agent('sec', manifestYaml({ post_as: '"email"' }));
+    expect(loadManifest(path.join(ws.devdigestDir, 'agents', 'sec.yaml')).ok).toBe(false);
   });
 
-  it('fails clearly when the manifest is missing required fields', () => {
-    writeFileSync(path.join(dir, 'agents', 'incomplete.yaml'), 'name: "No model or prompt"\n');
-    expect(() => loadManifest(dir)).toThrow(RunnerError);
+  it('AC-53: unparseable YAML and a missing file are invalid, with no hash', () => {
+    ws = new Workspace().agent('sec', 'name: [unclosed');
+    expect(loadManifest(path.join(ws.devdigestDir, 'agents', 'sec.yaml')).ok).toBe(false);
+    expect(loadManifest(path.join(ws.devdigestDir, 'agents', 'nope.yaml')).ok).toBe(false);
   });
 
-  it('fails clearly when no manifest file exists', () => {
-    rmSync(path.join(dir, 'agents', ), { recursive: true, force: true });
-    expect(() => findManifestPath(dir)).toThrow(/not found/i);
-  });
-
-  it('fails clearly when more than one manifest file exists', () => {
-    writeFileSync(path.join(dir, 'agents', 'a.yaml'), VALID_MANIFEST_YAML);
-    writeFileSync(path.join(dir, 'agents', 'b.yaml'), VALID_MANIFEST_YAML);
-    expect(() => findManifestPath(dir)).toThrow(/exactly one/i);
-  });
-
-  it('fails clearly on malformed YAML', () => {
-    writeFileSync(path.join(dir, 'agents', 'broken.yaml'), 'name: "unterminated\n  bad: [1, 2\n');
-    const manifestPath = path.join(dir, 'agents', 'broken.yaml');
-    expect(() => loadAgentManifest(manifestPath)).toThrow(RunnerError);
+  it('a missing agents directory throws', () => {
+    ws = new Workspace();
+    expect(() => listManifests(path.join(ws.root, 'nowhere'))).toThrow(/not found/);
   });
 });
