@@ -33,6 +33,7 @@ export function TargetStep({
         </div>
       </div>
 
+      {provider === "openrouter" && <div style={step.hint}>{t("exportWizard.openrouterNote")}</div>}
       {provider !== "openrouter" && <div role="alert" style={step.notice}>{t("exportWizard.providerNotice")}</div>}
 
       {repos.length === 0 ? (

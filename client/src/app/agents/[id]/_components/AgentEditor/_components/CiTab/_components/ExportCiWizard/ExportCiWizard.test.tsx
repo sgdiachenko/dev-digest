@@ -63,6 +63,15 @@ describe("Target and Configure (AC-2–AC-9)", () => {
     expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
   });
 
+  it("says reviews run through OpenRouter and need its secret, for an OpenRouter agent", async () => {
+    routeFetch({ "GET /repos": repos });
+    renderWizard({ provider: "openrouter" });
+
+    expect(await screen.findByText(/Reviews run through OpenRouter/)).toBeInTheDocument();
+    expect(screen.getByText(/OPENROUTER_API_KEY Actions secret/)).toBeInTheDocument();
+    expect(screen.queryByText(/CI runs use OpenRouter/)).not.toBeInTheDocument();
+  });
+
   it("blocks Continue with a link to the repositories page when nothing is imported", async () => {
     routeFetch({ "GET /repos": () => json([]) });
     renderWizard();

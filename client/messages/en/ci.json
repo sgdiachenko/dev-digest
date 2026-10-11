@@ -113,6 +113,7 @@
     "close": "Close",
     "targetLabel": "Target",
     "providerNotice": "CI runs use OpenRouter. Switch this agent’s provider to OpenRouter on the Config tab first.",
+    "openrouterNote": "Reviews run through OpenRouter. The repository needs the OPENROUTER_API_KEY Actions secret before the first run.",
     "noRepos": "Import a repository first.",
     "noReposLink": "Go to repositories",
     "triggerRequired": "Select at least one trigger.",
