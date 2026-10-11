@@ -10,6 +10,7 @@ import type { Agent } from "@devdigest/shared";
 import { useCiInstallations } from "@/lib/hooks/ci";
 import { CiInstallationRow } from "./_components/CiInstallationRow";
 import { ExportCiWizard } from "./_components/ExportCiWizard";
+import { AgentRuns } from "./_components/AgentRuns";
 import { FailCiOn } from "./_components/FailCiOn";
 import { UpdateResults } from "./_components/UpdateResults";
 import { useUpdateCiConfig } from "./useUpdateCiConfig";
@@ -81,6 +82,8 @@ export function CiTab({ agent }: { agent: Agent }) {
           <CiInstallationRow key={inst.id} installation={inst} agent={agent} />
         ))}
       </ul>
+
+      <AgentRuns agentId={agent.id} />
 
       <button type="button" style={s.addRow} onClick={() => setWizardOpen(true)}>
         <Icon.Plus size={15} />

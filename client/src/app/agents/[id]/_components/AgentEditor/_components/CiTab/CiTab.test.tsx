@@ -172,3 +172,20 @@ describe("Update CI config (AC-77, AC-78, AC-134)", () => {
     expect(within(failed).getByRole("link", { name: "Open Settings" })).toHaveAttribute("href", "/settings/api-keys");
   });
 });
+
+describe("runs of this agent on its CI tab", () => {
+  it("lists the agent's latest runs and asks the server only for that agent's runs", async () => {
+    routeFetch({
+      [LIST]: () => json([makeInstallation({ id: "i1" })]),
+      "GET /ci-runs": () => json([makeRun({ id: "r1", status: "succeeded", findings_count: 2 })]),
+    });
+    renderWithProviders(<CiTab agent={makeAgent({ id: "ag1" })} />);
+
+    expect(await screen.findByText("Recent runs")).toBeInTheDocument();
+    expect(await screen.findByText("2 findings")).toBeInTheDocument();
+    expect(screen.getByText("Succeeded")).toBeInTheDocument();
+
+    const [url] = callsTo("GET /ci-runs")[0]!;
+    expect(new URL(url as string).searchParams.get("agent_id")).toBe("ag1");
+  });
+});

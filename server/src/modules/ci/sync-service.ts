@@ -52,8 +52,8 @@ export class CiSyncService {
     private readonly log: CiLogger,
   ) {}
 
-  async listRuns(workspaceId: string, limit: number): Promise<CiRun[]> {
-    const items = await this.store.listRuns(workspaceId, Math.min(limit, CI_LIMITS.RUNS_PAGE_MAX));
+  async listRuns(workspaceId: string, limit: number, agentId?: string): Promise<CiRun[]> {
+    const items = await this.store.listRuns(workspaceId, Math.min(limit, CI_LIMITS.RUNS_PAGE_MAX), agentId);
     return items.map(toCiRun);
   }
 

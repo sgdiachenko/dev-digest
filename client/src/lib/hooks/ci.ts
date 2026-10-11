@@ -35,11 +35,15 @@ export function useExportCi(agentId: string | null | undefined) {
   });
 }
 
-/** Stored CI runs, newest first (`limit` ≤ 100 server-side). */
-export function useCiRuns(limit?: number) {
+/** Stored CI runs, newest first (`limit` ≤ 100 server-side); `agentId` keeps only that agent's runs. */
+export function useCiRuns(limit?: number, agentId?: string) {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", String(limit));
+  if (agentId) params.set("agent_id", agentId);
+  const query = params.toString();
   return useQuery({
-    queryKey: [...ciKeys.runs(), limit ?? null],
-    queryFn: () => api.get<CiRun[]>(`/ci-runs${limit ? `?limit=${limit}` : ""}`),
+    queryKey: [...ciKeys.runs(), limit ?? null, agentId ?? null],
+    queryFn: () => api.get<CiRun[]>(`/ci-runs${query ? `?${query}` : ""}`),
   });
 }
 

@@ -288,13 +288,14 @@ export class CiRepository implements CiStore {
    * deleted with its agent (`ci_installation_id` is set null, so they carry no
    * workspace of their own — acceptable for the single-workspace local MVP).
    */
-  async listRuns(workspaceId: string, limit: number): Promise<RunListItem[]> {
+  async listRuns(workspaceId: string, limit: number, agentId?: string): Promise<RunListItem[]> {
+    const scope = or(isNull(t.ciRuns.ciInstallationId), eq(t.agents.workspaceId, workspaceId));
     const rows = await this.db
       .select({ run: t.ciRuns, inst: t.ciInstallations, agentName: t.agents.name })
       .from(t.ciRuns)
       .leftJoin(t.ciInstallations, eq(t.ciRuns.ciInstallationId, t.ciInstallations.id))
       .leftJoin(t.agents, eq(t.ciInstallations.agentId, t.agents.id))
-      .where(or(isNull(t.ciRuns.ciInstallationId), eq(t.agents.workspaceId, workspaceId)))
+      .where(agentId ? and(scope, eq(t.ciInstallations.agentId, agentId)) : scope)
       .orderBy(...NEWEST_FIRST)
       .limit(limit);
     return rows.map((r) => toRunItem(r.run, r.inst, r.agentName));

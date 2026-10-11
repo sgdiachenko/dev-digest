@@ -28,6 +28,7 @@ import { IdParams } from '../_shared/schemas.js';
 
 const RunsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(CI_LIMITS.RUNS_PAGE_MAX).default(CI_LIMITS.RUNS_PAGE_MAX),
+  agent_id: z.string().min(1).optional(),
 });
 
 export default async function ciRoutes(appBase: FastifyInstance) {
@@ -59,7 +60,7 @@ export default async function ciRoutes(appBase: FastifyInstance) {
     { schema: { querystring: RunsQuery, response: { 200: z.array(CiRun) } } },
     async (req) => {
       const { workspaceId } = await getContext(container, req);
-      return sync.listRuns(workspaceId, req.query.limit);
+      return sync.listRuns(workspaceId, req.query.limit, req.query.agent_id);
     },
   );
 

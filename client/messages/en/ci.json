@@ -177,6 +177,9 @@
     "githubActions": "GitHub Actions",
     "prLink": "Setup PR",
     "noRuns": "No runs yet",
+    "runsTitle": "Recent runs",
+    "runsLoadFailed": "Couldn’t load the runs for this agent.",
+    "runsFindings": "{count, plural, one {# finding} other {# findings}}",
     "outdated": "outdated",
     "pendingUpdate": "pending update",
     "failOn": {

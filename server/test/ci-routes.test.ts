@@ -155,6 +155,20 @@ describe('GET /ci-runs', () => {
     expect(seen).toEqual([CI_LIMITS.RUNS_PAGE_MAX, 5]);
   });
 
+  it('passes agent_id to the store so the agent tab sees only its own runs', async () => {
+    const store = new FakeCiStore();
+    store.installs = [makeInstallation({ agentId: AGENT })];
+    const agentIds: (string | undefined)[] = [];
+    store.listRuns = async (_w, _limit, agentId) => {
+      agentIds.push(agentId);
+      return [];
+    };
+    const { app } = await boot({ store });
+    await app.inject({ method: 'GET', url: `/ci-runs?limit=20&agent_id=${AGENT}` });
+    await app.inject({ method: 'GET', url: '/ci-runs' });
+    expect(agentIds).toEqual([AGENT, undefined]);
+  });
+
   it('serialises stored runs with the trace fields and the flag', async () => {
     const store = new FakeCiStore();
     store.installs = [makeInstallation({ agentId: AGENT })];

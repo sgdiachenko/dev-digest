@@ -201,8 +201,8 @@ export interface CiStore {
   upsertRun(write: RunWrite): Promise<void>;
   /** Delete the stored row of that run only when it is still `running`. */
   deleteRunningRun(key: RunKey): Promise<void>;
-  /** Newest `ran_at` first. */
-  listRuns(workspaceId: string, limit: number): Promise<RunListItem[]>;
+  /** Newest `ran_at` first; `agentId` keeps only the runs of that agent's installations. */
+  listRuns(workspaceId: string, limit: number, agentId?: string): Promise<RunListItem[]>;
   /** The newest stored run per installation id. */
   latestRuns(installationIds: string[]): Promise<Map<string, RunListItem>>;
 }
