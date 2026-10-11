@@ -24,7 +24,7 @@ import {
 } from './seed-skills.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
-import { seedEval } from './seed-eval.js';
+import { seedEval, seedAgentEvalCases } from './seed-eval.js';
 import { parseImport } from '../modules/skills/helpers.js';
 import type { SkillType } from '@devdigest/shared';
 
@@ -711,6 +711,8 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     const skillIds = skillNames.map((n) => skillIdByName.get(n)).filter((id): id is string => id !== undefined);
     await agentsRepo.setSkills(agentRow.id, skillIds);
   }
+
+  await seedAgentEvalCases(db, workspaceId);
 
   return { workspaceId, userId };
 }
