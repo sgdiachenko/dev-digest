@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { FindingRecord, ReviewRecord, RunSummary, RunTrace, RunRequest } from '@devdigest/shared';
+import {
+  AgentRunEstimate,
+  FindingRecord,
+  MultiAgentRun,
+  ReviewRecord,
+  RunSummary,
+  RunTrace,
+  RunRequest,
+} from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams, OkAck } from '../_shared/schemas.js';
@@ -9,7 +17,10 @@ import { NotFoundError } from '../../platform/errors.js';
 
 /**
  * reviews module.
- *   POST   /pulls/:id/review  {agentId} | {all:true}  → run review(s); returns runs
+ *   POST   /pulls/:id/review  {agentId} | {all:true} | {agent_ids:[2+]}
+ *                                                      → run review(s); agent_ids = one parallel group
+ *   GET    /pulls/:id/multi-agent                      → the PR's latest group (columns, groups, takes) | null
+ *   GET    /runs/estimates                             → per-agent averages over the last 5 done runs
  *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
  *   GET    /runs/:id/trace                             → the single-document RunTrace
  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
@@ -24,6 +35,8 @@ const RunReviewResult = z.object({
     z.object({ run_id: z.string(), agent_id: z.string(), agent_name: z.string() }),
   ),
   reviews: z.array(ReviewRecord),
+  /** Set when the call started a multi-agent group; null for agentId / all. */
+  multi_agent_run_id: z.string().nullable(),
 });
 
 /** In-flight runs carry only what the UI polls on; not a full RunSummary. */
@@ -53,6 +66,16 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     async (req) => {
       const { workspaceId } = await getContext(container, req);
       const body = RunRequest.parse(req.body ?? {});
+      if (body.agent_ids !== undefined) {
+        const agents = await service.resolveGroupTargets(workspaceId, body);
+        const { runs, reviews, multi_agent_run_id } = await service.runGroupReview(
+          workspaceId,
+          req.params.id,
+          agents,
+          req.log,
+        );
+        return { pr_id: req.params.id, runs, reviews, multi_agent_run_id };
+      }
       const targets = await service.resolveTargets(workspaceId, {
         ...(body.agentId !== undefined ? { agentId: body.agentId } : {}),
         ...(body.all !== undefined ? { all: body.all } : {}),
@@ -63,7 +86,7 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
         targets,
         req.log,
       );
-      return { pr_id: req.params.id, runs, reviews };
+      return { pr_id: req.params.id, runs, reviews, multi_agent_run_id: null };
     },
   );
 
@@ -138,6 +161,26 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     async (req) => {
       const { workspaceId } = await getContext(container, req);
       return service.listRuns(workspaceId, req.params.id);
+    },
+  );
+
+  // ---- Latest multi-agent group of a PR (null when it never had one) -------
+  app.get(
+    '/pulls/:id/multi-agent',
+    { schema: { params: IdParams, response: { 200: MultiAgentRun.nullable() } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.multiAgentForPull(workspaceId, req.params.id);
+    },
+  );
+
+  // ---- Per-agent run estimates (last 5 done runs; workspace-scoped) --------
+  app.get(
+    '/runs/estimates',
+    { schema: { response: { 200: z.array(AgentRunEstimate) } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.agentRunEstimates(workspaceId);
     },
   );
 

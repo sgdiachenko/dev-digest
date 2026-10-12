@@ -33,6 +33,13 @@ Arguments: `$ARGUMENTS`
 7. **No `test-writer` in this flow** (token budget). The tests are the
    implementer's: the plan's *Test plan* `T#` rows and each step's
    `done-when`. A missing test found later is fixed like any other gap.
+8. **Line ranges, not shared files.** Give each agent the plan's appendix
+   or the exact `file:line` ranges it needs. Reviewers and implementers
+   re-read whole shared files (e.g. `service.ts` read by 12 agents in one
+   run) and that is the largest avoidable cost.
+9. **Short prompts.** The prompt carries the question and the paths. The
+   standing rules (spec path, report format) live in the agent files, not in
+   every launch.
 
 ## Phase 0 — Intake
 
@@ -53,9 +60,12 @@ Arguments: `$ARGUMENTS`
    the same wave as its producer). A gap → stop and name it (it's the
    planner's to fix), unless the user says go.
    - Design: if the request, spec or plan mentions a mock-up / screenshot, the plan
-     must list the image file(s) under *Context → Design*; a design that exists only in
-     chat → stop and ask the user to save it under `docs/` (it is the planner's to add).
-     Implementers get the image path, not a description.
+     must list the image file(s) under *Context → Design*. A design that exists only
+     in chat → before any implementer is launched, save each image under
+     `docs/design/<feature>/` (ask the user for the files if they are not on disk),
+     then the planner adds the paths to the plan. Implementers get the image
+     path, not a description. Do not accept a plan that says "Design: none" while
+     a design was shared in the conversation.
    - Live checks: if *Review handoff → Manual verification* needs a live call
      to a paid or credentialed service (e.g. a real LLM key), ask once now
      (`AskUserQuestion`): is it configured, and what spend is acceptable?

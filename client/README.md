@@ -32,6 +32,9 @@ flowchart TD
   SETTINGS["/settings/:section<br/>API keys · models"]
   CTX["/repos/:repoId/context<br/>Project Context"]
   TOUR["/repos/:repoId/tour<br/>Onboarding Tour"]
+  MA["/repos/:repoId/multi-agent<br/>configure run · ?pr="]
+  MAR["/repos/:repoId/multi-agent/:number<br/>results · ?view= ?agent= ?trace="]
+  MA --> MAR
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
   PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/smart-diff<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
@@ -39,6 +42,8 @@ flowchart TD
   SKILLS -->|"/skills · /skills/:id · /skills/:id/stats<br/>/skills/:id/versions · /skills/:id/restore · /skills/import · /skills/:id/context"| API
   CTX -->|"GET /repos/:id/context · /repos/:id/context/file<br/>POST /repos/:id/context/rescan"| API
   TOUR -->|"GET /repos/:id/tour · /repos/:id/index-state<br/>POST /repos/:id/tour/narrative · /repos/:id/refresh · /repos/:id/resync"| API
+  MA -->|"GET /agents · /runs/estimates<br/>POST /pulls/:id/review {agent_ids}"| API
+  MAR -->|"GET /pulls/:id/multi-agent · /runs/:id/events · /runs/:id/trace"| API
   SETTINGS -->|"/settings · /providers"| API
 ```
 
@@ -46,6 +51,17 @@ flowchart TD
 five facts-built sections, an "On this page" rail, an optional AI narrative and
 Markdown export. Behaviour: [specs/pages.md](specs/pages.md#reposrepoidtour);
 wiring: [docs/ui-architecture.md](docs/ui-architecture.md#onboarding-tour-hooks-and-view).
+
+`/repos/:repoId/multi-agent` (`src/app/repos/[repoId]/multi-agent/`) configures a
+parallel run of 2+ agents on one PR; `?pr=<number>` preselects the PR
+(`multi-agent/helpers.ts:36`). `/repos/:repoId/multi-agent/:number`
+(`multi-agent/[number]/`) shows the PR's latest group. Its URL state:
+`?view=columns|tabs` (default `columns`), `?agent=<run_id>` (selected tab; first
+column if unknown), `?trace=<run_id>` (opens that member's trace; only runs of
+the group are accepted) (`[number]/helpers.ts:13-28`). The sidebar entry
+"Multi-Agent Review" sits in the GLOBAL nav section and links to
+`/repos/:repoId/multi-agent` (`src/vendor/ui/nav.ts:41-45`). Server contract:
+[api-contracts](../server/docs/api-contracts.md#multi-agent-review).
 
 `/repos/:repoId/context` (`src/app/repos/[repoId]/context/`) is the read-only
 Project Context page: document list with category chips and a filter, a safe

@@ -27,13 +27,7 @@ export function formatTokens(tokensIn: number, tokensOut: number): string {
   return `${(tokensIn / 1000).toFixed(0)}k→${(tokensOut / 1000).toFixed(1)}k`;
 }
 
-/** Compact USD cost (e.g. "$0.06"); "—" when unknown (no data, or a failed run). */
-export function formatCost(usd: number | null | undefined): string {
-  if (usd == null) return "—";
-  if (usd === 0) return "$0.00";
-  const rounded = Number(usd.toPrecision(2));
-  return `$${rounded >= 1 ? rounded.toFixed(2) : String(rounded)}`;
-}
+export { formatCostTrimmed as formatCost } from "@/lib/format";
 
 /**
  * Rough per-block token estimate for the prompt-assembly drawer (chars/4 —

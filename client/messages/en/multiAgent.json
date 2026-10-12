@@ -1,0 +1,44 @@
+{
+  "configure": {
+    "title": "Run a Multi-Agent Review",
+    "subtitle": "Pick a pull request and choose which agents to fan out — they run in parallel and you compare their findings side by side.",
+    "prLabel": "Pull request",
+    "prPlaceholder": "Select a pull request…",
+    "prOption": "#{number} {title}",
+    "agentsHeading": "Agents to run",
+    "agentsLoadError": "Could not load the agents.",
+    "noAgents": "No agents yet — create one",
+    "disabled": "disabled",
+    "noData": "no data",
+    "estimate": "≈ {duration} · {cost}",
+    "totals": "≈ {duration} · {cost} · parallel fan-out",
+    "needTwoEnabled": "You need at least 2 enabled agents to run a multi-agent review.",
+    "start": "Run multi-agent review ({count})",
+    "starting": "Starting…",
+    "block": {
+      "no_pr": "Select a pull request first.",
+      "loading": "Loading agents…",
+      "none": "Pick at least 2 agents.",
+      "single": "One agent is not a multi-agent run. Use Run Review on the pull request page instead.",
+      "running": "A multi-agent run is already in progress for this pull request."
+    },
+    "viewResults": "View results",
+    "activeRun": "A multi-agent run is already in progress. View its results",
+    "selectAll": "Select all"
+  },
+  "picker": {
+    "heading": "PICK AGENTS TO RUN",
+    "clear": "Clear",
+    "disabled": "disabled",
+    "noData": "no data",
+    "estimate": "~{duration}",
+    "runAgent": "Run {name} alone",
+    "start": "Run multi-agent review ({count})",
+    "starting": "Starting…",
+    "loading": "Loading agents…",
+    "tooFew": "Pick at least 2 agents.",
+    "groupRunning": "A multi-agent run is in progress. View results",
+    "activeRun": "A multi-agent run is already in progress. View results",
+    "configure": "Configure multi-agent run…"
+  }
+}
