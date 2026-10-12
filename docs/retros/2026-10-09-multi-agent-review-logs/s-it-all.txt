@@ -1,0 +1,101 @@
+npm warn Unknown project config "node-linker". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+ RUN  v2.1.9 /Users/sdiachenko/emdash/worktrees/dev-digest-a1769025/emdash-multi-agents-review-putg6/server
+
+ ✓ test/context-attachments-store.it.test.ts (11 tests) 7266ms
+   ✓ context attachments store (Testcontainers pg) > cascades: deleting the agent, the skill or the repo removes its attachment rows (EC-25) 480ms
+ ✓ test/skills-crud.it.test.ts (12 tests) 8893ms
+ ✓ test/multi-agent.it.test.ts (12 tests) 10511ms
+   ✓ multi-agent review (Testcontainers pg) > starts a group: one group row, linked runs, response carries the group id (AC-1, AC-49) 572ms
+   ✓ multi-agent review (Testcontainers pg) > GET p95 stays under 300 ms for 5 runs and 200 findings (NFR-2, CI-only) 438ms
+ ✓ test/reviews.it.test.ts (15 tests) 10848ms
+   ✓ A2 reviews + agents (Testcontainers pg) > runs a review: map-reduce + grounding drops the hallucinated finding, keeps the valid one 363ms
+   ✓ A2 reviews + agents (Testcontainers pg) > PR list cost_usd is the SUM across every successful run, not just the latest 352ms
+ ✓ test/conventions.it.test.ts (7 tests) 11390ms
+   ✓ Conventions Extractor — scan, evidence gate, triage, skill draft > a scan drops the invented candidate via the evidence gate and reports the counters 301ms
+ ✓ test/project-context.it.test.ts (10 tests) 16081ms
+   ✓ project-context routes (Testcontainers pg) > first GET -> scanning, then ready with files ordered by path; symlink/excluded absent 603ms
+   ✓ project-context routes (Testcontainers pg) > preview: ok returns content, too_large returns null, unknown/traversal paths 404, empty path 422 431ms
+   ✓ project-context routes (Testcontainers pg) > rescan -> 202, catalog moves to syncedHead; two POSTs share one sync 482ms
+   ✓ project-context routes (Testcontainers pg) > rescan with a failing sync -> error status, previous files kept 505ms
+   ✓ project-context routes (Testcontainers pg) > a fresh app over the same DB sees the persisted catalog (restart) 641ms
+   ✓ project-context routes (Testcontainers pg) > GET p95 over 500 documents stays under 500 ms after warm-up 1570ms
+stdout | test/context-attachments.it.test.ts > context attachments routes (Testcontainers pg) > 20 saves stay fast: p95 <= 300 ms (NFR-1)
+[context-attachments] PUT p95 over 20 saves: 504.8 ms
+
+ ❯ test/context-attachments.it.test.ts (6 tests | 1 failed) 19866ms
+   ✓ context attachments routes (Testcontainers pg) > GET of a fresh agent is empty; PUT saves an ordered list that GET returns (AC-3, AC-4) 821ms
+   ✓ context attachments routes (Testcontainers pg) > a changed list bumps the agent version once; an identical PUT does not (AC-7); last PUT wins (EC-18) 1598ms
+   ✓ context attachments routes (Testcontainers pg) > PUT 422 matrix: duplicate, >20, unknown key, unknown path, foreign repo, bad query (AC-8, NFR-3) 814ms
+   ✓ context attachments routes (Testcontainers pg) > skill attachments serialize, never change the skill version, and are inherited by agents (AC-9, AC-10, AC-11) 797ms
+   × context attachments routes (Testcontainers pg) > 20 saves stay fast: p95 <= 300 ms (NFR-1) 4839ms
+     → expected 504.81016600000294 to be less than or equal to 300
+ ✓ test/agents-versions.it.test.ts (8 tests) 13370ms
+   ✓ GET /agents/:id/versions > linking, reordering, or unlinking a skill bumps the version — same as any other config edit 738ms
+ ✓ test/eval.it.test.ts (16 tests) 22493ms
+   ✓ eval API (Testcontainers pg) > suite run: 422 without cases; pinned config; per-case rows; deleting a case keeps run metrics (AC-72, AC-73, AC-80, AC-65, AC-89, EC-23) 555ms
+   ✓ eval API (Testcontainers pg) > two parallel starts: one 202 and one 409 run_active with the active run id (AC-82, EC-14, NFR-3) 721ms
+   ✓ eval API (Testcontainers pg) > cancel an active run (AC-91); cancelling a finished run is 409 not_running 1322ms
+   ✓ eval API (Testcontainers pg) > compare: same agent -> case_set + flips; other agent -> 422 different_agents; failed run -> 422 no_metrics (AC-127, AC-130, AC-165) 414ms
+   ✓ eval API (Testcontainers pg) > a foreign workspace id is a 404 on every endpoint (AC-133, NFR-8) 1429ms
+   ✓ eval API (Testcontainers pg) > run-all starts one run per agent that has cases and no active run (AC-114) 5041ms
+ ✓ test/skill-stats.it.test.ts (4 tests) 14214ms
+   ✓ Skill Stats tab > a freshly-linked, never-run skill reports null pull/accept rates, not 0% 322ms
+   ✓ Skill Stats tab > pull_pct, findings, and accept_pct move after real runs and finding triage 1072ms
+ ✓ test/skills-review.it.test.ts (2 tests) 13166ms
+   ✓ L02 skills reach the review prompt > orders linked skills, wraps imported ones, excludes disabled ones, and records ids on the trace 420ms
+ ✓ test/onboarding-narrative.it.test.ts (6 tests) 15065ms
+   ✓ onboarding tour narrative routes (Testcontainers pg) > POST -> 202, generation completes in the background and GET /tour shows it additively 600ms
+   ✓ onboarding tour narrative routes (Testcontainers pg) > a second POST while generating shares the run (already_running) with one LLM call 330ms
+   ✓ onboarding tour narrative routes (Testcontainers pg) > 429 from the service limiter after 10 requests (works under NODE_ENV=test) 353ms
+   ✓ onboarding tour narrative routes (Testcontainers pg) > deleting the repo during a run leaves no onboarding row 563ms
+ ✓ test/project-context-run.it.test.ts (3 tests) 15544ms
+   ✓ project context in a run (Testcontainers pg) > injects the attached doc read from the scanned sha and persists project_context (AC-18, AC-30, AC-31) 1047ms
+   ✓ project context in a run (Testcontainers pg) > an agent with nothing attached keeps a block-free prompt and a null project_context (NFR-8, AC-26) 558ms
+   ✓ project context in a run (Testcontainers pg) > a repo without a clone runs without the block and says why (AC-24) 983ms
+ ✓ test/brief.it.test.ts (17 tests) 29769ms
+   ✓ PR Brief routes (Testcontainers pg) > GET null -> POST 200 -> GET returns the same record; exactly one LLM call with the default model 345ms
+   ✓ PR Brief routes (Testcontainers pg) > a model override from settings is used 399ms
+   ✓ PR Brief routes (Testcontainers pg) > the 11th POST within a minute is 429 1477ms
+   ✓ PR Brief routes (Testcontainers pg) > parallel POSTs for one PR make one LLM call and share the outcome 479ms
+   ✓ PR Brief routes (Testcontainers pg) > invalid_output and llm_error leave the previous brief unchanged 1670ms
+   ✓ PR Brief routes (Testcontainers pg) > stale: a new head SHA reads as stale on GET 545ms
+   ✓ PR Brief routes (Testcontainers pg) > truncated diff_stats and the not-cloned specs reason are listed; specs_used is empty 435ms
+   ✓ PR Brief routes (Testcontainers pg) > the stored blast is the projection: no endpoints or crons, only the sent callers 468ms
+   ✓ PR Brief routes (Testcontainers pg) > POST stores a brief with blast missing when repo intel is unavailable 1441ms
+   ✓ PR Brief routes (Testcontainers pg) > POST stores a brief with blast missing when repo intel is timeout 10396ms
+   ✓ PR Brief routes (Testcontainers pg) > POST stores a brief with blast missing when repo intel is index_failed 747ms
+   ✓ PR Brief routes (Testcontainers pg) > a real HTTP disconnect does not stop the generation: the brief is still stored 762ms
+ ✓ test/smart-diff.it.test.ts (4 tests) 11733ms
+ ✓ test/onboarding.it.test.ts (5 tests) 10724ms
+ ✓ test/pulls-comments.it.test.ts (4 tests) 10664ms
+ ✓ test/reviews-tx.it.test.ts (3 tests) 9877ms
+ ✓ test/pr-history-routes.it.test.ts (2 tests) 7886ms
+ ✓ test/repo-intel-symbol-clamp.it.test.ts (2 tests) 7290ms
+ ✓ test/settings-models.it.test.ts (2 tests) 7437ms
+ ✓ test/integration.it.test.ts (7 tests) 15518ms
+   ✓ Testcontainers: pg + pgvector > vector insert + similarity query round-trips 970ms
+ ✓ test/eval-perf.it.test.ts (1 test) 11286ms
+   ✓ eval read performance (Testcontainers pg) > GET eval-cases, GET eval-runs and GET /eval/overview: p95 <= 300 ms (NFR-1) 797ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/context-attachments.it.test.ts > context attachments routes (Testcontainers pg) > 20 saves stay fast: p95 <= 300 ms (NFR-1)
+AssertionError: expected 504.81016600000294 to be less than or equal to 300
+ ❯ test/context-attachments.it.test.ts:244:17
+    242|     const p95 = samples[Math.ceil(samples.length * 0.95) - 1]!;
+    243|     console.info(`[context-attachments] PUT p95 over 20 saves: ${p95.t…
+    244|     expect(p95).toBeLessThanOrEqual(300);
+       |                 ^
+    245|     await app.close();
+    246|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed | 22 passed (23)
+      Tests  1 failed | 158 passed (159)
+   Start at  19:02:17
+   Duration  42.17s (transform 1.05s, setup 439ms, collect 44.50s, tests 300.89s, environment 3ms, prepare 1.26s)
+

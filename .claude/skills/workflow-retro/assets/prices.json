@@ -1,8 +1,8 @@
 {
-  "_comment": "USD per 1M tokens, matched by substring of the model id (first match wins). Left unset on purpose: fill from your provider's rate card. collect.mjs prints a cost column only for models that have all four rates set.",
+  "_comment": "USD per 1M tokens, matched by substring of the model id (first match wins). Source: https://claude.com/pricing (fetched 2026-10-09), 5-minute cache write; 1-hour cache write is not listed on that page. Haiku 5.5 is tiered by prompt size: the <=100K row is used (over 100K it is input 0.50, cache_write 0.625, cache_read 0.05, output 2.50). Only models used in this project are filled.",
   "rates": [
-    { "match": "opus",   "input": null, "cache_write": null, "cache_read": null, "output": null },
-    { "match": "sonnet", "input": null, "cache_write": null, "cache_read": null, "output": null },
-    { "match": "haiku",  "input": null, "cache_write": null, "cache_read": null, "output": null }
+    { "match": "opus-5-5",   "input": 4,    "cache_write": 5,     "cache_read": 0.20, "output": 20 },
+    { "match": "sonnet-5-5", "input": 2,    "cache_write": 2.50,  "cache_read": 0.10, "output": 10 },
+    { "match": "haiku-5-5",  "input": 0.10, "cache_write": 0.125, "cache_read": 0.01, "output": 0.50 }
   ]
 }

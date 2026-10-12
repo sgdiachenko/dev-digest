@@ -1,0 +1,38 @@
+{
+  "fingerprint": "b90cac5b8790bac107458e7f5b03f65990112ab8588bf45aa81f340a1a4a558b",
+  "created_at": "2026-10-09T16:06:25Z",
+  "branch": "emdash/multi-agents-review-putg6",
+  "base_sha": "63de9bfac2b9fdda28123c4da4c9323de71c1510",
+  "verdict": "approve",
+  "lanes": ["project-invariants", "server-onion", "server-http", "client-frontend", "shared-contracts", "security"],
+  "skills_loaded": ["onion-architecture", "frontend-architecture", "security", "zod", "response-schema", "breaking-change"],
+  "unmapped_skills": [],
+  "checks": [
+    { "name": "check-shared-sync", "command": "./scripts/check-shared-sync.sh", "exit_code": 0 },
+    { "name": "server-lint", "command": "pnpm -C server lint", "exit_code": 0 },
+    { "name": "server-typecheck", "command": "pnpm -C server typecheck", "exit_code": 0 },
+    { "name": "server-arch-check", "command": "pnpm -C server arch:check", "exit_code": 0 },
+    { "name": "server-unit", "command": "pnpm -C server exec vitest run --reporter=dot --exclude '**/*.it.test.ts'", "exit_code": 0, "note": "773 passed" },
+    { "name": "client-lint", "command": "pnpm -C client lint", "exit_code": 0 },
+    { "name": "client-typecheck", "command": "pnpm -C client typecheck", "exit_code": 0 },
+    { "name": "client-test", "command": "pnpm -C client test", "exit_code": 0, "note": "583 passed" },
+    { "name": "reviewer-core-typecheck", "command": "npm --prefix reviewer-core run typecheck", "exit_code": 0 },
+    { "name": "reviewer-core-test", "command": "npm --prefix reviewer-core test", "exit_code": 0, "note": "52 passed" },
+    { "name": "mcp-server-typecheck", "command": "pnpm -C mcp-server typecheck", "exit_code": 0 },
+    { "name": "mcp-server-test", "command": "pnpm -C mcp-server test", "exit_code": 0 },
+    { "name": "server-integration-multi-agent", "command": "npx vitest run test/multi-agent.it.test.ts (Docker Postgres, run locally)", "exit_code": 0, "note": "12 passed" },
+    { "name": "server-integration-all", "command": "npx vitest run .it.test (Docker Postgres, run locally)", "exit_code": 1, "note": "158 passed; 1 flaky timing test in context-attachments.it.test.ts (NFR-1 p95) passed on rerun twice; file unchanged by this branch" }
+  ],
+  "findings": [
+    {
+      "severity": "SUGGESTION",
+      "file": "client/src/app/repos/[repoId]/multi-agent/[number]/_components/MultiAgentResults/MultiAgentResults.tsx",
+      "line": 12,
+      "skill": "frontend-architecture",
+      "rule": "import/no-restricted-paths: sibling-route private component (placement note)",
+      "summary": "RunTraceDrawer is imported from another route's private _components folder; accepted for a single consumer, lift to client/src/components/ when a third consumer appears",
+      "evidence": "import RunTraceDrawer from \"@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer\";",
+      "fix": "accepted by plan R6; move to client/src/components/ on the third consumer"
+    }
+  ]
+}

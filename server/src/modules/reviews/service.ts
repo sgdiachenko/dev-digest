@@ -1,9 +1,15 @@
-import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
+import type {
+  AgentRunEstimate,
+  FindingActionKind,
+  MultiAgentRun,
+  RunEventKind,
+  RunTrace,
+} from '@devdigest/shared';
 import type { RunBus } from '../../platform/sse.js';
-import { AppError, NotFoundError } from '../../platform/errors.js';
+import { AppError, ConflictError, NotFoundError, ValidationError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
-import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
+import { buildMultiAgentRun, type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
@@ -38,6 +44,8 @@ export interface AgentsReader {
   listEnabled(workspaceId: string): Promise<AgentRow[]>;
   getById(workspaceId: string, id: string): Promise<AgentRow | undefined>;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class ReviewService {
   constructor(
@@ -146,6 +154,117 @@ export class ReviewService {
     });
 
     return { runs, reviews: [] };
+  }
+
+  // ===========================================================================
+  // Multi-agent group: N enabled agents of one PR, run in parallel.
+  // ===========================================================================
+
+  /**
+   * Validate a group request and resolve its agents (distinct ids, request
+   * order). Unknown and foreign-workspace ids are indistinguishable ("agent not
+   * found", via the workspace-scoped `getById`) and take precedence over
+   * "agent is disabled".
+   */
+  async resolveGroupTargets(
+    workspaceId: string,
+    body: { agentId?: string; all?: boolean; agent_ids?: string[] },
+  ): Promise<AgentRow[]> {
+    if (body.agentId !== undefined || body.all !== undefined) {
+      throw new ValidationError('agent_ids cannot be combined with agentId or all');
+    }
+    const ids = [...new Set(body.agent_ids ?? [])];
+    if (ids.length < 2) throw new ValidationError('agent_ids must contain at least 2 distinct agents');
+    // A non-uuid string can never be an agent: same answer as an unknown id, no DB lookup.
+    if (ids.some((id) => !UUID_RE.test(id))) throw new ValidationError('agent not found');
+    // ONE workspace-scoped lookup; ids are matched in memory.
+    const enabled = await this.agents.listEnabled(workspaceId);
+    // NFR-4 bound: a group can never hold more agents than the workspace has enabled.
+    if (ids.length > enabled.length) throw new ValidationError('too many agents');
+    const byId = new Map(enabled.map((a) => [a.id, a]));
+    // Ids outside the enabled set are either disabled or unknown/foreign; the
+    // (at most `enabled.length`) leftovers are told apart by the scoped getById.
+    const missing = ids.filter((id) => !byId.has(id));
+    const extra = await Promise.all(missing.map((id) => this.agents.getById(workspaceId, id)));
+    if (extra.some((a) => a == null)) throw new ValidationError('agent not found');
+    for (const a of extra) byId.set(a!.id, a!);
+    const agents = ids.map((id) => byId.get(id)!);
+    if (agents.some((a) => !a.enabled)) throw new ValidationError('agent is disabled');
+    return agents;
+  }
+
+  /**
+   * Start a group: the group row and its member runs are created in one
+   * transaction (409 if the PR's latest group still has a running member),
+   * then the members run in parallel in the background.
+   */
+  async runGroupReview(
+    workspaceId: string,
+    prId: string,
+    agents: AgentRow[],
+    logger?: Logger,
+  ): Promise<{
+    runs: { run_id: string; agent_id: string; agent_name: string }[];
+    reviews: ReviewDto[];
+    multi_agent_run_id: string;
+  }> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+    const repo = await this.repo.getRepo(pull.repoId);
+    if (!repo) throw new NotFoundError('Repo not found');
+
+    const created = await this.repo.createGroupWithRuns({
+      workspaceId,
+      prId,
+      agents: agents.map((a) => ({ agentId: a.id, provider: a.provider, model: a.model })),
+    });
+    if (created.kind === 'pr_not_found') throw new NotFoundError('Pull request not found');
+    if (created.kind === 'conflict') {
+      throw new ConflictError('A multi-agent review is already running for this pull request', {
+        multi_agent_run_id: created.groupId,
+      });
+    }
+
+    const runIdByAgent = new Map(created.runs.map((r) => [r.agentId, r.id]));
+    const jobs = agents.map((agent) => {
+      const runId = runIdByAgent.get(agent.id);
+      if (!runId) throw new AppError('group_run_missing', 'A member run was not created', 500);
+      return { agent, runId };
+    });
+    const groupId = created.groupId;
+    void this.executor
+      .executeRuns(workspaceId, pull, repo, jobs, logger, { parallel: true, groupId })
+      .catch((err) => {
+        logger?.error({ prId, err: (err as Error).message }, 'review: background group execution crashed');
+      });
+
+    return {
+      runs: jobs.map(({ agent, runId }) => ({ run_id: runId, agent_id: agent.id, agent_name: agent.name })),
+      reviews: [],
+      multi_agent_run_id: groupId,
+    };
+  }
+
+  /** The PR's latest group with grouped findings and takes, or null when it has none. */
+  async multiAgentForPull(workspaceId: string, prId: string): Promise<MultiAgentRun | null> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+    const group = await this.repo.latestGroupForPull(workspaceId, prId);
+    if (!group) return null;
+    const members = await this.repo.groupMembers(group.id);
+    const reviews = await this.repo.reviewsForRuns(members.map((m) => m.runId));
+    return buildMultiAgentRun(group, pull, members, reviews);
+  }
+
+  /** Per-agent averages over the last 5 `done` runs, for the picker's estimates. */
+  async agentRunEstimates(workspaceId: string): Promise<AgentRunEstimate[]> {
+    const rows = await this.repo.doneRunEstimates(workspaceId);
+    return rows.map((r) => ({
+      agent_id: r.agentId,
+      runs: r.runs,
+      avg_duration_ms: r.avgDurationMs,
+      avg_cost_usd: r.avgCostUsd,
+    }));
   }
 
   private publish(runId: string, kind: RunEventKind, msg: string, data?: unknown) {

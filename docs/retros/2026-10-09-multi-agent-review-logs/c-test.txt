@@ -1,0 +1,200 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sdiachenko/emdash/worktrees/dev-digest-a1769025/emdash-multi-agents-review-putg6/client
+
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/helpers.test.ts (17 tests) 5ms
+ ✓ src/app/repos/[repoId]/multi-agent/_components/ConfigureForm/ConfigureForm.test.tsx (10 tests) 280ms
+ ✓ src/app/repos/[repoId]/context/_components/ProjectContextView/ProjectContextView.test.tsx (17 tests) 365ms
+ ✓ src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/ContextTab.test.tsx (10 tests) 298ms
+ ✓ src/app/agents/[id]/_components/AgentEditor/_components/EvalsTab/_components/EvalCasesSection/EvalCasesSection.test.tsx (12 tests) 586ms
+stderr | src/app/eval/_components/AgentView/AgentView.test.tsx > AgentView (T43) > shows the header, three metric cards with deltas in points, the trend points and the run table (AC-106, 107, 112, 175)
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+
+stderr | src/app/eval/_components/AgentView/AgentView.test.tsx > AgentView (T43) > switches the agent through the dropdown and narrows runs with '30 days' (AC-108, AC-111)
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+
+stderr | src/app/eval/_components/AgentView/AgentView.test.tsx > AgentView (T43) > raises a computed regression alert at -5 points, not at -4 (AC-113)
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+
+stderr | src/app/eval/_components/AgentView/AgentView.test.tsx > AgentView (T43) > selects exactly two runs to compare; a third drops the earliest pick (AC-119, 120, NFR-10)
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+
+stderr | src/app/eval/_components/AgentView/AgentView.test.tsx > AgentView (T43) > opens the compare modal from a deep link and refuses an unknown run (AC-128, 129)
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+
+ ✓ src/app/eval/_components/AgentView/AgentView.test.tsx (12 tests) 695ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.test.tsx (13 tests) 535ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.test.tsx (11 tests) 489ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/OnboardingTourView.test.tsx (19 tests) 601ms
+ ✓ src/components/eval-case-modal/helpers.test.ts (11 tests) 9ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/RunHistory/RunHistory.test.tsx (13 tests) 127ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/BlastRadiusCard/BlastRadiusCard.test.tsx (6 tests) 165ms
+ ✓ src/components/context-attachments/AttachList/AttachList.test.tsx (10 tests) 370ms
+ ✓ src/app/agents/[id]/_components/AgentEditor/_components/EvalsTab/EvalsTab.test.tsx (9 tests) 450ms
+ ✓ src/components/diff-viewer/DiffViewer/DiffViewer.test.tsx (9 tests) 173ms
+ ✓ src/components/eval-case-modal/EvalCaseModal/EvalCaseModal.test.tsx (14 tests) 2022ms
+   ✓ EvalCaseModal > shows progress with seconds in a status region while the attempt runs (AC-147, NFR-11) 1053ms
+ ✓ src/app/eval/_components/EvalDashboardView/EvalDashboardView.test.tsx (8 tests) 314ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/_components/AgentPicker/AgentPicker.test.tsx (9 tests) 564ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/ArchitectureSection/ArchitectureSection.test.tsx (9 tests) 197ms
+ ✓ src/lib/hooks/eval.test.tsx (11 tests) 302ms
+ ✓ src/app/repos/[repoId]/multi-agent/[number]/_components/MultiAgentResults/MultiAgentResults.test.tsx (7 tests) 227ms
+ ✓ src/lib/hooks/multi-agent.test.tsx (4 tests) 167ms
+ ✓ src/app/skills/_components/SkillsView/_components/SkillEditor/_components/ContextTab/ContextTab.test.tsx (4 tests) 267ms
+ ✓ src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.test.tsx (9 tests) 331ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/RunTraceDrawer.test.tsx (5 tests) 185ms
+stderr | src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.test.tsx > FindingsPanel — severity filter pills > clicking a pill narrows the list to that severity
+Updating a style property during rerender (borderColor) when a conflicting property is set (borderLeftColor) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values.
+
+stderr | src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.test.tsx > FindingsPanel — severity filter pills > clicking the active pill again clears the filter
+Updating a style property during rerender (borderColor) when a conflicting property is set (borderLeftColor) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values.
+Updating a style property during rerender (borderColor) when a conflicting property is set (borderLeftColor) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values.
+
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.test.tsx (7 tests) 311ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BriefHeader/BriefHeader.test.tsx (10 tests) 260ms
+ ✓ src/app/conventions/_components/ConventionsView/_components/ConventionCard/ConventionCard.test.tsx (7 tests) 318ms
+ ✓ src/app/conventions/_components/ConventionsView/_components/CreateSkillModal/CreateSkillModal.test.tsx (4 tests) 252ms
+stderr | src/app/repos/[repoId]/context/_components/ProjectContextView/_components/DocPreview/DocPreview.test.tsx > DocPreview — untrusted markdown > neutralises javascript: links and data: images
+An empty string ("") was passed to the src attribute. This may cause the browser to download the whole page again over the network. To fix this, either do not render the element at all or pass null to src instead of an empty string.
+
+ ✓ src/app/repos/[repoId]/context/_components/ProjectContextView/_components/DocPreview/DocPreview.test.tsx (6 tests) 200ms
+ ✓ src/app/skills/_components/SkillsView/_components/ImportSkillModal/ImportSkillModal.test.tsx (4 tests) 205ms
+ ✓ src/app/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.test.tsx (5 tests) 145ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/RunLocallySection/RunLocallySection.test.tsx (4 tests) 120ms
+ ✓ src/components/finding-card/FindingCard/FindingCard.test.tsx (6 tests) 223ms
+ ✓ src/app/repos/[repoId]/multi-agent/[number]/helpers.test.ts (6 tests) 3ms
+ ✓ src/app/eval/_components/CompareRunsModal/CompareRunsModal.test.tsx (5 tests) 214ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/FirstTasksSection/FirstTasksSection.test.tsx (5 tests) 326ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/helpers.test.ts (6 tests) 6ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/CriticalPathsSection/CriticalPathsSection.test.tsx (6 tests) 188ms
+ ✓ src/components/context-attachments/helpers.test.ts (6 tests) 4ms
+ ✓ src/app/repos/[repoId]/context/_components/ProjectContextView/helpers.test.ts (8 tests) 6ms
+ ✓ src/app/conventions/_components/ConventionsView/helpers.test.ts (11 tests) 5ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/NarrativeStatus/NarrativeStatus.test.tsx (8 tests) 167ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/PromptModalBody/PromptModalBody.test.tsx (3 tests) 381ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/helpers.test.ts (9 tests) 6ms
+ ✓ src/app/skills/_components/SkillCard/SkillCard.test.tsx (6 tests) 210ms
+ ✓ src/components/mermaid-diagram/MermaidDiagram.test.tsx (6 tests) 143ms
+ ✓ src/app/repos/[repoId]/multi-agent/[number]/_components/TabsView/TabsView.test.tsx (3 tests) 184ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/TourHeader/TourHeader.test.tsx (6 tests) 174ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/ReadingPathSection/ReadingPathSection.test.tsx (5 tests) 142ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/IntentCard.test.tsx (4 tests) 130ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.test.tsx (3 tests) 238ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/PriorPrsSection/PriorPrsSection.test.tsx (2 tests) 140ms
+ ✓ src/components/app-shell/AppShell.test.tsx (4 tests) 217ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/use-pr-file-navigation.test.ts (4 tests) 35ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/BlastSymbolGraph/BlastSymbolGraph.test.tsx (2 tests) 37ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/CommandRow/CommandRow.test.tsx (3 tests) 225ms
+ ✓ src/app/repos/[repoId]/pulls/_components/FindingsSummary/helpers.test.ts (8 tests) 3ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/OnThisPage/OnThisPage.test.tsx (4 tests) 142ms
+ ✓ src/app/agents/[id]/_components/AgentEditor/_components/EvalsTab/_components/RunsSection/RunsSection.test.tsx (4 tests) 196ms
+ ✓ src/components/eval-case-modal/useEvalCaseLauncher.test.tsx (1 test) 21ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/PromptBlock/PromptBlock.test.tsx (4 tests) 247ms
+ ✓ src/app/repos/[repoId]/multi-agent/[number]/_components/DisagreementBlock/DisagreementBlock.test.tsx (2 tests) 127ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/RiskAreas/RiskAreas.test.tsx (3 tests) 140ms
+ ✓ src/app/repos/[repoId]/multi-agent/[number]/_components/GroupedFindings/GroupedFindings.test.tsx (2 tests) 123ms
+ ✓ src/app/repos/[repoId]/multi-agent/helpers.test.ts (4 tests) 16ms
+ ✓ src/components/context-attachments/ContextDocDrawer/ContextDocDrawer.test.tsx (6 tests) 258ms
+ ✓ src/app/repos/[repoId]/multi-agent/[number]/_components/AgentColumnCard/AgentColumnCard.test.tsx (3 tests) 152ms
+ ✓ src/app/skills/_components/SkillsView/_components/SkillEditor/_components/VersionsTab/VersionsTab.test.tsx (4 tests) 105ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/file-target.test.ts (6 tests) 6ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/TourSection/TourSection.test.tsx (4 tests) 135ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/ReviewFocus/ReviewFocus.test.tsx (3 tests) 84ms
+ ✓ src/app/agents/[id]/_components/AgentEditor/AgentEditor.test.tsx (2 tests) 114ms
+ ✓ src/components/app-shell/helpers.test.ts (5 tests) 4ms
+ ✓ src/lib/hooks/tour.test.tsx (4 tests) 201ms
+ ✓ src/app/skills/_components/SkillsView/_components/SkillEditor/_components/StatsTab/StatsTab.test.tsx (3 tests) 94ms
+ ✓ src/app/skills/_components/SkillsView/_components/CreateSkillModal/CreateSkillModal.test.tsx (2 tests) 151ms
+ ✓ src/app/repos/[repoId]/multi-agent/_components/AgentChecklist/AgentChecklist.test.tsx (3 tests) 136ms
+ ✓ src/components/diff-viewer/findings.test.ts (5 tests) 3ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/NarrativeMarkdown/NarrativeMarkdown.test.tsx (3 tests) 116ms
+ ✓ src/app/repos/[repoId]/multi-agent/[number]/_components/AgentTabs/AgentTabs.test.tsx (1 test) 89ms
+ ✓ src/app/skills/_components/SkillsView/_components/ImportUrlSkillModal/ImportUrlSkillModal.test.tsx (1 test) 103ms
+ ✓ src/components/modal-focus/useModalFocus.test.tsx (1 test) 104ms
+ ✓ src/app/eval/_components/CompareRunsModal/helpers.test.ts (4 tests) 5ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/BlastSymbolGroup/BlastSymbolGroup.test.tsx (2 tests) 153ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/StatusBanner/StatusBanner.test.tsx (3 tests) 142ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/NarrativeControls/NarrativeControls.test.tsx (4 tests) 104ms
+ ✓ src/app/agents/_components/AgentCard/AgentCard.test.tsx (3 tests) 178ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BriefMissingInputs/BriefMissingInputs.test.tsx (2 tests) 93ms
+ ✓ src/app/repos/[repoId]/context/_components/ProjectContextView/_components/TokenEstimate/TokenEstimate.test.tsx (2 tests) 78ms
+ ✓ src/components/context-attachments/BudgetMeter/BudgetMeter.test.tsx (3 tests) 81ms
+ ✓ src/app/repos/[repoId]/multi-agent/[number]/_components/ColumnsView/ColumnsView.test.tsx (1 test) 128ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/TourUnavailable/TourUnavailable.test.tsx (2 tests) 61ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/OpenOnGitHub/OpenOnGitHub.test.tsx (2 tests) 58ms
+ ✓ src/lib/hooks/repo-intel.test.tsx (2 tests) 185ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/NarrativeEstimate/NarrativeEstimate.test.tsx (2 tests) 90ms
+stderr | src/test/smoke.test.tsx > web smoke (both themes) > component gallery renders in dark
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+
+stderr | src/test/smoke.test.tsx > web smoke (both themes) > component gallery renders in light
+The width(0) and height(0) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+
+ ✓ src/test/smoke.test.tsx (3 tests) 311ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/helpers.test.ts (6 tests) 2ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.test.tsx (2 tests) 109ms
+ ✓ src/app/repos/[repoId]/tour/_components/OnboardingTourView/_components/MiddleTruncatedPath/MiddleTruncatedPath.test.tsx (2 tests) 77ms
+ ✓ src/app/repos/[repoId]/multi-agent/_components/EstimateSummary/EstimateSummary.test.tsx (2 tests) 43ms
+ ✓ src/app/skills/_components/SkillsView/_components/SkillEditor/_components/StatsTab/helpers.test.ts (4 tests) 2ms
+ ✓ src/app/skills/_components/SkillsView/constants.test.ts (2 tests) 3ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/RunStatus/RunStatus.test.tsx (1 test) 9ms
+ ✓ src/app/skills/_components/SkillsView/_components/SkillEditor/_components/VersionsTab/helpers.test.ts (3 tests) 3ms
+ ✓ src/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner/VerdictBanner.test.tsx (1 test) 60ms
+ ✓ src/components/truncated-text/TruncatedText/TruncatedText.test.tsx (1 test) 61ms
+ ✓ src/lib/github-urls.test.ts (2 tests) 2ms
+ ✓ src/app/agents/[id]/constants.test.ts (1 test) 1ms
+
+ Test Files  109 passed (109)
+      Tests  583 passed (583)
+   Start at  19:01:08
+   Duration  13.87s (transform 3.24s, setup 4.95s, collect 44.46s, tests 19.84s, environment 31.90s, prepare 5.14s)
+

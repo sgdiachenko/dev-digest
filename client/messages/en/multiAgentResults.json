@@ -1,0 +1,75 @@
+{
+  "crumb": "Multi-Agent Review",
+  "header": {
+    "title": "Multi-agent review",
+    "subtitle": "Parallel run of {count} agents on PR #{number}",
+    "totals": "Total time {duration} · Total cost {cost}"
+  },
+  "views": {
+    "label": "Result view",
+    "columns": "Columns",
+    "tabs": "Tabs"
+  },
+  "status": {
+    "running": "Running",
+    "done": "Done",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "deletedAgent": "Deleted agent",
+  "didNotFlag": "did not flag",
+  "noResult": "no result",
+  "noFindings": "No findings",
+  "viewTrace": "View trace",
+  "score": "Score {value}",
+  "findingsCount": "{count, plural, one {# finding} other {# findings}}",
+  "duration": "Duration {value}",
+  "cost": "Cost {value}",
+  "live": {
+    "item": "{name}: {status}"
+  },
+  "grouped": {
+    "heading": "Found by several agents",
+    "empty": "No finding was reported by more than one agent.",
+    "lines": "{file}:{lines}"
+  },
+  "disagreement": {
+    "heading": "Where agents disagree",
+    "onlyConflicts": "Show only conflicts",
+    "allAgree": "All agents agree",
+    "noFindings": "No agent reported any findings, so there is nothing to compare.",
+    "location": "Location",
+    "conflict": "Conflict"
+  },
+  "tabs": {
+    "label": "Agents",
+    "running": "This agent is still running.",
+    "empty": "This agent reported no findings."
+  },
+  "learn": {
+    "label": "Learn",
+    "comingSoon": "coming soon"
+  },
+  "allFailed": {
+    "title": "All agents failed",
+    "body": "Every agent in this run failed, so there are no findings to compare."
+  },
+  "empty": {
+    "title": "No multi-agent run yet",
+    "body": "This pull request has not been reviewed by a group of agents.",
+    "cta": "Configure a multi-agent run"
+  },
+  "pollError": "Could not refresh the results. Showing the last data received.",
+  "loadError": "Could not load the results.",
+  "finding": {
+    "accept": "Accept",
+    "dismiss": "Dismiss",
+    "turnIntoEvalCase": "Turn into eval case",
+    "suggestedFix": "Suggested fix",
+    "accepted": "accepted",
+    "dismissed": "dismissed",
+    "confidence": "{value}% conf",
+    "confidenceTitle": "Model confidence",
+    "location": "{file}:{lines}"
+  }
+}

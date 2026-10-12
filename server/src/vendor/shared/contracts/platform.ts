@@ -289,6 +289,8 @@ export type IndexStatus = z.infer<typeof IndexStatus>;
 export const RunRequest = z.object({
   agentId: z.string().optional(),
   all: z.boolean().optional(),
+  /** Multi-agent group: ids of 2+ enabled agents of the workspace (checked by the service). */
+  agent_ids: z.array(z.string().min(1)).optional(),
 });
 export type RunRequest = z.infer<typeof RunRequest>;
 

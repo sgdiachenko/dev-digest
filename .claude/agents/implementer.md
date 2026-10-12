@@ -159,7 +159,10 @@ its short form.
      don't read the file.** Non-zero → read only the failures:
      `rg -n -C 3 'FAIL|Error|error TS|✗|×' "$TMPDIR/<name>.txt"`, and the
      whole file only if that shows nothing.
-   - Never run `*.it.test.ts` — record them as *skipped (integration)*.
+   - Integration tests (`*.it.test.ts`) of the module you touched: run them
+     when Docker is up (`docker info` exits 0), with the CI command; if Docker
+     is down, record them as *skipped (integration, no Docker)*. Never run the
+     whole integration suite.
    - Exit 127 / missing `node_modules` = *skipped (deps not installed)*, not
      a failure.
    - A failing check caused by your change: fix it within the plan's scope
@@ -186,6 +189,9 @@ done | partial | blocked
 - `path` — created | modified — S1
 
 ## Skills applied
+Every skill file you read, by path (`.claude/skills/<name>/SKILL.md`), then
+the rule each one shaped. A skill named in a step but not read is a
+deviation.
 - <skill> — S1 / `path` — <which rule shaped the code>
 
 ## Checks

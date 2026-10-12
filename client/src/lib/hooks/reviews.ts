@@ -166,6 +166,8 @@ export function useFindingAction() {
         // Smart Diff's dots/`● N` counters and inline finding cards read the
         // same accept/dismiss state — refetch it too.
         qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+        // The multi-agent results page reads the same finding state.
+        qc.invalidateQueries({ queryKey: ["multi-agent", prId] });
       }
       // The PR list's Findings column reads its own server-computed summary
       // (GET /repos/:id/pulls), which excludes dismissed findings — refetch it
