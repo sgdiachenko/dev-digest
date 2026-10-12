@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { z } from 'zod';
 import { homedir } from 'node:os';
-import { join, isAbsolute, resolve } from 'node:path';
+import { join, isAbsolute, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Central, zod-validated environment config. Loaded once at startup.
@@ -29,6 +30,8 @@ const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
+  // Directory holding the prebuilt CI runner (`pnpm -C agent-runner build`).
+  DEVDIGEST_RUNNER_DIR: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // `.env` (and .env.example) ship `LOG_LEVEL=` empty; an empty string is not a
   // valid enum member, so coerce '' → undefined to fall through to the default.
@@ -45,12 +48,17 @@ const EnvSchema = z.object({
   ),
 });
 
+/** `<repo>/agent-runner/dist` — this file lives at `<repo>/server/src/platform/`. */
+const DEFAULT_RUNNER_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'agent-runner', 'dist');
+
 export type AppConfig = {
   databaseUrl: string;
   apiPort: number;
   webPort: number;
   /** Absolute path where repos are cloned (~/.devdigest/workspace by default). */
   cloneDir: string;
+  /** Absolute path of the prebuilt agent-runner files (`DEVDIGEST_RUNNER_DIR`, default `<repo>/agent-runner/dist`). */
+  runnerDir: string;
   /** Absolute path to the writable secrets store (BYO keys from the UI). */
   secretsPath: string;
   nodeEnv: 'development' | 'test' | 'production';
@@ -88,11 +96,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const cloneDirRaw =
     parsed.DEVDIGEST_CLONE_DIR ?? join(homedir(), '.devdigest', 'workspace');
   const cloneDir = isAbsolute(cloneDirRaw) ? cloneDirRaw : resolve(process.cwd(), cloneDirRaw);
+  const runnerDirRaw = parsed.DEVDIGEST_RUNNER_DIR ?? DEFAULT_RUNNER_DIR;
+  const runnerDir = isAbsolute(runnerDirRaw) ? runnerDirRaw : resolve(process.cwd(), runnerDirRaw);
   return {
     databaseUrl: parsed.DATABASE_URL,
     apiPort: parsed.API_PORT,
     webPort: parsed.WEB_PORT,
     cloneDir,
+    runnerDir,
     secretsPath: join(homedir(), '.devdigest', 'secrets.json'),
     nodeEnv: parsed.NODE_ENV,
     logLevel: parsed.LOG_LEVEL ?? (parsed.NODE_ENV === 'test' ? 'silent' : 'info'),

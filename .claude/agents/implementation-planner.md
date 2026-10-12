@@ -73,6 +73,9 @@ relays your questions and re-invokes you with the answers.
 
 - **Pass 1 (always first).** Steps 1–2 below; return **only** the pass-1
   block. Never write the plan in pass 1.
+- **Pass 2 gets the pass-1 report by path.** The prompt names the file where
+  pass 1 was saved; read the `REC#` labels from that file. Never restate
+  them from memory: an accepted recommendation is the text the user saw.
 - **Pass 2** runs only when your prompt contains **all** of: `Mode:
   multi-agent | single-agent` and which `REC#` were accepted or rejected
   (or "no recommendations"). If anything is missing or contradictory,

@@ -55,3 +55,18 @@ describe("context.json copy", () => {
     expect(strings.filter((s) => /<[A-Za-z]/.test(s))).toEqual([]);
   });
 });
+
+describe("CI Runs sidebar entry", () => {
+  const lab = NAV.find((g) => g.section === "SKILLS LAB");
+  const item = lab?.items.find((i) => i.key === "ci-runs");
+
+  it("is a Skills Lab item that links to /ci-runs with a translatable label", () => {
+    expect(item?.href).toBe("/ci-runs");
+    expect(item?.labelKey).toBe("nav.ciRuns");
+    expect(resolveHref(item!.href, "r1")).toBe("/ci-runs");
+  });
+
+  it("is active on /ci-runs", () => {
+    expect(activeKeyFor("/ci-runs")).toBe("ci-runs");
+  });
+});

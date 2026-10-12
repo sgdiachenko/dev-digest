@@ -2,6 +2,8 @@ import type {
   AuthProvider,
   SecretsProvider,
   GitHubClient,
+  GitHubCiClient,
+  RunnerBundleSource,
   GitClient,
   CodeIndex,
   Embedder,
@@ -13,7 +15,8 @@ import { JobRunner } from './jobs.js';
 import { runBus, type RunBus } from './sse.js';
 import { LocalSecretsProvider } from '../adapters/secrets/local.js';
 import { LocalNoAuthProvider } from '../adapters/auth/local.js';
-import { OctokitGitHubClient } from '../adapters/github/octokit.js';
+import { OctokitGitHubClient, OctokitGitHubCiClient } from '../adapters/github/octokit.js';
+import { FsRunnerBundleSource } from '../adapters/runner-bundle/fs.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
 import { RipgrepCodeIndex } from '../adapters/codeindex/ripgrep.js';
 import { OpenAIProvider } from '../adapters/llm/openai.js';
@@ -22,7 +25,7 @@ import { OpenAIEmbedder } from '../adapters/embedder/openai.js';
 import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
-import { ConfigError } from './errors.js';
+import { AppError, ConfigError } from './errors.js';
 import { wrapUntrusted } from './prompt.js';
 import { loadPromptTemplate } from './prompts.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
@@ -49,6 +52,10 @@ import type { EvalAgentReader, EvalLogger, EvalSkillsReader } from '../modules/e
 import { OnboardingRepository } from '../modules/onboarding/repository.js';
 import { OnboardingService } from '../modules/onboarding/service.js';
 import { OnboardingNarrativeService } from '../modules/onboarding/narrative-service.js';
+import { CiRepository } from '../modules/ci/repository.js';
+import { CiService } from '../modules/ci/service.js';
+import { CiSyncService } from '../modules/ci/sync-service.js';
+import type { CiAgentReader, CiGitHub, CiStore } from '../modules/ci/types.js';
 import { ContextAttachmentsService } from '../modules/context-attachments/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
@@ -67,6 +74,13 @@ export interface ContainerOverrides {
   secrets?: SecretsProvider;
   auth?: AuthProvider;
   github?: GitHubClient;
+  /** Read side of Export to CI; tests inject a mock (defaults to Octokit over the same token). */
+  githubCi?: GitHubCiClient;
+  /** Prebuilt agent-runner files; tests inject a mock (defaults to `config.runnerDir`). */
+  runnerBundle?: RunnerBundleSource;
+  /** Export-to-CI persistence port / agent reader; DB-free tests inject fakes. */
+  ciStore?: CiStore;
+  ciAgents?: CiAgentReader;
   git?: GitClient;
   codeIndex?: CodeIndex;
   embedder?: Embedder;
@@ -89,6 +103,10 @@ export class Container {
 
   private _git?: GitClient;
   private _github?: GitHubClient;
+  private _githubCi?: GitHubCiClient;
+  private _ciRepo?: CiRepository;
+  private _ciService?: CiService;
+  private _ciSyncService?: CiSyncService;
   private _codeIndex?: CodeIndex;
   private _embedder?: Embedder;
   private llmCache = new Map<string, LLMProvider>();
@@ -404,6 +422,82 @@ export class Container {
     ));
   }
 
+  get ciRepo(): CiRepository {
+    return (this._ciRepo ??= new CiRepository(this.db));
+  }
+
+  private get ciStore(): CiStore {
+    return this.overrides.ciStore ?? this.ciRepo;
+  }
+
+  /** Agent lookup for the ci module, adapted from the agents repository. */
+  private get ciAgents(): CiAgentReader {
+    if (this.overrides.ciAgents) return this.overrides.ciAgents;
+    return {
+      get: async (workspaceId, agentId) => {
+        const a = await this.agentsRepo.getById(workspaceId, agentId);
+        return a
+          ? {
+              id: a.id,
+              name: a.name,
+              version: a.version,
+              provider: a.provider,
+              model: a.model,
+              systemPrompt: a.systemPrompt,
+              strategy: a.strategy,
+              ciFailOn: a.ciFailOn,
+            }
+          : null;
+      },
+    };
+  }
+
+  /**
+   * GitHub clients for one CI request. Resolved per call (token rotation is
+   * picked up) and throws `github_token_missing` (400) when no token is set,
+   * BEFORE any GitHub call is made.
+   */
+  private async ciGitHub(): Promise<CiGitHub> {
+    if (
+      !this.overrides.github &&
+      !this.overrides.githubCi &&
+      !(await this.secrets.get('GITHUB_TOKEN'))
+    ) {
+      throw new AppError(
+        'github_token_missing',
+        'A GitHub token is required. Add one in Settings.',
+        400,
+      );
+    }
+    return { github: await this.github(), ci: await this.githubCi() };
+  }
+
+  /** Export to CI: bundle, install (PR on `devdigest/ci`), installation list. Memoized. */
+  ciService(): CiService {
+    return (this._ciService ??= new CiService(
+      this.ciStore,
+      this.ciAgents,
+      this.runnerBundle,
+      () => this.ciGitHub(),
+      this.evalLogger,
+    ));
+  }
+
+  /** Export to CI: Refresh (ingest) and the CI Runs list. Memoized. */
+  ciSyncService(): CiSyncService {
+    return (this._ciSyncService ??= new CiSyncService(
+      this.ciStore,
+      () => this.ciGitHub(),
+      this.evalLogger,
+    ));
+  }
+
+  /** The prebuilt runner files shipped into every exported bundle. */
+  get runnerBundle(): RunnerBundleSource {
+    if (this.overrides.runnerBundle) return this.overrides.runnerBundle;
+    return new FsRunnerBundleSource(this.config.runnerDir);
+  }
+
   /** Project Context attachments (agents / skills ↔ catalog documents). Memoized, like its catalog. */
   get contextAttachments(): ContextAttachmentsService {
     return (this._contextAttachments ??= new ContextAttachmentsService(
@@ -472,6 +566,15 @@ export class Container {
     return this._github;
   }
 
+  async githubCi(): Promise<GitHubCiClient> {
+    if (this.overrides.githubCi) return this.overrides.githubCi;
+    if (this._githubCi) return this._githubCi;
+    const token = await this.secrets.get('GITHUB_TOKEN');
+    if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
+    this._githubCi = new OctokitGitHubCiClient(token);
+    return this._githubCi;
+  }
+
   /** Resolve an LLM provider by id; constructs from the secret key, cached. */
   async llm(id: 'openai' | 'anthropic' | 'openrouter'): Promise<LLMProvider> {
     const injected = this.overrides.llm?.[id];
@@ -527,6 +630,7 @@ export class Container {
   invalidateSecretCaches(): void {
     this.llmCache.clear();
     this._github = undefined;
+    this._githubCi = undefined;
     this._embedder = undefined;
   }
 }

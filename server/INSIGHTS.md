@@ -82,6 +82,8 @@ don't write it here.
 
 **2026-10-08** — Eval suite-run status `partial` is a contract value (`EvalSuiteRunStatus`) but not in the Drizzle `status` enum of `eval_suite_runs` (plain text column, so it stores fine behind a cast), and `eval_suite_runs.cases_passed` is NOT NULL: `finishRun` writes 0 and the repository maps it back to `null` unless the status has metrics. Evidence: `server/src/modules/eval/repository.ts` (`finishRun`, `toSummary`).
 
+**2026-10-09** — Export to CI: `OctokitGitHubClient.commitFiles` / `openPullRequest` / `findOpenPr` no longer wrap in `withRetry` (NFR-5/AC-32: the server must not retry GitHub calls; they had no other caller), and `OctokitGitHubCiClient.downloadArtifact` gets the pre-signed artifact URL from a `redirect: 'manual'` 302 and fetches it at once — that Octokit behaviour (302 not thrown) is unit-untestable here and needs the manual real-GitHub check (Q-31/AC-110 flow). Evidence: `server/src/adapters/github/octokit.ts` (`OctokitGitHubCiClient.downloadArtifact`), `server/src/modules/ci/sync-service.ts`.
+
 **2026-10-09** — `loadDiff` swallows a throwing `git.diff` and falls back to `getPrFiles`, so a unit test of the "Failed to load PR diff" path must make the repository's `getPrFiles` throw, not the git client. Also `pnpm typecheck` in this worktree reports 10 pre-existing errors in `reviewer-core/src/llm/*` and `adapters/llm/*` when `reviewer-core/node_modules` is not installed. Evidence: `server/src/modules/reviews/diff-loader.ts:21-31`, `server/test/run-executor-parallel.test.ts`.
 
 ## Open Questions

@@ -27,6 +27,11 @@ Arguments: `$ARGUMENTS`
    `docs/plans/agent-token-optimization.md` §1, §5.2).
 4. **Small fixes in the main session.** ≤3 files and no new
    port/module/contract → Edit here, re-run only the touched package's checks.
+   When the 5-implementer cap is already used up, a fix beyond that bound
+   needs the user's explicit yes first; say which files and why.
+8. **One shared brief.** Write the paths every agent needs (spec, plan,
+   reports, state file, contract guide) once to `docs/plans/<slug>.brief.md`.
+   Prompts then carry the brief path plus the task, not the same paths again.
 5. **Bounded loops** — each has a max round count and an exit to the user.
 6. **Check the agent really ran.** `tool_uses` implausibly low for the task
    (e.g. 0) → re-send with "execute now, synchronously".

@@ -1,11 +1,12 @@
-/* AgentEditor — agent config editor (model + system prompt) + the Skills tab
-   (L02). Evals/Stats/CI tabs belong to later lessons. Tab state lives in ?tab=. */
+/* AgentEditor — agent config editor (model + system prompt) + the Skills, Context, Evals and CI tabs.
+   The Stats tab belongs to a later lesson. Tab state lives in ?tab=. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
+import { CiTab } from "./_components/CiTab";
 import { ConfigTab } from "./_components/ConfigTab";
 import { ContextTab } from "./_components/ContextTab";
 import { EvalsTab } from "./_components/EvalsTab";
@@ -28,6 +29,8 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
           <ContextTab agentId={agent.id} />
         ) : tab === "evals" ? (
           <EvalsTab agentId={agent.id} agentName={agent.name} />
+        ) : tab === "ci" ? (
+          <CiTab agent={agent} />
         ) : (
           <ConfigTab agent={agent} />
         )}
