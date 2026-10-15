@@ -9,7 +9,15 @@ import { AppFrame, CommandPalette, ShortcutsHelp, type Crumb } from "@devdigest/
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
 import styles from "./AppShell.module.css";
 
-export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
+export function AppShell({
+  children,
+  crumb,
+  onRefresh,
+}: {
+  children: React.ReactNode;
+  crumb?: Crumb[];
+  onRefresh?: () => void;
+}) {
   const t = useTranslations("shell");
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
@@ -28,8 +36,12 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
   const commands = useShellCommands();
   const baseCtx = useShellContext({ onOpenCommandPalette: openPalette });
   const ctx = React.useMemo(
-    () => ({ ...baseCtx, labelFor: (key: string, fallback: string) => (t.has(key) ? t(key) : fallback) }),
-    [baseCtx, t],
+    () => ({
+      ...baseCtx,
+      onRefresh,
+      labelFor: (key: string, fallback: string) => (t.has(key) ? t(key) : fallback),
+    }),
+    [baseCtx, onRefresh, t],
   );
 
   return (

@@ -43,6 +43,7 @@ export const NAV: NavGroup[] = [
     section: "GLOBAL",
     items: [
       { key: "multi-agent", label: "Multi-Agent Review", labelKey: "nav.multi-agent", icon: "Layers", href: "/repos/:repoId/multi-agent" },
+      { key: "agent-performance", label: "Agent Performance", labelKey: "nav.agent-performance", icon: "Activity", href: "/agent-performance", gKey: "m" },
     ],
   },
 ];
@@ -74,6 +75,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { keys: "g a", label: "Go to Agents", group: "Navigation" },
   { keys: "g s", label: "Go to Skills", group: "Navigation" },
   { keys: "g c", label: "Go to Conventions", group: "Navigation" },
+  { keys: "g m", label: "Go to Agent Performance", group: "Navigation" },
   { keys: "j / k", label: "Next / previous finding", group: "Findings" },
   { keys: "a", label: "Accept finding", group: "Findings" },
   { keys: "d", label: "Dismiss finding", group: "Findings" },

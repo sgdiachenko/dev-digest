@@ -53,6 +53,9 @@ import { OnboardingRepository } from '../modules/onboarding/repository.js';
 import { OnboardingService } from '../modules/onboarding/service.js';
 import { OnboardingNarrativeService } from '../modules/onboarding/narrative-service.js';
 import { CiRepository } from '../modules/ci/repository.js';
+import { AgentStatsRepository } from '../modules/agent-stats/repository.js';
+import { AgentStatsService } from '../modules/agent-stats/service.js';
+import type { AgentStatsStore } from '../modules/agent-stats/types.js';
 import { CiService } from '../modules/ci/service.js';
 import { CiSyncService } from '../modules/ci/sync-service.js';
 import type { CiAgentReader, CiGitHub, CiStore } from '../modules/ci/types.js';
@@ -81,6 +84,8 @@ export interface ContainerOverrides {
   /** Export-to-CI persistence port / agent reader; DB-free tests inject fakes. */
   ciStore?: CiStore;
   ciAgents?: CiAgentReader;
+  /** Agent Performance read port; DB-free tests inject a fake. */
+  agentStatsStore?: AgentStatsStore;
   git?: GitClient;
   codeIndex?: CodeIndex;
   embedder?: Embedder;
@@ -107,6 +112,8 @@ export class Container {
   private _ciRepo?: CiRepository;
   private _ciService?: CiService;
   private _ciSyncService?: CiSyncService;
+  private _agentStatsRepo?: AgentStatsRepository;
+  private _agentStatsService?: AgentStatsService;
   private _codeIndex?: CodeIndex;
   private _embedder?: Embedder;
   private llmCache = new Map<string, LLMProvider>();
@@ -418,6 +425,18 @@ export class Container {
       this.evalAgents,
       this.evalSkills,
       (provider) => this.llm(provider),
+      this.evalLogger,
+    ));
+  }
+
+  get agentStatsRepo(): AgentStatsRepository {
+    return (this._agentStatsRepo ??= new AgentStatsRepository(this.db));
+  }
+
+  /** Agent Performance dashboard + agent Stats (read-only). Memoized. */
+  agentStatsService(): AgentStatsService {
+    return (this._agentStatsService ??= new AgentStatsService(
+      this.overrides.agentStatsStore ?? this.agentStatsRepo,
       this.evalLogger,
     ));
   }

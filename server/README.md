@@ -82,6 +82,9 @@ flowchart TB
   subgraph Agents["Agents"]
     agents["agents<br/>/agents · /agents/:id · /agents/:id/skills"]
   end
+  subgraph AgentPerf["Agent Performance"]
+    agentStats["agent-stats<br/>GET /agents/performance · /agents/:id/stats · /agents/:id/stats/runs"]
+  end
   subgraph Skills["Skills (L02)"]
     skills["skills<br/>/skills · /skills/:id · /skills/:id/stats<br/>/skills/:id/versions · /skills/:id/restore · /skills/import"]
   end
@@ -103,6 +106,30 @@ flowchart TB
   end
   HEALTH["/health (liveness) · /health/ready (DB ping → 200/503)"]
 ```
+
+### Agent Performance and Skill Stats routes
+
+`modules/agent-stats/routes.ts:36-70`, `modules/skills/routes.ts:177-183`.
+Shapes, the 422/404 rules and the counting rules:
+[docs/api-contracts.md](docs/api-contracts.md#agent-performance) and
+[Skill Stats](docs/api-contracts.md#skill-stats). Wiring:
+[docs/architecture.md](docs/architecture.md#agent-performance-modulesagent-stats).
+Design records:
+[agent spec](../docs/specs/2026-10-15-agent-performance-dashboard.md#implementation),
+[skill spec](../docs/specs/2026-10-15-skill-stats-tab.md#implementation).
+
+| Route | Purpose |
+|---|---|
+| `GET /agents/performance?from&to` | Per-agent rows, summary, cost by agent and model, runs trend for a period. |
+| `GET /agents/:id/stats?from&to` | One agent's figures for a period (`404` for an unknown agent). |
+| `GET /agents/:id/stats/runs?from&to&page` | The agent's run history, 20 per page, newest first. |
+| `GET /skills/:id/stats?from&to` | One skill's figures; the `from`/`to` pair is optional (default 30 x 24 h), exactly one is `422`. |
+| `GET /skills` | Each row's `stats` cover the 30 x 24 h card period, from one read for the whole list. |
+
+A period is at most 367 days, `from` before `to` and not in the future, or the
+request is `422`. Cost figures are DevDigest-recorded, not billing. Migration
+`0022_perfect_kylun.sql` adds two indexes and is applied by hand
+(`pnpm -C server db:migrate`).
 
 ### Project Context routes
 

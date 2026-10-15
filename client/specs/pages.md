@@ -102,7 +102,10 @@ that card's finding list to one severity (click again to clear) — see
 
 Lists built-in (`General Reviewer`, `Security Reviewer`, `Performance
 Reviewer`, `Test Quality Reviewer`, `API Contract Reviewer`) and user-created
-agents.
+agents. Each card shows a stats line (`13 runs · 76% accept · $0.038 avg`) from
+the agent's 30-day dashboard row (`AgentCard/_components/StatsLine`); the line
+is absent while the figures load and for an agent with no row. The same card is
+used in the `/agents/:id` left list.
 
 ## `/agents/:id`
 
@@ -113,11 +116,33 @@ posts the **full** ordered `skill_ids` set (there is no per-link enable —
 "enabled for this agent" is link/unlink), and a real change (added, removed,
 or reordered — not a same-set re-post) must bump the agent's version.
 
+**Stats tab** (`?tab=stats`): the agent's performance for one period, from
+`GET /agents/:id/stats` and `GET /agents/:id/stats/runs`. Guarantees:
+
+- The period control, its URL params (`range`, `from`, `to`) and the fallback to
+  30 days are those of [Agent Performance](#agent-performance); the figures equal
+  the agent's row on the dashboard for the same period.
+- It shows KPI cards (runs, accept rate, average cost, average duration), most
+  used skills (with a "runs without skill data" note), findings by severity and
+  by category, and a paged run history (20 per page). Every null figure renders
+  `—`, never `0`.
+- An unknown agent (`404`) leaves the tab; a rejected period (`422`) shows the
+  period control's error and no figures; a load failure shows an error panel
+  with Retry, or keeps the old figures with a failed-refresh status.
+- Topbar Refresh is available only on this tab. A preset period re-resolves to
+  now and updates the URL; a custom range refetches as is. It also re-resolves
+  the left list's 30-day card figures, and the cards keep their last figures
+  while the new window loads.
+- Switching agents in the left list keeps `tab`, `range`, `from` and `to`.
+
 ## `/skills`
 
 Lists workspace skills as a searchable rail, each card showing its type,
-source, and Stats-tab counters (agent count, pull %, accept %) from the
-`GET /skills` list response — must not fire one stats request per card. `Add
+source, and a stats footer (`n agents · x% pull · y% accept`, with run and
+decision counts on hover and focus) from the `GET /skills` list response for the
+last 30 days — must not fire one stats request per card. A small sample (under
+10 decided findings) shows a grey "small sample" text instead of an accept
+percent, and an empty figure renders `—`. `Add
 Skill` offers **Create from scratch** and **Import from file** (`.md`/`.zip`)
 only; nothing is persisted from an import until the preview is confirmed, and
 an archive's non-markdown entries must be listed as skipped, never executed.
@@ -128,11 +153,56 @@ Same rail, with a skill selected and a four-tab editor: **Config** (name,
 description, type, body, enabled, an optional "what changed?" note — a body
 edit bumps the version), **Preview** (rendered markdown, exactly as the
 reviewing agent receives it — an imported skill's untrusted-wrap notice shows
-here), **Stats** (agent count, pull frequency, accept rate, findings by
-category — every null-data field must render `—`, never a misleading `0%`),
+here), **Stats** (`?tab=stats`: four cards — used by, pull frequency, accept rate,
+findings — the agents using the skill and findings by category for a period;
+every null-data field must render `—`, never a misleading `0%`),
 and **Versions** (body-snapshot history; `Diff` compares a past snapshot
 against the current body, `Restore` appends a new version rather than
 rewinding history — never available on the current version's own row).
+
+The skill Stats tab follows the same period rules as the agent Stats tab: the
+period is in the URL, the default is 30 days, Refresh is wired in the Topbar, and
+switching skills in the rail keeps the tab and the period (`skillHref`). Its
+figures follow the agent rules (counted runs, decided findings): pull frequency
+only counts runs that recorded a skill list, and the tab says how many runs have
+no skill data. "Not used yet" replaces the date when the skill never ran.
+
+## `/agent-performance`
+
+Opens from the sidebar item "Agent Performance" or `g` then `m`. Shows, for one
+period, how each review agent is doing, from `GET /agents/performance`.
+
+- **Period.** Presets `1d` and `30d` (default `30d`) and a custom range of
+  local dates, at most 366 calendar days and not ending in the future. The
+  period is in the URL (`range`, `from`, `to`); a link with missing or unusable
+  params falls back to 30 days and says so. A period the server rejects
+  (`422`) shows no figures.
+- **States.** Skeletons while loading; no agents (with a link to create one); no
+  reviews yet (with a link to the pull requests); "No runs in this period" with
+  a link to the last 30 days; an error panel with Retry. A refresh that fails
+  with figures on screen keeps them and shows a banner.
+- **KPI cards.** Runs (with a trend sparkline and the in-progress count), total
+  cost (with the unknown-cost count and the change against the previous period),
+  accept rate (pooled over all agents, with a small-sample note) and the
+  most active agent.
+- **Agents table.** One row per agent, enabled or not, plus a "Deleted agent"
+  row when its runs exist. Sortable; a row expands to its last runs; the accept
+  cell shows `76% · 13/17` and, under 10 decided findings, "small sample". A
+  "View stats" link opens that agent's Stats tab with the same period.
+- **Cost breakdown.** Donuts by agent and by model: top five plus "Other".
+- **Cost label.** Every cost section carries the label with the meaning: cost
+  is what DevDigest recorded (the amount OpenRouter reported, otherwise a
+  DevDigest estimate from its price table), is not reconciled with provider
+  billing, and runs without a recorded cost count as unknown
+  (`messages/en/agentPerformance.json`, `cost.info`).
+- **Text.** Agent, model and repository names render as plain text.
+- Cost, duration and percent use `Intl` formatters, so values depend on the
+  locale. Topbar Refresh re-resolves a preset period and refetches a custom one.
+
+Not verified by a live check: 320 px and 200 % zoom on the Stats tabs, contrast
+ratios, 24 px targets, keyboard-focus tooltips, native date inputs in all three
+browsers, custom range, and skeleton timing (see the plan's *Open issues* in the
+implementation record).
 
 ## `/settings/:section`
 

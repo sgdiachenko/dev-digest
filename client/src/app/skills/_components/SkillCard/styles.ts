@@ -40,6 +40,5 @@ export const s = {
     textOverflow: "ellipsis",
   } satisfies CSSProperties,
   badgeRow: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } satisfies CSSProperties,
-  footer: { display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
-  sep: { color: "var(--border-strong)" } satisfies CSSProperties,
+  footer: { marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" } satisfies CSSProperties,
 } as const;

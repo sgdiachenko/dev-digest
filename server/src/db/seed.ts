@@ -25,6 +25,7 @@ import {
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
 import { seedEval, seedAgentEvalCases } from './seed-eval.js';
+import { seedAgentStatsDemo } from './seed-agent-stats.js';
 import { parseImport } from '../modules/skills/helpers.js';
 import type { SkillType } from '@devdigest/shared';
 
@@ -727,6 +728,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const handle = createDb(url);
   seed(handle.db)
     .then(async (r) => {
+      // Agent Performance demo runs: CLI only, so `seed(db)` fixtures in tests stay untouched.
+      await seedAgentStatsDemo(handle.db, r.workspaceId);
       console.log('✓ seeded', r);
       await handle.close();
       process.exit(0);

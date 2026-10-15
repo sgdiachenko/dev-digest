@@ -8,11 +8,12 @@ export interface EditorTab {
 }
 
 /** Editor tabs. Part-0 shipped Config only; L02 adds Skills; the eval
- *  pipeline adds Evals; Export to CI adds CI. Stats belongs to a later lesson. */
+ *  pipeline adds Evals; Agent Performance adds Stats; Export to CI adds CI. */
 export const TABS: readonly EditorTab[] = [
   { key: "config", labelKey: "editor.tabs.config", icon: "Settings" },
   { key: "skills", labelKey: "editor.tabs.skills", icon: "Sparkles" },
   { key: "context", labelKey: "editor.tabs.context", icon: "FileText" },
   { key: "evals", labelKey: "editor.tabs.evals", icon: "FlaskConical" },
+  { key: "stats", labelKey: "editor.tabs.stats", icon: "Activity" },
   { key: "ci", labelKey: "editor.tabs.ci", icon: "Workflow" },
 ];

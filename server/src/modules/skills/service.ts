@@ -2,13 +2,13 @@ import type {
   Skill,
   SkillDraft,
   SkillSource,
-  SkillStats,
   SkillType,
   SkillVersion,
   SkillWithStats,
 } from '@devdigest/shared';
 import type { SkillsRepository } from './repository.js';
-import { SkillImportError, computeSkillStats, parseImport, toSkillDto, toSkillVersionDto } from './helpers.js';
+import type { SkillStatsService } from './stats-service.js';
+import { SkillImportError, parseImport, toSkillDto, toSkillVersionDto } from './helpers.js';
 import { ValidationError } from '../../platform/errors.js';
 import { assessSkillSafety } from './safety.js';
 import { importSkillFromUrl } from './url-import.js';
@@ -48,28 +48,21 @@ export interface UpdateSkillInput {
 }
 
 export class SkillsService {
-  constructor(private readonly repo: SkillsRepository) {}
+  constructor(
+    private readonly repo: SkillsRepository,
+    private readonly stats: Pick<SkillStatsService, 'forList'>,
+  ) {}
 
   async list(workspaceId: string): Promise<SkillWithStats[]> {
     const rows = await this.repo.listByWorkspace(workspaceId);
     if (rows.length === 0) return [];
-    const statsById = await this.repo.statsRawForMany(workspaceId, rows.map((r) => r.id));
-    return rows.map((row) => ({
-      ...toSkillDto(row),
-      stats: computeSkillStats(statsById.get(row.id) ?? { skillId: row.id, agents: [], findings: [], runs: [] }),
-    }));
+    const statsById = await this.stats.forList(workspaceId, rows.map((r) => r.id));
+    return rows.map((row) => ({ ...toSkillDto(row), stats: statsById.get(row.id)! }));
   }
 
   async get(workspaceId: string, id: string): Promise<Skill | undefined> {
     const row = await this.repo.getById(workspaceId, id);
     return row ? toSkillDto(row) : undefined;
-  }
-
-  async stats(workspaceId: string, id: string): Promise<SkillStats | undefined> {
-    const row = await this.repo.getById(workspaceId, id);
-    if (!row) return undefined;
-    const raw = await this.repo.statsRawFor(workspaceId, id);
-    return computeSkillStats(raw);
   }
 
   async delete(workspaceId: string, id: string): Promise<boolean> {

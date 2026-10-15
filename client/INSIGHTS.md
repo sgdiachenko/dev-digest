@@ -66,6 +66,10 @@ don't write it here.
 
 **2026-10-09** — `beforeEach(() => fetchMock.mockReset())` (an arrow returning the mock) makes vitest treat the returned `vi.fn` as the test's TEARDOWN function and call it after each test with no arguments, so a router-style `fetchMock.mockImplementation((url) => new URL(url)...)` set up in the next test throws `Invalid URL: undefined` from the previous test's cleanup — every test after the first fails with a baffling error. Use a block body (`beforeEach(() => { fetchMock.mockReset(); })`). Evidence: `client/src/app/agents/[id]/_components/AgentEditor/_components/CiTab/CiTab.test.tsx`.
 
+**2026-10-15** — `HoverHint` (`components/agent-stats`) wraps its child in an `inline-flex` span, so a child sized with `width: 100%` or `height: 100%` collapses to 0 inside it; give the child explicit pixel sizes (the severity bars in the agent Stats tab do). In tests, `await findAllByRole("row")` resolves on the header row alone — wait for a data cell or link first. Evidence: `client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/_components/FindingsBySeverity/styles.ts`.
+
+**2026-10-15** — next-intl's `t.rich` takes a React element only for a rich TAG (`<b>x</b>` with a `(chunks) => node` callback); a plain `{percent}` placeholder rejects an element at typecheck (`TranslationValue | ((chunks) => ReactNode)`), so a coloured fragment of an ICU string needs the colour on a wrapper around the whole formatted message, not on the placeholder. The skill card footer colours its "74% accept" this way. Evidence: `client/src/app/skills/_components/SkillCard/_components/StatsFooter/StatsFooter.tsx`.
+
 ## Open Questions
 
 ## Session Notes

@@ -1,9 +1,17 @@
-import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { SkillSource, SkillType } from '@devdigest/shared';
-import type { StatsAgentRow, StatsFindingRow, StatsRunRow, SkillStatsRaw } from './helpers.js';
-import { INITIAL_SKILL_VERSION, RESTORE_NOTE_PREFIX, STATS_WINDOW_DAYS } from './constants.js';
+import { COUNTED_STATUSES, REVIEW_RUN_SOURCE, type CountedStatus } from '../_shared/stats-rules.js';
+import type {
+  SkillLink,
+  SkillRunFact,
+  SkillRunFindings,
+  SkillStatsFacts,
+  SkillStatsStore,
+  SkillStatsWindow,
+} from './types.js';
+import { INITIAL_SKILL_VERSION, RESTORE_NOTE_PREFIX } from './constants.js';
 import { ConflictError, NotFoundError } from '../../platform/errors.js';
 import { assessSkillSafety } from './safety.js';
 
@@ -76,7 +84,9 @@ export interface LinkedSkillState {
   safe: boolean;
 }
 
-export class SkillsRepository {
+const READ_ONLY_SNAPSHOT = { isolationLevel: 'repeatable read', accessMode: 'read only' } as const;
+
+export class SkillsRepository implements SkillStatsStore {
   constructor(private db: Db) {}
 
   async listByWorkspace(workspaceId: string): Promise<SkillRow[]> {
@@ -305,79 +315,89 @@ export class SkillsRepository {
   // ---- Stats tab -------------------------------------------------------
   //
   // Every number is derived from existing tables — agent_skills for "who uses
-  // it", reviews/findings for outcome counts, agent_runs + run_traces for pull
-  // frequency (trace.config.skills, written by the run executor). No separate
-  // analytics table. The arithmetic itself lives in helpers.computeSkillStats
-  // (pure, unit-tested); these methods only fetch the raw rows.
+  // it", agent_runs + run_traces (`config.skills` only) for pull and skill runs,
+  // reviews/findings for outcome counts. No separate analytics table. The
+  // arithmetic lives in helpers.computeSkillStats (pure); these methods only
+  // fetch the facts, all from one repeatable-read, read-only snapshot.
 
-  /** Raw stats inputs for ONE skill. */
-  async statsRawFor(workspaceId: string, skillId: string): Promise<SkillStatsRaw> {
-    const map = await this.statsRawForMany(workspaceId, [skillId]);
-    return map.get(skillId) ?? { skillId, agents: [], findings: [], runs: [] };
+  /** Workspace-scoped existence check for the stats route; null = unknown or foreign. */
+  async skillRef(workspaceId: string, id: string): Promise<{ id: string; enabled: boolean } | null> {
+    const [row] = await this.db
+      .select({ id: t.skills.id, enabled: t.skills.enabled })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)));
+    return row ?? null;
   }
 
-  /**
-   * Raw stats inputs for MANY skills in one round-trip (the `GET /skills` rail
-   * — no request-per-card). Fetches each cross-cutting table once, scoped to
-   * the union of linked agents, then partitions per skill in memory; skill
-   * counts in this starter are small enough that this beats N+1 queries
-   * without needing a raw jsonb-aggregate query.
-   */
-  async statsRawForMany(workspaceId: string, skillIds: string[]): Promise<Map<string, SkillStatsRaw>> {
-    const out = new Map<string, SkillStatsRaw>(skillIds.map((id) => [id, { skillId: id, agents: [], findings: [], runs: [] }]));
-    if (skillIds.length === 0) return out;
+  async statsFacts(
+    workspaceId: string,
+    window: SkillStatsWindow,
+    skillIds: string[],
+  ): Promise<SkillStatsFacts> {
+    if (skillIds.length === 0) return { links: [], runs: [], runFindings: [] };
+    return this.db.transaction(async (tx) => {
+      // (a) linked agents: agent_skills ⨝ agents of this workspace (enabled or not).
+      const links: SkillLink[] = await tx
+        .select({ skillId: t.agentSkills.skillId, agentId: t.agents.id, agentName: t.agents.name })
+        .from(t.agentSkills)
+        .innerJoin(t.agents, and(eq(t.agents.id, t.agentSkills.agentId), eq(t.agents.workspaceId, workspaceId)))
+        .where(inArray(t.agentSkills.skillId, skillIds))
+        .orderBy(asc(t.agents.name), asc(t.agents.id));
 
-    const links = await this.db
-      .select({ skillId: t.agentSkills.skillId, agentId: t.agentSkills.agentId })
-      .from(t.agentSkills)
-      .where(inArray(t.agentSkills.skillId, skillIds));
-    if (links.length === 0) return out;
+      // (b) counted runs at any time; only `config.skills` of the trace leaves the
+      // database, and it is validated in JS (a malformed list never fails the read).
+      const runRows = await tx
+        .select({
+          id: t.agentRuns.id,
+          agentId: t.agentRuns.agentId,
+          status: t.agentRuns.status,
+          ranAt: t.agentRuns.ranAt,
+          skills: sql<unknown>`${t.runTraces.trace}->'config'->'skills'`,
+        })
+        .from(t.agentRuns)
+        .leftJoin(t.runTraces, eq(t.runTraces.runId, t.agentRuns.id))
+        .where(
+          and(
+            eq(t.agentRuns.workspaceId, workspaceId),
+            eq(t.agentRuns.source, REVIEW_RUN_SOURCE),
+            inArray(t.agentRuns.status, [...COUNTED_STATUSES]),
+          ),
+        )
+        .orderBy(asc(t.agentRuns.id));
+      const runs: SkillRunFact[] = runRows.map((r) => ({ ...r, status: r.status as CountedStatus }));
 
-    const agentIds = [...new Set(links.map((l) => l.agentId))];
-    const agents: StatsAgentRow[] = await this.db
-      .select({ id: t.agents.id, name: t.agents.name })
-      .from(t.agents)
-      .where(and(eq(t.agents.workspaceId, workspaceId), inArray(t.agents.id, agentIds)));
-    const agentById = new Map(agents.map((a) => [a.id, a]));
+      // (c) decision counts per (done run in the window, category). Same join path
+      // and FILTER expressions as agent-stats/repository.ts (rules in C22).
+      const runFindings: SkillRunFindings[] = await tx
+        .select({
+          runId: t.agentRuns.id,
+          category: t.findings.category,
+          accepted: sql<number>`count(*) filter (where ${t.findings.acceptedAt} is not null)`.mapWith(Number),
+          dismissed:
+            sql<number>`count(*) filter (where ${t.findings.acceptedAt} is null and ${t.findings.dismissedAt} is not null)`.mapWith(
+              Number,
+            ),
+          pending:
+            sql<number>`count(*) filter (where ${t.findings.acceptedAt} is null and ${t.findings.dismissedAt} is null)`.mapWith(
+              Number,
+            ),
+        })
+        .from(t.agentRuns)
+        .innerJoin(t.reviews, and(eq(t.reviews.runId, t.agentRuns.id), eq(t.reviews.workspaceId, workspaceId)))
+        .innerJoin(t.findings, eq(t.findings.reviewId, t.reviews.id))
+        .where(
+          and(
+            eq(t.agentRuns.workspaceId, workspaceId),
+            eq(t.agentRuns.source, REVIEW_RUN_SOURCE),
+            eq(t.agentRuns.status, 'done'),
+            gte(t.agentRuns.ranAt, window.from),
+            lt(t.agentRuns.ranAt, window.to),
+          ),
+        )
+        .groupBy(t.agentRuns.id, t.findings.category)
+        .orderBy(asc(t.agentRuns.id), asc(t.findings.category));
 
-    const cutoff = new Date(Date.now() - STATS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-    const findingRows = await this.db
-      .select({
-        agentId: t.reviews.agentId,
-        category: t.findings.category,
-        acceptedAt: t.findings.acceptedAt,
-        dismissedAt: t.findings.dismissedAt,
-      })
-      .from(t.findings)
-      .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
-      .where(
-        and(
-          eq(t.reviews.workspaceId, workspaceId),
-          inArray(t.reviews.agentId, agentIds),
-          gte(t.reviews.createdAt, cutoff),
-        ),
-      );
-
-    const runRows = await this.db
-      .select({ agentId: t.agentRuns.agentId, trace: t.runTraces.trace })
-      .from(t.agentRuns)
-      .leftJoin(t.runTraces, eq(t.runTraces.runId, t.agentRuns.id))
-      .where(and(eq(t.agentRuns.workspaceId, workspaceId), inArray(t.agentRuns.agentId, agentIds)));
-
-    for (const skillId of skillIds) {
-      const skillAgentIds = new Set(links.filter((l) => l.skillId === skillId).map((l) => l.agentId));
-      const skillAgents = [...skillAgentIds]
-        .map((id) => agentById.get(id))
-        .filter((a): a is StatsAgentRow => a !== undefined);
-      const skillFindings: StatsFindingRow[] = findingRows
-        .filter((f) => f.agentId !== null && skillAgentIds.has(f.agentId))
-        .map((f) => ({ category: f.category, acceptedAt: f.acceptedAt, dismissedAt: f.dismissedAt }));
-      const skillRuns: StatsRunRow[] = runRows
-        .filter((r) => r.agentId !== null && skillAgentIds.has(r.agentId))
-        .map((r) => ({ trace: r.trace }));
-      out.set(skillId, { skillId, agents: skillAgents, findings: skillFindings, runs: skillRuns });
-    }
-    return out;
+      return { links, runs, runFindings };
+    }, READ_ONLY_SNAPSHOT);
   }
 }

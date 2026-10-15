@@ -1,0 +1,1 @@
+export { SkillKpiCard } from "./SkillKpiCard";

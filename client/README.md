@@ -27,7 +27,8 @@ flowchart TD
   ONB["/onboarding<br/>add repo"] -->|"POST /repos"| API[("Fastify API")]
   PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
 
-  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills · context)"]
+  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills · context · evals · stats · ci)"]
+  PERF["/agent-performance<br/>dashboard · ?range= ?from= ?to="]
   SKILLS["/skills"] --> SKILL["/skills/:id<br/>editor (config · context · preview · stats · versions)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
   CTX["/repos/:repoId/context<br/>Project Context"]
@@ -39,13 +40,26 @@ flowchart TD
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
   PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/smart-diff<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
   AGENTS -->|"/agents · /agents/:id · /agents/:id/skills · /agents/:id/context"| API
-  SKILLS -->|"/skills · /skills/:id · /skills/:id/stats<br/>/skills/:id/versions · /skills/:id/restore · /skills/import · /skills/:id/context"| API
+  AGENT -->|"?tab=stats: /agents/:id/stats · /agents/:id/stats/runs · /agents/performance (cards)"| API
+  PERF -->|"GET /agents/performance"| API
+  SKILLS -->|"/skills · /skills/:id · /skills/:id/stats?from&to<br/>/skills/:id/versions · /skills/:id/restore · /skills/import · /skills/:id/context"| API
   CTX -->|"GET /repos/:id/context · /repos/:id/context/file<br/>POST /repos/:id/context/rescan"| API
   TOUR -->|"GET /repos/:id/tour · /repos/:id/index-state<br/>POST /repos/:id/tour/narrative · /repos/:id/refresh · /repos/:id/resync"| API
   MA -->|"GET /agents · /runs/estimates<br/>POST /pulls/:id/review {agent_ids}"| API
   MAR -->|"GET /pulls/:id/multi-agent · /runs/:id/events · /runs/:id/trace"| API
   SETTINGS -->|"/settings · /providers"| API
 ```
+
+`/agent-performance` (`src/app/agent-performance/`) is the Agent Performance
+dashboard: KPI cards, an agents table and a cost breakdown for one period. The
+sidebar item and the `g` then `m` shortcut open it (`src/vendor/ui/nav.ts:46,78`).
+The period lives in the URL as `range` (`1d`, `30d`, `custom`) plus `from` and
+`to` (ISO-8601); `?tab=stats` on `/agents/:id` and `/skills/:id` opens the Stats
+tab with the same three params. Each agent row links to that agent's Stats tab.
+Topbar Refresh is wired on all three screens (the agent page only on the Stats
+tab). Behaviour: [specs/pages.md](specs/pages.md#agent-performance); wiring:
+[docs/ui-architecture.md](docs/ui-architecture.md#agent-performance-and-skill-stats).
+Server contract: [api-contracts](../server/docs/api-contracts.md#agent-performance).
 
 `/repos/:repoId/tour` (`src/app/repos/[repoId]/tour/`) is the Onboarding Tour:
 five facts-built sections, an "On this page" rail, an optional AI narrative and

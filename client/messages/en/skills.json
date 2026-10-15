@@ -99,16 +99,28 @@
   },
   "stats": {
     "usedBy": "Used by",
-    "agentsCount": "{count} agents",
-    "pullFrequency": "Pull frequency",
-    "acceptRate": "Accept rate",
-    "findings30d": "Findings (30d)",
+    "agentsCount": "{count, plural, one {# agent} other {# agents}}",
     "agentsUsingThisSkill": "Agents using this skill",
-    "findingsByCategory": "Findings by category",
-    "noData": "—",
-    "noAgents": "Not linked to any agent yet.",
-    "noCategories": "No findings in the last 30 days.",
-    "attributionNote": "Findings and pull frequency are counted from runs of agents that have this skill linked — not provably caused by the skill alone."
+    "pullFrequency": "Pull frequency ({period})",
+    "pullHint": "Share of linked agents' runs whose prompt included this skill",
+    "pullRuns": "{pulled} of {total} runs",
+    "noSkillData": "No skill data for this period",
+    "runsWithoutData": "{count, plural, one {# run} other {# runs}} without skill data are not included — runs recorded before skill tracking, and failed or cancelled runs",
+    "acceptRate": "Accept rate ({period})",
+    "findings": "Findings ({period})",
+    "findingsByCategory": "Findings by category ({period})",
+    "noFindings": "No findings in this period",
+    "open": "Open",
+    "openLabel": "Open {agent}",
+    "notLinkedFigures": "Not linked to any agent — the figures come from runs of agents that are no longer linked",
+    "attributionNote": "Counted from local review runs whose prompt included this skill, including runs by agents no longer linked. A finding can't be traced to the skill that caused it.",
+    "disabledHint": "This skill is disabled — linked agents' runs don't load it",
+    "loadError": "Couldn't load this skill's stats",
+    "notFound": "This skill no longer exists",
+    "backToSkills": "Back to Skills",
+    "noUsage": "No usage yet — this skill isn't linked to any agent. Link it to an agent to start collecting stats.",
+    "noRunsInPeriod": "No runs used this skill in this period · last used {date}",
+    "notUsedYet": "No runs used this skill in this period · not used yet"
   },
   "versions": {
     "heading": "Version history",
@@ -222,5 +234,16 @@
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Saving a changed body creates a new immutable version.",
     "version": "v{version}"
+  },
+  "card": {
+    "footer": {
+      "agents": "{count, plural, one {# agent} other {# agents}}",
+      "pull": "{percent} pull",
+      "noPull": "— pull",
+      "accept": "{percent} accept",
+      "noAccept": "— accept",
+      "smallSample": "small sample",
+      "breakdown": "{pulled} of {total} runs · {accepted} of {decided} decided"
+    }
   }
 }

@@ -1,6 +1,6 @@
 # Spec: Skill Stats tab — period, agent-consistent accept and pull rules, design alignment and card footer
 Spec ID: 2026-10-15-skill-stats-tab
-Status: approved
+Status: implemented
 Supersedes: none
 Modules: server, client, e2e
 
@@ -556,3 +556,43 @@ Endpoints:
   - `period` as `{ from, to }`, without previous-period bounds, since the skill tab has no comparison.
   - Recommended: accept all as written.
   - owner: user — blocking: no.
+
+
+## Implementation
+
+Status set to `implemented` after verification. Delivered in the same plan as the
+agent spec ([agent-performance-dashboard](../plans/agent-performance-dashboard.md), W9). IDs
+below are skill-spec IDs; per-ID evidence is in the [verification](../plans/agent-performance-dashboard.verification.md).
+
+| Spec section (IDs) | Plan steps | Docs | Tests |
+|---|---|---|---|
+| Skill figures, request/response and read-only guarantee (AC-1 to AC-12) | S22 to S25 | [api-contracts](../../server/docs/api-contracts.md#skill-stats), [architecture](../../server/docs/architecture.md#skill-stats-modulesskills) | `server/test/skill-stats.test.ts`, `skill-stats-routes.test.ts`, `skill-stats-service.test.ts`, `skill-stats-contracts.test.ts` |
+| Consistency with the agent screens (AC-13, AC-14) | S5, S23 | [architecture](../../server/docs/architecture.md#shared-stats-rules-modules_sharedstats-rulests) | `server/test/skill-stats.it.test.ts` (CI only) |
+| Stats tab: period, reads, cards, panels, states (AC-15 to AC-34) | S27, S28 | [pages](../../client/specs/pages.md#skillsid), [ui-architecture](../../client/docs/ui-architecture.md#agent-performance-and-skill-stats) | `client/src/app/skills/_components/SkillsView/_components/SkillEditor/_components/StatsTab/StatsTab.test.tsx`, `helpers.test.ts` |
+| Rail card footer (AC-35 to AC-39) | S28 | [pages](../../client/specs/pages.md#skills) | `client/src/app/skills/_components/SkillCard/SkillCard.test.tsx` |
+| e2e (AC-40) | plan *Review handoff → Tests* | none | `./scripts/e2e.sh`: `08-skills` passed unchanged in the second hermetic run |
+| Edge cases (EC-1 to EC-28) | S22 to S29 | as above | see the [verification](../plans/agent-performance-dashboard.verification.md) |
+| NFR-1, NFR-2 | S26 | [api-contracts](../../server/docs/api-contracts.md#not-verified-4) | `server/test/skill-stats-perf.it.test.ts` (CI only) |
+| NFR-4 to NFR-8, NFR-10 to NFR-12 | S22 to S28 | as above | unit and route tests |
+| NFR-3, NFR-9 (manual) | Phase 4 | none | see *Open issues* below |
+
+### Differences from the spec text
+
+- `findings_30d` stays as a deprecated alias of `findings` with no removal date;
+  the old keys keep their names and types with the new meaning (the recorded
+  intentional break;
+  [api-contracts](../../server/docs/api-contracts.md#compatibility-skill-stats)).
+- The skill tab's period state is lifted into `SkillsView`; the rail link keeps
+  the period (`skillHref`).
+- The `skill_runs` field, "not used yet" and the agents-panel text for AC-25
+  follow the `[proposed]` defaults of Q-1.
+
+### Open issues
+
+- Live checks done: skill rail footers, the skill Stats tab figures and the
+  recharts ring. Not done: the skill tab at 320 px and 200 % zoom, contrast
+  ratios, 24 px targets, Refresh on the skill tab, and "rail keeps the period"
+  (NFR-3, NFR-9 and the Refresh item).
+- `skill-stats.it.test.ts` and `skill-stats-perf.it.test.ts` run in CI only. The
+  all-time scan behind `last_used_at` is accepted by the user and measured by the
+  perf test; the narrower scan is the named fallback.

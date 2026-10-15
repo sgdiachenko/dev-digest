@@ -12,8 +12,9 @@ export const MAX_SKILL_BODY_CHARS = 20_000;
  *  under that with room for the JSON envelope. */
 export const MAX_IMPORT_BYTES = 500_000;
 
-/** Findings/runs window for the Stats tab's "(30D)" tiles. */
-export const STATS_WINDOW_DAYS = 30;
+/** Card period: the 30 × 24 h ending at the read time of a `GET /skills`
+ *  request, and the default of `GET /skills/:id/stats` without a period. */
+export const SKILL_CARD_PERIOD_MS = 30 * 86_400_000;
 
 /** Default skill type when an import can't infer one. */
 export const DEFAULT_SKILL_TYPE = 'custom' as const;

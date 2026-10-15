@@ -1,0 +1,1 @@
+export { StatsFooter } from "./StatsFooter";

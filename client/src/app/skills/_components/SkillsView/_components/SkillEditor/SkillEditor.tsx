@@ -6,6 +6,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
+import type { PeriodUrlState } from "../../../../../../lib/agent-stats/usePeriodUrl";
 import { ContextTab } from "./_components/ContextTab";
 import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
@@ -14,7 +15,18 @@ import { VersionsTab } from "./_components/VersionsTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
-export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; onTab: (t: string) => void }) {
+export function SkillEditor({
+  skill,
+  tab,
+  onTab,
+  statsPeriod,
+}: {
+  skill: Skill;
+  tab: string;
+  onTab: (t: string) => void;
+  /** The Stats tab's URL-backed period; the Stats tab renders only when given. */
+  statsPeriod?: PeriodUrlState;
+}) {
   const t = useTranslations("skills");
   const tabs = TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
   return (
@@ -25,7 +37,7 @@ export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; 
       <div style={s.body}>
         {tab === "config" && <ConfigTab skill={skill} />}
         {tab === "preview" && <PreviewTab skill={skill} />}
-        {tab === "stats" && <StatsTab skillId={skill.id} />}
+        {tab === "stats" && statsPeriod && <StatsTab skill={skill} periodState={statsPeriod} />}
         {tab === "context" && <ContextTab skillId={skill.id} />}
         {tab === "versions" && <VersionsTab skillId={skill.id} />}
       </div>

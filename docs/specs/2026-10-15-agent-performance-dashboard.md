@@ -1,6 +1,6 @@
 # Spec: Agent Performance — global dashboard, agent Stats tab and agent-card stats
 Spec ID: 2026-10-15-agent-performance-dashboard
-Status: approved
+Status: implemented
 Supersedes: none
 Modules: server, client, e2e
 
@@ -811,3 +811,52 @@ None of these blocks approval (`blocking: no`).
     - (c) one note per screen.
   - Recommended: (a). Every cost figure sits under a labelled card, heading or column, without repeating a tag on each value.
   - owner: user — blocking: no.
+
+
+## Implementation
+
+Status set to `implemented` after verification. Plan:
+[agent-performance-dashboard](../plans/agent-performance-dashboard.md) (the skill spec
+[2026-10-15-skill-stats-tab](2026-10-15-skill-stats-tab.md) shipped in the same plan, W9).
+Per-ID evidence (met / partial / not-verifiable, with `path:line`) is in the
+[verification](../plans/agent-performance-dashboard.verification.md); the table groups it by spec section. Struck-through IDs (dropped per Q23)
+were not built.
+
+| Spec section (IDs) | Plan steps | Docs | Tests |
+|---|---|---|---|
+| Shared aggregation rules, Dashboard and Agent Stats responses (AC-1 to AC-34) | S5, S6 | [api-contracts](../../server/docs/api-contracts.md#agent-performance), [architecture](../../server/docs/architecture.md#agent-performance-modulesagent-stats) | `server/test/agent-stats-helpers.test.ts`; SQL parts `server/test/agent-stats.it.test.ts` (CI only) |
+| Request validation, read-only guarantee (AC-35 to AC-43) | S7 | [api-contracts](../../server/docs/api-contracts.md#agent-performance) | `server/test/agent-stats-routes.test.ts`, `agent-stats-service.test.ts` |
+| Period control (AC-44 to AC-57) | S9, S11, S12 | [ui-architecture](../../client/docs/ui-architecture.md#url-period-params) | `client/src/lib/agent-stats/period.test.ts`, `usePeriodUrl.test.tsx`, `components/agent-stats/PeriodControl/PeriodControl.test.tsx` |
+| Agent Performance screen, Agents table, Cost breakdown, Changes against the previous period (AC-98 to AC-142) | S13 to S16 | [pages](../../client/specs/pages.md#agent-performance) | `client/src/app/agent-performance/**/*.test.tsx` |
+| Agent Stats tab, Agents list cards (AC-143 to AC-169) | S17 to S21 | [pages](../../client/specs/pages.md#agentsid) | `client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/StatsTab.test.tsx`, `agents/_components/AgentCard/AgentCard.test.tsx` |
+| Loading, empty and error states (AC-170 to AC-182) | S12 to S21 | [ui-architecture](../../client/docs/ui-architecture.md#agent-performance-and-skill-stats) | `AgentPerformanceView.test.tsx`, `StatsTab.test.tsx` |
+| Demo data and e2e (AC-183 to AC-188) | S3, S4 | [architecture](../../server/docs/architecture.md#agent-performance-modulesagent-stats) | `server/test/seed-agent-stats.it.test.ts` (CI only); `AppShell.test.tsx` (AC-188); AC-185 held in two hermetic e2e runs |
+| Cost label (AC-189 to AC-196) | S12 | [api-contracts](../../server/docs/api-contracts.md#cost-meaning), [pages](../../client/specs/pages.md#agent-performance) | `components/agent-stats/CostLabel/CostLabel.test.tsx` |
+| Edge cases (EC-1 to EC-48, minus the dropped ones) | S5 to S21 | as above | covered by the same files; see the [verification](../plans/agent-performance-dashboard.verification.md) |
+| NFR-1, NFR-2, NFR-5 to NFR-8, NFR-10 to NFR-14, NFR-16, NFR-17, NFR-19, NFR-20 | S5 to S8 | [architecture](../../server/docs/architecture.md#agent-performance-modulesagent-stats) | `server/test/agent-stats-perf.it.test.ts` (CI only), routes and service tests |
+| NFR-3, NFR-15 (manual) | Phase 4 | none | see *Open issues* below |
+
+### Differences from the spec text
+
+- **AC-186 and AC-187** (e2e flow files) are handed to `test-writer` and are not
+  part of this implementation; the demo data they need is seeded.
+- **Cost breakdown by model**: when the residual of the last entry is not a
+  finite number above 0, the entry keeps its own fold, so entries may differ from
+  the total by float error (a guard added during review;
+  [api-contracts](../../server/docs/api-contracts.md#counting-rules)).
+- **Period fallback**: the 30-day fallback is re-taken when the hook becomes
+  enabled, and the agent page re-resolves the left list's card period on
+  Refresh (added during review).
+- Per-agent icon squares, "Most pulled memory" and a Source column were not
+  built (no data source; non-goals).
+
+### Open issues
+
+- Not verified live: 320 px and 200 % zoom on the agent Stats tab, contrast
+  ratios, 24 px targets, keyboard-focus tooltips, native date inputs in Chrome,
+  Firefox and Safari, a custom range, and skeleton timing (NFR-3, NFR-15). The
+  dashboard at 320 px was checked and a grid overflow fixed
+  (`CostBreakdown/styles.ts`).
+- The `*.it.test.ts` rows (T3, T8, T9) run in CI only, not in the implementation session.
+- `usePeriodUrl.ts:20-21` still says the fallback is "resolved ONCE per mount";
+  the code re-takes it when `enabled` flips (a code comment, not edited here).

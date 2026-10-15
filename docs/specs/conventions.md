@@ -237,3 +237,14 @@ what's left is genuinely future work:
 8. **Scan on merge / on a schedule**, diffing against the last scan.
 9. **Close the loop through review outcomes** — `SkillStats.accept_pct` already has the
    shape to flag a convention whose skill keeps getting its findings dismissed.
+   Meaning of the fields since the Skill Stats tab
+   ([spec](2026-10-15-skill-stats-tab.md#implementation)): `accept_pct` is the
+   whole percent of `accept_rate = accepted / (accepted + dismissed)` over the
+   `done` runs, in the requested period, whose recorded skill list contains the
+   skill (not over reviews of the agents linked now); it is `null` with nothing
+   decided, and `small_sample` is true under 10 decided findings
+   (`server/src/modules/skills/helpers.ts:263-403`). `findings_30d` is
+   `@deprecated`: it always equals `findings` and carries no 30-day meaning
+   (`server/src/vendor/shared/contracts/knowledge.ts:503-504`); removal is not
+   scheduled.
+

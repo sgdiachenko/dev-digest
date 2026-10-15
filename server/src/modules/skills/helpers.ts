@@ -4,6 +4,8 @@ import { SKILL_NAME_RE, SkillType as SkillTypeEnum } from '@devdigest/shared';
 import type { SkillRow, SkillVersionRow } from '../../db/rows.js';
 import { DEFAULT_SKILL_TYPE, MAX_IMPORT_BYTES, MAX_SKILL_BODY_CHARS } from './constants.js';
 import { assessSkillSafety } from './safety.js';
+import { acceptFigures, isRecordedSkillList, wholePercent } from '../_shared/stats-rules.js';
+import type { SkillStatsFacts, SkillStatsWindow } from './types.js';
 
 /**
  * Pure helpers for the skills module — DB row ⇄ DTO mapping, the import
@@ -258,56 +260,144 @@ export function lineDiff(oldBody: string, newBody: string): DiffLine[] {
 
 // ----------------------------------------------------------------- Stats tab
 
-/** True when a persisted run trace's `config.skills` recorded this skill id.
- *  `trace` is untyped jsonb read straight from Postgres — guard every shape. */
-export function traceHasSkill(trace: unknown, skillId: string): boolean {
-  if (!trace || typeof trace !== 'object') return false;
-  const config = (trace as { config?: unknown }).config;
-  if (!config || typeof config !== 'object') return false;
-  const skills = (config as { skills?: unknown }).skills;
-  return Array.isArray(skills) && skills.includes(skillId);
+const byNameThenId = (a: { id: string; name: string }, b: { id: string; name: string }): number =>
+  a.name.localeCompare(b.name, 'en') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+type StatsRun = SkillStatsFacts['runs'][number];
+
+/** Facts partitioned once so a list of skills does not re-scan every run per skill. */
+export interface SkillRunIndex {
+  /** The facts and window this index was built for — `computeSkillStats` rejects a mismatch. */
+  facts: SkillStatsFacts;
+  fromMs: number;
+  toMs: number;
+  /** runId -> its finding rows, so a skill reads only its own runs' findings. */
+  findingsByRun: Map<string, SkillStatsFacts['runFindings']>;
+  /** Window runs grouped by agent id (runs with a null agent are not pull candidates). */
+  windowByAgent: Map<string, { run: StatsRun; recorded: boolean }[]>;
+  /** skillId -> window runs that recorded the skill. */
+  windowBySkill: Map<string, StatsRun[]>;
+  /** skillId -> latest `ranAt` over all runs (not window-limited). */
+  lastUsed: Map<string, Date>;
 }
 
-export interface StatsAgentRow {
-  id: string;
-  name: string;
-}
-export interface StatsFindingRow {
-  category: string;
-  acceptedAt: Date | null;
-  dismissedAt: Date | null;
-}
-export interface StatsRunRow {
-  trace: unknown;
+export function indexSkillRuns(facts: SkillStatsFacts, window: SkillStatsWindow): SkillRunIndex {
+  const fromMs = window.from.getTime();
+  const toMs = window.to.getTime();
+  const windowByAgent: SkillRunIndex['windowByAgent'] = new Map();
+  const windowBySkill: SkillRunIndex['windowBySkill'] = new Map();
+  const lastUsed: SkillRunIndex['lastUsed'] = new Map();
+  const findingsByRun: SkillRunIndex['findingsByRun'] = new Map();
+  for (const f of facts.runFindings) {
+    const list = findingsByRun.get(f.runId) ?? [];
+    list.push(f);
+    findingsByRun.set(f.runId, list);
+  }
+  for (const r of facts.runs) {
+    const recorded = isRecordedSkillList(r.skills);
+    const ids = recorded ? new Set(r.skills as string[]) : null;
+    if (ids) {
+      for (const id of ids) {
+        const prev = lastUsed.get(id);
+        if (prev === undefined || r.ranAt > prev) lastUsed.set(id, r.ranAt);
+      }
+    }
+    const t = r.ranAt.getTime();
+    if (t < fromMs || t >= toMs) continue;
+    if (r.agentId !== null) {
+      const list = windowByAgent.get(r.agentId) ?? [];
+      list.push({ run: r, recorded });
+      windowByAgent.set(r.agentId, list);
+    }
+    if (ids) {
+      for (const id of ids) {
+        const list = windowBySkill.get(id) ?? [];
+        list.push(r);
+        windowBySkill.set(id, list);
+      }
+    }
+  }
+  return { facts, fromMs, toMs, findingsByRun, windowByAgent, windowBySkill, lastUsed };
 }
 
-/** Raw per-skill rows the repository fetches (already scoped to the skill's
- *  linked agents + the stats window); this function does all the arithmetic. */
-export interface SkillStatsRaw {
-  skillId: string;
-  agents: StatsAgentRow[];
-  findings: StatsFindingRow[];
-  runs: StatsRunRow[];
-}
+/**
+ * One skill's stats over `window`, by the agent-performance rules
+ * (`_shared/stats-rules.ts`). Pure: `facts.runs` hold counted statuses at any
+ * time, so the window figures filter by `[from, to)` and `last_used_at`
+ * reads all of them. Pass a shared `index` when computing many skills.
+ */
+export function computeSkillStats(
+  skillId: string,
+  facts: SkillStatsFacts,
+  window: SkillStatsWindow,
+  asOf: Date,
+  index: SkillRunIndex = indexSkillRuns(facts, window),
+): SkillStats {
+  if (index.facts !== facts || index.fromMs !== window.from.getTime() || index.toMs !== window.to.getTime()) {
+    throw new Error('computeSkillStats: index was built for different facts or window');
+  }
+  const linked = new Map<string, { id: string; name: string }>();
+  for (const l of facts.links) {
+    if (l.skillId === skillId) linked.set(l.agentId, { id: l.agentId, name: l.agentName });
+  }
+  const agents = [...linked.values()].sort(byNameThenId);
 
-export function computeSkillStats(raw: SkillStatsRaw): SkillStats {
-  const totalRuns = raw.runs.length;
-  const runsWithSkill = raw.runs.filter((r) => traceHasSkill(r.trace, raw.skillId)).length;
-  const pullPct = totalRuns === 0 ? null : Math.round((runsWithSkill / totalRuns) * 100);
+  // Pull: linked agents' runs that recorded a skill list.
+  let linkedCount = 0;
+  let pullBaseCount = 0;
+  let pullRuns = 0;
+  for (const agentId of linked.keys()) {
+    for (const { run, recorded } of index.windowByAgent.get(agentId) ?? []) {
+      linkedCount++;
+      if (!recorded) continue;
+      pullBaseCount++;
+      if ((run.skills as string[]).includes(skillId)) pullRuns++;
+    }
+  }
+  const pullPct = pullBaseCount === 0 ? null : wholePercent(pullRuns / pullBaseCount);
 
-  const triaged = raw.findings.filter((f) => f.acceptedAt !== null || f.dismissedAt !== null);
-  const accepted = triaged.filter((f) => f.acceptedAt !== null);
-  const acceptPct = triaged.length === 0 ? null : Math.round((accepted.length / triaged.length) * 100);
+  // Skill runs: any agent (linked, unlinked, deleted) that loaded the skill.
+  const skillRuns = index.windowBySkill.get(skillId) ?? [];
+  const doneSkillRunIds = new Set(skillRuns.filter((r) => r.status === 'done').map((r) => r.id));
 
-  const byCategoryMap = new Map<string, number>();
-  for (const f of raw.findings) byCategoryMap.set(f.category, (byCategoryMap.get(f.category) ?? 0) + 1);
+  let accepted = 0;
+  let dismissed = 0;
+  let pending = 0;
+  const categories = new Map<string, number>();
+  for (const runId of doneSkillRunIds) {
+    for (const f of index.findingsByRun.get(runId) ?? []) {
+      accepted += f.accepted;
+      dismissed += f.dismissed;
+      pending += f.pending;
+      categories.set(f.category, (categories.get(f.category) ?? 0) + f.accepted + f.dismissed + f.pending);
+    }
+  }
+  const findings = accepted + dismissed + pending;
+  const { accept_rate, small_sample } = acceptFigures(accepted, dismissed);
+
+  const lastUsed = index.lastUsed.get(skillId) ?? null;
 
   return {
-    agent_count: raw.agents.length,
+    agent_count: agents.length,
+    agents,
     pull_pct: pullPct,
-    accept_pct: acceptPct,
-    findings_30d: raw.findings.length,
-    by_category: [...byCategoryMap.entries()].map(([category, count]) => ({ category, count })),
-    agents: raw.agents,
+    accept_pct: accept_rate === null ? null : wholePercent(accept_rate),
+    findings_30d: findings,
+    by_category: [...categories.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count || (a.category < b.category ? -1 : a.category > b.category ? 1 : 0)),
+    findings,
+    skill_runs: skillRuns.length,
+    pull_runs: pullRuns,
+    pull_runs_total: pullBaseCount,
+    runs_without_skill_data: linkedCount - pullBaseCount,
+    accepted,
+    dismissed,
+    pending,
+    accept_rate,
+    small_sample,
+    last_used_at: lastUsed ? lastUsed.toISOString() : null,
+    period: { from: window.from.toISOString(), to: window.to.toISOString() },
+    as_of: asOf.toISOString(),
   };
 }

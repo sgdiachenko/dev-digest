@@ -1,32 +1,163 @@
 {
-  "title": "Agent Performance",
-  "subtitle": "Accept-rate is the headline quality signal · cost shown as a breakdown",
-  "loadError": "Could not load agent performance.",
-  "summary": {
-    "totalRuns": "Total runs",
-    "avgAcceptRate": "Avg accept-rate",
-    "totalCost": "Total cost",
-    "mostActive": "Most active"
+  "period": {
+    "label": "Period",
+    "options": { "1d": "1 day", "30d": "30 days", "custom": "Custom range" },
+    "inLabel": { "1d": "1 day", "30d": "30 days", "custom": "custom range" },
+    "start": "Start date",
+    "end": "End date",
+    "apply": "Apply",
+    "resolved": "{from} – {to}",
+    "reasons": {
+      "incomplete": "Choose a start and an end date",
+      "startAfterEnd": "The start date is after the end date",
+      "endInFuture": "The end date is in the future",
+      "tooLong": "The range is longer than 366 days"
+    },
+    "linkInvalid": "The link's period was invalid — showing the last 30 days",
+    "serverInvalid": "This period is invalid — choose another period"
   },
-  "costByAgent": "Cost by agent",
-  "costByModel": "Cost by model",
-  "noCost": "No cost recorded yet.",
-  "sort": {
-    "acceptRate": "accept-rate",
-    "runs": "runs",
-    "cost": "cost"
+  "cost": {
+    "label": "Recorded by DevDigest — not provider billing",
+    "infoButton": "About how cost is recorded",
+    "info": "Cost is the amount OpenRouter reported for a run when it returned one; otherwise it is a DevDigest estimate from its price table. It is not reconciled with provider billing, and runs without a recorded cost count as unknown.",
+    "unknownRuns": "cost unknown for {count, plural, one {# run} other {# runs}}",
+    "noneInPeriod": "No cost recorded in this period",
+    "lessThan": "< {amount}",
+    "change": {
+      "up": "↑ {amount} vs previous {period}",
+      "down": "↓ {amount} vs previous {period}",
+      "flat": "No change vs previous {period}"
+    }
   },
-  "table": {
-    "agent": "Agent",
-    "accept": "Accept",
-    "runs": "Runs",
-    "findings": "Findings",
-    "cost": "Cost",
-    "trend": "Trend"
+  "runs": {
+    "failedCancelled": "{failed} failed · {cancelled} cancelled",
+    "inProgress": "{count} in progress (not counted)"
   },
-  "empty": {
-    "title": "No agent runs yet",
-    "body": "Run a review (manually) to populate per-agent performance."
+  "accept": {
+    "cell": "{percent} · {accepted}/{decided}",
+    "smallSampleCell": "{percent} · {decided}/10 decisions — small sample",
+    "none": "—",
+    "zeroDecided": "0 decided",
+    "breakdown": "{accepted} accepted · {dismissed} dismissed · {pending} pending",
+    "decidedLine": "{accepted} of {decided} decided · {pending} pending",
+    "smallSample": "small sample",
+    "up": "up {points} points vs previous period",
+    "down": "down {points} points vs previous period"
   },
-  "perAgent": "Per-agent"
+  "charts": {
+    "runsSummary": "Runs per {unit}, {min} to {max}",
+    "durationsSummary": "Run durations, {min} to {max}",
+    "units": { "hour": "hour", "day": "day", "week": "week" },
+    "other": "Other",
+    "deletedAgent": "Deleted agent",
+    "unknownModel": "Unknown model",
+    "deletedSkill": "Deleted skill"
+  },
+  "format": {
+    "seconds": "{value} s",
+    "tokensK": "{value}k"
+  },
+  "states": {
+    "scopeNote": "Local review runs only — CI runs and eval runs are on their own pages",
+    "updated": "Updated {time}",
+    "refreshFailed": "Couldn't refresh — showing data as of {time}",
+    "retry": "Retry",
+    "noRunsInPeriod": "No runs in this period · last run {date}",
+    "showLast30": "Show last 30 days",
+    "reason": "{reason}"
+  },
+  "dashboard": {
+    "title": "Agent Performance",
+    "subtitle": "How each review agent is doing — runs, accept rate, speed and cost",
+    "loadError": "Couldn't load agent performance",
+    "kpi": {
+      "totalRuns": "Total runs ({period})",
+      "totalCost": "Total cost ({period})",
+      "avgAccept": "Avg accept rate ({period})",
+      "mostActive": "Most active ({period})",
+      "mostActiveLine": "{runs} runs · {accept} accept",
+      "noMostActiveBody": "No agent ran in this period"
+    },
+    "empty": {
+      "noAgents": "No agents yet",
+      "createAgent": "Create agent",
+      "noReviews": "No reviews yet — run a review on a pull request",
+      "openPulls": "Pull Requests"
+    },
+    "table": {
+      "agent": "Agent",
+      "runs": "Runs",
+      "avgCost": "Avg cost",
+      "avgDuration": "Avg duration",
+      "accept": "Accept rate",
+      "lastRun": "Last run",
+      "view": "View",
+      "viewLabel": "View {agent} stats",
+      "never": "Never",
+      "sortBy": "Sort by {column}",
+      "expand": "Show last runs of {agent}",
+      "collapse": "Hide last runs of {agent}",
+      "cap": "Showing 200 of {count} agents"
+    },
+    "expansion": {
+      "caption": "last {count} runs · avg {duration} · {cost}",
+      "noRuns": "No finished runs in this period",
+      "oneRun": "Not enough runs for a trend"
+    },
+    "breakdown": {
+      "title": "Cost breakdown",
+      "byAgent": "By agent",
+      "byModel": "By model"
+    }
+  },
+  "stats": {
+    "loadError": "Couldn't load this agent's stats",
+    "neverRan": "This agent hasn't run yet",
+    "kpi": {
+      "totalRuns": "Total runs ({period})",
+      "avgCost": "Avg cost / run",
+      "avgDuration": "Avg duration",
+      "acceptRate": "Accept rate"
+    },
+    "skills": {
+      "title": "Most-used skills",
+      "basedOn": "Based on {n} of {m} runs — runs recorded before skill tracking are not included; failed and cancelled runs have no skill data",
+      "noData": "No skill data for this period"
+    },
+    "severity": {
+      "title": "Findings by severity",
+      "critical": "Critical",
+      "warning": "Warning",
+      "suggestion": "Suggestion",
+      "bar": "{bucket}: {critical} critical, {warning} warning, {suggestion} suggestion"
+    },
+    "category": {
+      "title": "Findings by category"
+    },
+    "noFindings": "No findings in this period",
+    "runHistory": {
+      "title": "Run history",
+      "timestamp": "Timestamp",
+      "pr": "PR",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "findings": "Findings",
+      "status": "Status",
+      "viewTrace": "View trace",
+      "viewTraceLabel": "View trace of the run at {time}",
+      "statuses": { "done": "done", "failed": "failed", "cancelled": "cancelled" },
+      "previous": "Previous",
+      "next": "Next",
+      "range": "{start}–{end} of {total}",
+      "loadError": "Couldn't load the run history"
+    }
+  },
+  "card": {
+    "runs": "{count, plural, one {# run} other {# runs}}",
+    "accept": "{percent} accept",
+    "noAccept": "— accept",
+    "smallSample": "small sample",
+    "avg": "{amount} avg",
+    "noRuns": "No runs in 30 days"
+  }
 }
