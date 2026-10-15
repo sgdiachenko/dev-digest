@@ -126,6 +126,9 @@ or reordered — not a same-set re-post) must bump the agent's version.
   used skills (with a "runs without skill data" note), findings by severity and
   by category, and a paged run history (20 per page). Every null figure renders
   `—`, never `0`.
+- "View trace" on a run opens that run's trace drawer on this page (`?trace=<run id>`),
+  not the PR page; the drawer closes with its close button, a tab switch or an agent
+  switch. On the dashboard, the run chart of an expanded row opens the agent's Stats tab.
 - An unknown agent (`404`) leaves the tab; a rejected period (`422`) shows the
   period control's error and no figures; a load failure shows an error panel
   with Retry, or keeps the old figures with a failed-refresh status.

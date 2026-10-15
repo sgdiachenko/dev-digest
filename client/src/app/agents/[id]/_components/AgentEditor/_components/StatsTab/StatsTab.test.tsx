@@ -26,7 +26,7 @@ function periodState(over: Partial<PeriodUrlState> = {}): PeriodUrlState {
 }
 
 const mount = (state: PeriodUrlState, onAgentNotFound = vi.fn(), client = newQueryClient()) =>
-  renderWithProviders(<StatsTab agentId="ag1" periodState={state} onAgentNotFound={onAgentNotFound} timeZone="UTC" />, client);
+  renderWithProviders(<StatsTab agentId="ag1" periodState={state} onAgentNotFound={onAgentNotFound} onOpenTrace={vi.fn()} timeZone="UTC" />, client);
 
 beforeEach(() => {
   fetchMock.mockReset();

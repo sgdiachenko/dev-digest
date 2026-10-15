@@ -15,7 +15,15 @@ import { useAgentRunHistory } from "../../../../../../../../../lib/hooks/agent-s
 import { pageRange, prHref, showsTokens } from "./helpers";
 import { s } from "./styles";
 
-function RunRow({ run, timeZone }: { run: AgentRunHistoryItem; timeZone?: string }) {
+function RunRow({
+  run,
+  timeZone,
+  onOpenTrace,
+}: {
+  run: AgentRunHistoryItem;
+  timeZone?: string;
+  onOpenTrace: (runId: string) => void;
+}) {
   const t = useTranslations("agentPerformance");
   const f = useStatsFormat();
   const hasPr = run.repo_id != null && run.pr_number != null;
@@ -46,17 +54,14 @@ function RunRow({ run, timeZone }: { run: AgentRunHistoryItem; timeZone?: string
       </td>
       <td style={s.td}>{t(`stats.runHistory.statuses.${run.status}`)}</td>
       <td style={s.td}>
-        {hasPr ? (
-          <Link
-            href={prHref(run.repo_id!, run.pr_number!, run.run_id)}
-            style={s.link}
-            aria-label={t("stats.runHistory.viewTraceLabel", { time: when })}
-          >
-            {t("stats.runHistory.viewTrace")}
-          </Link>
-        ) : (
-          <span style={s.muted}>{DASH}</span>
-        )}
+        <button
+          type="button"
+          style={s.linkButton}
+          aria-label={t("stats.runHistory.viewTraceLabel", { time: when })}
+          onClick={() => onOpenTrace(run.run_id)}
+        >
+          {t("stats.runHistory.viewTrace")}
+        </button>
       </td>
     </tr>
   );
@@ -66,10 +71,13 @@ export function RunHistory({
   agentId,
   period,
   timeZone,
+  onOpenTrace,
 }: {
   agentId: string;
   period: Pick<Period, "from" | "to">;
   timeZone?: string;
+  /** Opens the run's trace drawer on this page. */
+  onOpenTrace: (runId: string) => void;
 }) {
   const t = useTranslations("agentPerformance");
   const f = useStatsFormat();
@@ -104,7 +112,7 @@ export function RunHistory({
               {data && (
                 <tbody>
                   {data.items.map((run) => (
-                    <RunRow key={run.run_id} run={run} timeZone={timeZone} />
+                    <RunRow key={run.run_id} run={run} timeZone={timeZone} onOpenTrace={onOpenTrace} />
                   ))}
                 </tbody>
               )}

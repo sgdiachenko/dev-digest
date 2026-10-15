@@ -24,6 +24,7 @@ export function AgentEditor({
   onTab,
   statsPeriod,
   onAgentNotFound = noop,
+  onOpenTrace = noop,
 }: {
   agent: Agent;
   tab: string;
@@ -31,6 +32,7 @@ export function AgentEditor({
   /** The Stats tab's URL-backed period; the Stats tab renders only when given. */
   statsPeriod?: PeriodUrlState;
   onAgentNotFound?: () => void;
+  onOpenTrace?: (runId: string) => void;
 }) {
   const t = useTranslations("agents");
   const tabs = TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
@@ -47,7 +49,7 @@ export function AgentEditor({
         ) : tab === "evals" ? (
           <EvalsTab agentId={agent.id} agentName={agent.name} />
         ) : tab === "stats" && statsPeriod ? (
-          <StatsTab agentId={agent.id} periodState={statsPeriod} onAgentNotFound={onAgentNotFound} />
+          <StatsTab agentId={agent.id} periodState={statsPeriod} onAgentNotFound={onAgentNotFound} onOpenTrace={onOpenTrace} />
         ) : tab === "ci" ? (
           <CiTab agent={agent} />
         ) : (

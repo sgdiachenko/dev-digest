@@ -28,11 +28,14 @@ export function StatsTab({
   agentId,
   periodState,
   onAgentNotFound,
+  onOpenTrace,
   timeZone,
 }: {
   agentId: string;
   periodState: PeriodUrlState;
   onAgentNotFound: () => void;
+  /** Opens a run's trace drawer on the agent page. */
+  onOpenTrace: (runId: string) => void;
   /** Test hook: pins date text to one zone. */
   timeZone?: string;
 }) {
@@ -117,6 +120,7 @@ export function StatsTab({
           agentId={agentId}
           period={stats.period}
           timeZone={timeZone}
+          onOpenTrace={onOpenTrace}
         />
       </>
     );

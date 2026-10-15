@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import messages from "../../../../../../../../../../messages/en/runs.json";
+import messages from "../../../../../messages/en/runs.json";
 import { PromptModalBody } from "./PromptModalBody";
 
 const wrap = (p: string, body: string) => `### ${p}\n<untrusted source="spec:${p}">\n${body}\n</untrusted>`;

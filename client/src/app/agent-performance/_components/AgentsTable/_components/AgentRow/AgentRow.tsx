@@ -87,7 +87,11 @@ export function AgentRow({
       {expanded && (
         <tr>
           <td colSpan={COLUMN_COUNT} style={s.expansionTd}>
-            <RowExpansion runs={row.last_runs} />
+            <RowExpansion
+              runs={row.last_runs}
+              agentName={name}
+              href={row.agent_id !== null ? viewHref(row.agent_id, period) : undefined}
+            />
           </td>
         </tr>
       )}

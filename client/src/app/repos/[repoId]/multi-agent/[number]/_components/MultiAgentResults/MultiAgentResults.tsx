@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, EmptyState, Skeleton } from "@devdigest/ui";
-import RunTraceDrawer from "@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer";
+import RunTraceDrawer from "@/components/run-trace-drawer";
 import { useMultiAgentRun } from "@/lib/hooks/multi-agent";
 import { usePrReviews } from "@/lib/hooks/reviews";
 import { useActiveRepo } from "@/lib/repo-context";

@@ -118,7 +118,7 @@ tab is in `VALID_TABS` and that Context is second.
 
 ### Run drawer: project context
 
-The run trace drawer (`pulls/[number]/_components/RunTraceDrawer/`) labels the
+The run trace drawer (`components/run-trace-drawer/`, shared by the PR page, multi-agent results and the agent page) labels the
 block "Project context — attached specs (untrusted)", shows each "Specs read"
 path as a link to `/repos/:repoId/context?doc=` with the run's short SHA, shows
 per-block "≈ N tokens · estimate" (the project-context block uses the server's

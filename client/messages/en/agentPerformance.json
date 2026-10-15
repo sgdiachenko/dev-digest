@@ -102,7 +102,8 @@
     "expansion": {
       "caption": "last {count} runs · avg {duration} · {cost}",
       "noRuns": "No finished runs in this period",
-      "oneRun": "Not enough runs for a trend"
+      "oneRun": "Not enough runs for a trend",
+      "chartLink": "Open the stats of {agent} from its run chart"
     },
     "breakdown": {
       "title": "Cost breakdown",

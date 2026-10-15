@@ -7,6 +7,7 @@ import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Dropdown, ErrorState, Skeleton, Icon, Badge } from "@devdigest/ui";
+import RunTraceDrawer from "../../../components/run-trace-drawer";
 import { AppShell } from "../../../components/app-shell";
 import { AgentCard } from "../_components/AgentCard";
 import { AgentEditor } from "./_components/AgentEditor";
@@ -29,9 +30,18 @@ export default function AgentEditorPage() {
   const update = useUpdateAgent();
 
   const tab = VALID_TABS.includes(search.get("tab") ?? "") ? search.get("tab")! : "config";
+  // A run's trace drawer opens on this page (?trace=<run id>) and closes with the tab it was opened from.
+  const traceRunId = search.get("trace");
+  const setTrace = (runId: string | null) => {
+    const sp = new URLSearchParams(search.toString());
+    if (runId) sp.set("trace", runId);
+    else sp.delete("trace");
+    router.replace(`/agents/${id}?${sp.toString()}`);
+  };
   const setTab = (t: string) => {
     const sp = new URLSearchParams(search.toString());
     sp.set("tab", t);
+    sp.delete("trace");
     router.replace(`/agents/${id}?${sp.toString()}`);
   };
 
@@ -148,12 +158,16 @@ export default function AgentEditorPage() {
                 tab={tab}
                 onTab={setTab}
                 statsPeriod={statsPeriod}
+                onOpenTrace={setTrace}
                 onAgentNotFound={() => refetch()}
               />
             </div>
           </div>
         )}
       </div>
+      {agent && traceRunId && (
+        <RunTraceDrawer runId={traceRunId} agentName={agent.name} onClose={() => setTrace(null)} />
+      )}
     </AppShell>
   );
 }

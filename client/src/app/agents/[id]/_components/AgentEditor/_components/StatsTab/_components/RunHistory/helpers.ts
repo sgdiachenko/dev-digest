@@ -9,10 +9,9 @@ export function pageRange(page: number, count: number): { start: number; end: nu
   return { start, end: start + count - 1 };
 }
 
-/** The PR page of a run; `trace` opens that run's trace drawer. Built from ids and numbers only (C17). */
-export function prHref(repoId: string, prNumber: number, runId?: string): string {
-  const base = `/repos/${encodeURIComponent(repoId)}/pulls/${prNumber}`;
-  return runId ? `${base}?${new URLSearchParams({ trace: runId }).toString()}` : base;
+/** The PR page of a run. Built from ids and numbers only (C17). */
+export function prHref(repoId: string, prNumber: number): string {
+  return `/repos/${encodeURIComponent(repoId)}/pulls/${prNumber}`;
 }
 
 /** Failed and cancelled runs produced no token count worth showing (EC-45). */

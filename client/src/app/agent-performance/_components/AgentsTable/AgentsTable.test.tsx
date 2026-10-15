@@ -99,6 +99,25 @@ describe("AgentsTable", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("opens the agent's Stats tab, with the screen's period, from the expanded run chart; the Deleted agent has none", () => {
+    const run = (id: string, ms: number) => ({ run_id: id, ran_at: ASOF, duration_ms: ms, cost_usd: 0.01 });
+    const twoRuns = [run("1", 5000), run("2", 7000)];
+    show([row("Many", { last_runs: twoRuns }), perfRow({ agent_id: null, agent_name: null, last_runs: twoRuns })]);
+    for (const b of screen.getAllByRole("button", { name: /Show last runs of/ })) fireEvent.click(b);
+
+    const chart = screen.getByRole("link", { name: "Open the stats of Many from its run chart" });
+    const url = new URL(chart.getAttribute("href")!, "http://x");
+    expect(url.pathname).toBe("/agents/id-Many");
+    expect(url.searchParams.get("tab")).toBe("stats");
+    expect(url.searchParams.get("from")).toBe(PERIOD.from);
+    expect(url.searchParams.get("to")).toBe(PERIOD.to);
+    // Both charts render, but only the live agent's is a link.
+    expect(screen.getAllByRole("img", { name: /Run durations/ })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: /from its run chart/ })).toHaveLength(1);
+    // The View link keeps its own name, so it stays unambiguous.
+    expect(screen.getAllByRole("link", { name: "View Many stats" })).toHaveLength(1);
+  });
+
   it("renders at most 200 rows and says how many agents there are (NFR-7, EC-47)", () => {
     show(Array.from({ length: 250 }, (_, i) => row(`agent-${String(i).padStart(3, "0")}`)));
     expect(screen.getAllByRole("link")).toHaveLength(200);

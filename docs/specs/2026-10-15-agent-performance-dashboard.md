@@ -818,6 +818,13 @@ None of these blocks approval (`blocking: no`).
 Status set to `implemented` after verification. Plan:
 [agent-performance-dashboard](../plans/agent-performance-dashboard.md) (the skill spec
 [2026-10-15-skill-stats-tab](2026-10-15-skill-stats-tab.md) shipped in the same plan, W9).
+Changed after implementation, at the user's request: **View trace** on the agent Stats tab no longer
+links to the PR page (AC-160) but opens the run's trace drawer on the same agent page, through
+`?trace=<run id>` (closed by the drawer's close button, switching tab or switching agent). It is shown for
+every run, also one without a PR (AC-161 now applies to the PR cell only). The drawer moved from the PR
+route to `client/src/components/run-trace-drawer/`; on the agent page it has no Findings section, because
+the run history carries no PR id to load them with. In the dashboard table, the run chart of an expanded
+row is a link to that agent's Stats tab (with the screen's period); the Deleted agent's chart is not.
 Per-ID evidence (met / partial / not-verifiable, with `path:line`) is in the
 [verification](../plans/agent-performance-dashboard.verification.md); the table groups it by spec section. Struck-through IDs (dropped per Q23)
 were not built.

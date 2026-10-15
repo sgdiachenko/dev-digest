@@ -25,7 +25,8 @@ import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
 import { Row, Stat } from "../atoms";
 
-export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
+/** `findings` undefined hides the Findings section (the caller has no findings to show). */
+export function TraceBody({ trace, findings }: { trace: RunTrace; findings?: FindingRecord[] }) {
   const t = useTranslations("runs");
   const stats = trace.stats;
   const params = useParams<{ repoId: string }>();
@@ -95,7 +96,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
         </div>
       </TraceSection>
 
-      <FindingsSection findings={findings} />
+      {findings && <FindingsSection findings={findings} />}
 
       <TraceSection icon="FileText" title={t("trace.promptAssembly")} defaultOpen={false}>
         <PromptBlock

@@ -8,8 +8,11 @@ vi.stubGlobal("fetch", fetchMock);
 const PERIOD = { from: "2026-09-15T12:00:00.000Z", to: "2026-10-15T12:00:00.000Z" };
 const PATH = "/agents/ag1/stats/runs";
 
+const onOpenTrace = vi.fn();
+
 beforeEach(() => {
   fetchMock.mockReset();
+  onOpenTrace.mockReset();
 });
 afterEach(cleanup);
 
@@ -28,7 +31,7 @@ describe("RunHistory", () => {
           total: 3,
         }),
     });
-    renderWithProviders(<RunHistory agentId="ag1" period={PERIOD} timeZone="UTC" />);
+    renderWithProviders(<RunHistory agentId="ag1" period={PERIOD} timeZone="UTC" onOpenTrace={onOpenTrace} />);
 
     await screen.findAllByRole("link", { name: /acme\/payments-api/ });
     expect(screen.getAllByRole("row")).toHaveLength(4);
@@ -43,19 +46,21 @@ describe("RunHistory", () => {
     // AC-157 / AC-160: links are built from the stored ids.
     const prLink = within(row1!).getByRole("link", { name: /acme\/payments-api/ });
     expect(prLink).toHaveAttribute("href", "/repos/repo-1/pulls/479");
-    expect(within(row1!).getByRole("link", { name: /View trace/ })).toHaveAttribute(
-      "href",
-      "/repos/repo-1/pulls/479?trace=run-1",
-    );
+    // View trace opens the drawer on this page: a button, not a link to the PR page.
+    expect(within(row1!).queryByRole("link", { name: /View trace/ })).toBeNull();
+    fireEvent.click(within(row1!).getByRole("button", { name: /View trace/ }));
+    expect(onOpenTrace).toHaveBeenCalledWith("run-1");
     // AC-159: tokens in thousands; EC-45: a failed run shows a dash.
     expect(within(row1!).getByText("16k")).toBeInTheDocument();
     expect(within(row2!).queryByText("1k")).toBeNull();
     expect(within(row2!).getAllByText("—").length).toBeGreaterThanOrEqual(3);
     // AC-194: unknown cost is a dash, never $0.00.
     expect(screen.queryByText(/\$0\.00\b/)).toBeNull();
-    // AC-161 / EC-42: no PR → dash and no trace link.
+    // AC-161 / EC-42: no PR → dash and no PR link; its trace still opens in the drawer.
     expect(within(row3!).queryByRole("link")).toBeNull();
     expect(within(row3!).getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    fireEvent.click(within(row3!).getByRole("button", { name: /View trace/ }));
+    expect(onOpenTrace).toHaveBeenLastCalledWith("run-3");
   });
 
   it("pages with one request per page and shows the n–m of total range", async () => {
@@ -65,7 +70,7 @@ describe("RunHistory", () => {
         return json(page === 2 ? makePage(2, 5, 25) : makePage(1, 20, 25));
       },
     });
-    renderWithProviders(<RunHistory agentId="ag1" period={PERIOD} timeZone="UTC" />);
+    renderWithProviders(<RunHistory agentId="ag1" period={PERIOD} timeZone="UTC" onOpenTrace={onOpenTrace} />);
 
     expect(await screen.findByText("1–20 of 25")).toBeInTheDocument();
     // NFR-6: 20 rows (plus the header row).
@@ -82,7 +87,7 @@ describe("RunHistory", () => {
   it("shows an in-section error with Retry when a page fails", async () => {
     let fail = true;
     routeFetch({ [PATH]: () => (fail ? apiError(500, "internal", "boom") : json(makePage(1, 2, 2))) });
-    renderWithProviders(<RunHistory agentId="ag1" period={PERIOD} timeZone="UTC" />);
+    renderWithProviders(<RunHistory agentId="ag1" period={PERIOD} timeZone="UTC" onOpenTrace={onOpenTrace} />);
 
     expect(await screen.findByText("Couldn't load the run history")).toBeInTheDocument();
     fail = false;
