@@ -70,6 +70,8 @@ don't write it here.
 
 **2026-10-15** — next-intl's `t.rich` takes a React element only for a rich TAG (`<b>x</b>` with a `(chunks) => node` callback); a plain `{percent}` placeholder rejects an element at typecheck (`TranslationValue | ((chunks) => ReactNode)`), so a coloured fragment of an ICU string needs the colour on a wrapper around the whole formatted message, not on the placeholder. The skill card footer colours its "74% accept" this way. Evidence: `client/src/app/skills/_components/SkillCard/_components/StatsFooter/StatsFooter.tsx`.
 
+**2026-10-15** — A CSS grid `repeat(auto-fit, minmax(300px, 1fr))` can never make a column narrower than 300px, so on a 320px viewport (content box ≈262px) it overflows the page; write `minmax(min(300px, 100%), 1fr)`. Found only in the live check, as `MAIN` was 328px wide in a 310px box (the Cost breakdown cards on `/agent-performance`); no unit test or reviewer sees layout. Evidence: `client/src/app/agent-performance/_components/CostBreakdown/styles.ts`.
+
 ## Open Questions
 
 ## Session Notes
