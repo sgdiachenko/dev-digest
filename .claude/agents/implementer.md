@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Executes an approved Implementation Plan (from the implementation-planner agent) — the whole plan, or one work package of it when several implementers run in parallel — in server/, client/, reviewer-core/ and e2e/ — edits code step by step, applies the project skills that govern each touched file (routing.md), writes or updates tests, runs the touched packages' lint / typecheck / arch:check / unit tests, and reports per plan step. Use after a plan is approved. Does NOT do architecture or security review, commits, PRs, or run migrations. Trigger terms: implement the plan, execute the plan, apply the steps.
+description: "Executes an approved Implementation Plan (from the implementation-planner agent) — the whole plan, or one work package of it when several implementers run in parallel — in server/, client/, reviewer-core/ and e2e/ — edits code step by step, applies the project skills that govern each touched file (routing.md), writes or updates tests, runs the touched packages' lint / typecheck / arch:check / unit tests, and reports per plan step. Use after a plan is approved. Does NOT do architecture or security review, commits, PRs, or run migrations. Trigger terms: implement the plan, execute the plan, apply the steps."
 model: sonnet
 permissionMode: acceptEdits
 tools: Read, Edit, Write, Grep, Glob, Bash
