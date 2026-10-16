@@ -5,7 +5,8 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, ApiError } from "../api";
+import { periodApiQuery, type Period } from "../agent-stats/period";
 import type {
   AgentSkillLink,
   Skill,
@@ -21,8 +22,16 @@ export const skillKeys = {
   one: (id: string | null | undefined) => ["skill", id] as const,
   versions: (id: string | null | undefined) => ["skill-versions", id] as const,
   version: (id: string | null | undefined, v: number | null) => ["skill-version", id, v] as const,
-  stats: (id: string | null | undefined) => ["skill-stats", id] as const,
+  /** No period = the prefix of every cached stats response of the skill (used by invalidation). */
+  stats: (id: string | null | undefined, period?: Pick<Period, "from" | "to">) =>
+    period ? (["skill-stats", id, period.from, period.to] as const) : (["skill-stats", id] as const),
 };
+
+/** Retry once for network / 5xx failures, never for a 4xx (an invalid period or a missing skill stays so). */
+function retryUnlessClientError(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+  return failureCount < 1;
+}
 
 /** Rail list. Carries batched per-skill stats — never one request per card. */
 export function useSkills() {
@@ -103,11 +112,13 @@ export function useDeleteSkill() {
   });
 }
 
-export function useSkillStats(id: string | null | undefined) {
+/** Read-only stats of one skill for a resolved period; no polling, no mutation. */
+export function useSkillStats(id: string | null | undefined, period: Pick<Period, "from" | "to"> | null) {
   return useQuery({
-    queryKey: skillKeys.stats(id),
-    queryFn: () => api.get<SkillStats>(`/skills/${id}/stats`),
-    enabled: !!id,
+    queryKey: id && period ? skillKeys.stats(id, period) : skillKeys.stats(id),
+    queryFn: () => api.get<SkillStats>(`/skills/${encodeURIComponent(id!)}/stats?${periodApiQuery(period!)}`),
+    enabled: !!id && !!period,
+    retry: retryUnlessClientError,
   });
 }
 

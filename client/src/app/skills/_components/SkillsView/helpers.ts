@@ -23,3 +23,18 @@ export function nextSkillName(skills: { name: string }[]): string {
   }
   return `${NEW_SKILL_BASE_NAME}-${Date.now()}`;
 }
+
+/**
+ * Rail link to a skill that keeps the editor tab and the Stats period (`tab`, `range`, `from`, `to`) of the
+ * current URL, so switching skills never resets them. `search` is the current query string, with or without "?".
+ */
+export function skillHref(id: string, search: string): string {
+  const current = new URLSearchParams(search);
+  const kept = new URLSearchParams();
+  for (const key of ["tab", "range", "from", "to"]) {
+    const value = current.get(key);
+    if (value !== null) kept.set(key, value);
+  }
+  const qs = kept.toString();
+  return `/skills/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`;
+}

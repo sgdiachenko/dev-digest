@@ -1,15 +1,32 @@
 import type { SkillStats } from "@devdigest/shared";
 
-/** Footer counters for the rail card: agent count always, pull/accept only when
- *  there's real data behind them — `—` beats a misleading `0%`. */
-export interface FooterSegment {
-  key: "agents" | "pull" | "accept";
-  label: string;
+/** How the footer shows the accept figure: nothing decided yet, a grey small sample, or a coloured rate. */
+export type FooterAccept = { kind: "none" } | { kind: "smallSample" } | { kind: "rate"; rate: number };
+
+export interface FooterParts {
+  agents: number;
+  /** Whole percent, null = no skill data (shown as "— pull", never 0%). */
+  pullPct: number | null;
+  accept: FooterAccept;
+  /** Behind the hover/focus hint: "m of n runs · x of y decided". */
+  breakdown: { pulled: number; total: number; accepted: number; decided: number };
 }
 
-export function footerSegments(stats: SkillStats): FooterSegment[] {
-  const segments: FooterSegment[] = [{ key: "agents", label: `${stats.agent_count} agents` }];
-  segments.push({ key: "pull", label: stats.pull_pct == null ? "— pull" : `${stats.pull_pct}% pull` });
-  segments.push({ key: "accept", label: stats.accept_pct == null ? "— accept" : `${stats.accept_pct}% accept` });
-  return segments;
+/** Pure view model of the rail-card footer, from the card's own `stats` (the one `GET /skills` response). */
+export function footerParts(stats: SkillStats): FooterParts {
+  let accept: FooterAccept = { kind: "none" };
+  if (stats.accept_pct != null && stats.accept_rate != null) {
+    accept = stats.small_sample ? { kind: "smallSample" } : { kind: "rate", rate: stats.accept_rate };
+  }
+  return {
+    agents: stats.agent_count,
+    pullPct: stats.pull_pct,
+    accept,
+    breakdown: {
+      pulled: stats.pull_runs,
+      total: stats.pull_runs_total,
+      accepted: stats.accepted,
+      decided: stats.accepted + stats.dismissed,
+    },
+  };
 }

@@ -76,6 +76,8 @@ Arguments: `$ARGUMENTS`
      (`AskUserQuestion`): is it configured, and what spend is acceptable?
      Record the answer in the state file. Never ask for, read or print the
      key itself.
+   - Docker: run `docker info` once and record up/down in the state file; the
+     plan's `*.it.test.ts` files run in Phase 1 only when it is up.
 3. Create/refresh `docs/plans/<slug>.impl.md` (below) and show the route in
    ≤5 lines: mode, waves, packages, what will be skipped.
 
@@ -90,6 +92,7 @@ Extra instructions: <one line or none>
 ## Waived / manual-only
 - waived by user: <test or finding — reason>   (e.g. red on clean HEAD)
 - manual-only rows: <AC/NFR IDs and the exact manual step>
+- owed (handed to test-writer, not run here): <AC IDs / flow files>
 
 ## Log
 - 2026-09-29 wave 1 done, checks green
@@ -98,6 +101,7 @@ Extra instructions: <one line or none>
 | F# | Source | Sev | file:line | Summary | Status | Round |
 |---|---|---|---|---|---|---|
 ```
+(`Sev` may also be `GAP` — a reviewer's own "not reviewed" line, status `open-coverage`.)
 
 Reports go to `docs/plans/<slug>.reports.md` (appended, one `##` per report).
 
@@ -119,7 +123,10 @@ Reports go to `docs/plans/<slug>.reports.md` (appended, one `##` per report).
   3. Failures: small, in one `W#`'s files → fix here; larger → one **fresh**
      `implementer` with the failing lines + `W#` + plan path. Max 2 rounds
      per wave, then ask the user.
-  4. **Integration gate** (a plan's `*.it.test.ts`, needs Docker): on a red result run the
+  4. **Integration gate** (a plan's `*.it.test.ts`, needs Docker — checked once at intake):
+     right after the wave, run the files it added or changed
+     (`pnpm -C server exec vitest run <files>`), not at Phase 6. A perf-budget test that
+     misses: re-run it alone before calling it red. On a red result run the
      same files on a clean `git worktree` of `HEAD` first. Red there too → pre-existing: show
      it to the user to waive or fix as its own change (record it under *Waived*), not as a
      `W#` fix. Server tests must stay hermetic (`server/test/setup-hermetic.ts` hides the
@@ -155,6 +162,9 @@ bugs — neither reviewer looks for those.
 
 **Ledger.** Merge all findings into *Review ledger* as `F#`; dedupe the same
 file:line + issue across sources (highest severity, both sources listed).
+Also add each reviewer's *Not found / gaps* lines as `GAP` rows (`open-coverage`: who
+did not read what), so a clean "approve, 0 findings" is shown with its coverage; a
+`GAP` is closed by a named later check, or recorded as accepted by the user.
 
 **Triage** — show the ledger, then:
 - `CRITICAL` / `WARNING` → `fixed`, or `waived by user: <reason>`. Never
@@ -167,10 +177,14 @@ file:line + issue across sources (highest severity, both sources listed).
   and hand it to the user.
 
 **Fix.**
-- ≤3 files, local, no new port/module/contract → fix here.
+- ≤3 files, local, no new port/module/contract → fix here, with the same test as below.
+- Every fix carries a test that fails without it and passes with it — or one line
+  saying why none is possible. "Finding no longer applies" alone is not a
+  `done-when`: in one run each review round found defects in the previous round's fixes.
 - Otherwise → **fresh** `implementer`s, one per disjoint file group
   (parallel when groups don't overlap); prompt = the `F#` rows as steps
-  (`files`, the rule, `done-when: finding no longer applies`) + plan path for
+  (`files`, the rule, `done-when: a test that fails without the fix, passes with it,
+  and the finding no longer applies`) + plan path for
   the Constraints. Never resume an earlier implementer.
 - Record the files the round changed; run targeted, then full checks for the
   touched packages. If a fix changed behaviour an AC covers → `plan-verifier`
@@ -221,7 +235,9 @@ says "none", ask it for only that.
    3 rounds).
 2. List what nobody ran (`*.it.test.ts`, e2e); offer to run them
    (`pnpm -C server exec vitest run <files>` needs Docker;
-   `./scripts/e2e.sh`) or leave them to CI.
+   `./scripts/e2e.sh`) or leave them to CI. Also list the e2e flow files the plan's
+   *Review handoff → Tests* hands to `test-writer` (this flow never runs it): ask
+   whether to run `test-writer` now, and if not, keep them under *owed* in the state file.
 3. Show the summary and ask: commit / open PR / stop. Commits and
    `gh pr create` only on an explicit yes. The PR body links `docs/plans/<slug>.verification.md`
    (and the retro, if one was run).

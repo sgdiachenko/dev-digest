@@ -8,6 +8,8 @@ import { useTranslations } from "next-intl";
 import { Button, Dropdown, EmptyState, ErrorState, Skeleton, Icon } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
 import { useAgents, useUpdateAgent } from "../../../../lib/hooks/agents";
+import { useAgentPerformance } from "../../../../lib/hooks/agent-stats";
+import { resolvePreset } from "../../../../lib/agent-stats/period";
 import { AgentCard } from "../AgentCard";
 import { CreateAgentModal } from "./_components/CreateAgentModal";
 import { TEMPLATES } from "./constants";
@@ -21,6 +23,10 @@ export function AgentsListView() {
   const update = useUpdateAgent();
   const [creating, setCreating] = React.useState(false);
   const [search, setSearch] = React.useState("");
+  // The cards' 30-day figures: the period is resolved once per mount, never during render (C15).
+  const [period] = React.useState(() => resolvePreset("30d", new Date()));
+  const perf = useAgentPerformance(period);
+  const statsById = new Map(perf.data?.agents.flatMap((row) => (row.agent_id ? [[row.agent_id, row] as const] : [])));
 
   const list = filterAgents(agents ?? [], search);
 
@@ -86,6 +92,7 @@ export function AgentsListView() {
               <AgentCard
                 key={a.id}
                 ag={a}
+                statsRow={perf.isSuccess ? (statsById.get(a.id) ?? null) : undefined}
                 onClick={() => router.push(`/agents/${a.id}?tab=config`)}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
               />

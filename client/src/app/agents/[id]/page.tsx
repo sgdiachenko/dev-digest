@@ -5,13 +5,19 @@
 
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button, Dropdown, ErrorState, Skeleton, Icon, Badge } from "@devdigest/ui";
+import RunTraceDrawer from "../../../components/run-trace-drawer";
 import { AppShell } from "../../../components/app-shell";
 import { AgentCard } from "../_components/AgentCard";
 import { AgentEditor } from "./_components/AgentEditor";
 import { useAgents, useAgent, useUpdateAgent } from "../../../lib/hooks/agents";
+import { agentStatsKeys, useAgentPerformance } from "../../../lib/hooks/agent-stats";
+import { resolvePreset } from "../../../lib/agent-stats/period";
+import { usePeriodUrl } from "../../../lib/agent-stats/usePeriodUrl";
 import { ApiError } from "../../../lib/api";
 import { VALID_TABS } from "./constants";
+import { agentHref } from "./helpers";
 
 export default function AgentEditorPage() {
   const params = useParams<{ id: string }>();
@@ -24,11 +30,44 @@ export default function AgentEditorPage() {
   const update = useUpdateAgent();
 
   const tab = VALID_TABS.includes(search.get("tab") ?? "") ? search.get("tab")! : "config";
+  // A run's trace drawer opens on this page (?trace=<run id>) and closes with the tab it was opened from.
+  const traceRunId = search.get("trace");
+  const setTrace = (runId: string | null) => {
+    const sp = new URLSearchParams(search.toString());
+    if (runId) sp.set("trace", runId);
+    else sp.delete("trace");
+    router.replace(`/agents/${id}?${sp.toString()}`);
+  };
   const setTab = (t: string) => {
     const sp = new URLSearchParams(search.toString());
     sp.set("tab", t);
+    sp.delete("trace");
     router.replace(`/agents/${id}?${sp.toString()}`);
   };
+
+  const statsPeriod = usePeriodUrl({ enabled: tab === "stats" });
+  const qc = useQueryClient();
+  const { refresh } = statsPeriod;
+  // The left list's 30-day figures: resolved once per mount and re-resolved on Refresh (C15, never in render).
+  const [cardPeriod, setCardPeriod] = React.useState(() => resolvePreset("30d", Date.now()));
+  // Topbar Refresh on the Stats tab only; a stable callback so the shell context doesn't churn.
+  const onRefresh = React.useCallback(() => {
+    // A refresh already running (the agent's stats or the cards) makes a repeated click a no-op.
+    if (qc.isFetching({ queryKey: agentStatsKeys.all }) > 0) return;
+    const queryKey = agentStatsKeys.forAgent(id);
+    refresh({
+      isFetching: qc.isFetching({ queryKey }) > 0,
+      refetchSame: () => void qc.refetchQueries({ queryKey }),
+    });
+    setCardPeriod(resolvePreset("30d", Date.now()));
+  }, [qc, refresh, id]);
+
+  const perf = useAgentPerformance(cardPeriod);
+  // Keep the last figures on screen while the re-resolved window loads, instead of blanking the cards.
+  const [lastPerf, setLastPerf] = React.useState(perf.data);
+  if (perf.data && perf.data !== lastPerf) setLastPerf(perf.data);
+  const shownPerf = perf.data ?? lastPerf;
+  const statsById = new Map(shownPerf?.agents.flatMap((row) => (row.agent_id ? [[row.agent_id, row] as const] : [])));
 
   const crumb = [
     { label: "Skills Lab" },
@@ -50,7 +89,7 @@ export default function AgentEditorPage() {
   }
 
   return (
-    <AppShell crumb={crumb}>
+    <AppShell crumb={crumb} onRefresh={tab === "stats" ? onRefresh : undefined}>
       <div style={{ display: "flex", height: "calc(100vh - 52px)" }}>
         {/* left: agent list */}
         <div
@@ -84,7 +123,8 @@ export default function AgentEditorPage() {
                 key={a.id}
                 ag={a}
                 active={a.id === id}
-                onClick={() => router.push(`/agents/${a.id}?tab=${tab}`)}
+                statsRow={shownPerf ? (statsById.get(a.id) ?? null) : undefined}
+                onClick={() => router.push(agentHref(a.id, search.toString()))}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
               />
             ))}
@@ -113,11 +153,21 @@ export default function AgentEditorPage() {
               </div>
             </div>
             <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-              <AgentEditor agent={agent} tab={tab} onTab={setTab} />
+              <AgentEditor
+                agent={agent}
+                tab={tab}
+                onTab={setTab}
+                statsPeriod={statsPeriod}
+                onOpenTrace={setTrace}
+                onAgentNotFound={() => refetch()}
+              />
             </div>
           </div>
         )}
       </div>
+      {agent && traceRunId && (
+        <RunTraceDrawer runId={traceRunId} agentName={agent.name} onClose={() => setTrace(null)} />
+      )}
     </AppShell>
   );
 }

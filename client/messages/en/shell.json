@@ -10,6 +10,9 @@
     "themeAppearanceGroup": "Appearance",
     "globalGroup": "GLOBAL"
   },
+  "topbar": {
+    "refresh": "Refresh"
+  },
   "theme": {
     "dark": "dark",
     "light": "light"

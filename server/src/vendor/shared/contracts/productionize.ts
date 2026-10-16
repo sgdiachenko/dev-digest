@@ -7,7 +7,7 @@ import { Provider } from './knowledge.js';
  *
  * NEW file (A6 owns it; the barrel re-exports it). Covers:
  *   - PluginBundle / InstalledPlugin   POST /plugins/export, /plugins/import, GET /plugins
- *   - AgentPerf / AgentPerfRow         GET /agents/performance
+ *   - AgentPerf / AgentPerfRow         GET /agents/performance (+ StatsPeriod, LastRun, RunsTrendPoint)
  *   - Digest / DigestSettings          Weekly Digest (settings + cron-built rows)
  *
  * Nothing here mutates an existing contract — these sit alongside A2's
@@ -136,33 +136,87 @@ export type PluginImportResult = z.infer<typeof PluginImportResult>;
 // Agent Performance  (GET /agents/performance)
 // ---------------------------------------------------------------------------
 
-/** Per-agent performance row (aggregate across agent_runs + findings). */
-export const AgentPerfRow = z.object({
-  agent_id: z.string(),
-  agent_name: z.string(),
-  provider: z.string().nullable(),
-  model: z.string().nullable(),
+/** The selected period and the equally long period right before it (ISO-8601). */
+export const StatsPeriod = z.object({
+  from: z.string(),
+  to: z.string(),
+  previous_from: z.string(),
+  previous_to: z.string(),
+});
+export type StatsPeriod = z.infer<typeof StatsPeriod>;
+
+/** One of an agent's most recent counted runs (oldest first in `last_runs`). */
+export const LastRun = z.object({
+  run_id: z.string(),
+  ran_at: z.string(),
+  duration_ms: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+});
+export type LastRun = z.infer<typeof LastRun>;
+
+/** Runs counted in one time bucket (sparkline / trend). */
+export const RunsTrendPoint = z.object({
+  bucket_start: z.string(),
   runs: z.number().int(),
-  findings_total: z.number().int(),
-  accepted: z.number().int(),
-  dismissed: z.number().int(),
-  /** headline quality signal: accepted / (accepted + dismissed), 0..1 or null. */
-  accept_rate: z.number().nullable(),
-  dismiss_rate: z.number().nullable(),
-  avg_findings_per_run: z.number().nullable(),
+});
+export type RunsTrendPoint = z.infer<typeof RunsTrendPoint>;
+
+/**
+ * Per-agent performance row. `agent_id` / `agent_name` / `enabled` are null on
+ * the single "Deleted agent" row (runs whose agent no longer exists).
+ */
+export const AgentPerfRow = z.object({
+  agent_id: z.string().nullable(),
+  agent_name: z.string().nullable(),
+  enabled: z.boolean().nullable(),
+  runs: z.number().int(),
+  failed: z.number().int(),
+  cancelled: z.number().int(),
   total_cost_usd: z.number().nullable(),
   avg_cost_usd: z.number().nullable(),
-  avg_latency_ms: z.number().nullable(),
+  unknown_cost_runs: z.number().int(),
+  avg_duration_ms: z.number().nullable(),
+  accepted: z.number().int(),
+  dismissed: z.number().int(),
+  pending: z.number().int(),
+  /** accepted / (accepted + dismissed), 0..1 or null. */
+  accept_rate: z.number().nullable(),
+  small_sample: z.boolean(),
+  previous_accept_rate: z.number().nullable(),
+  previous_small_sample: z.boolean(),
   last_run_at: z.string().nullable(),
-  findings_by_severity: z.object({
-    CRITICAL: z.number().int(),
-    WARNING: z.number().int(),
-    SUGGESTION: z.number().int(),
-  }),
-  /** recent findings-per-run trend (oldest→newest) for the sparkline. */
-  trend: z.array(z.number()),
+  /** At most 5, oldest first. */
+  last_runs: z.array(LastRun).max(5),
 });
 export type AgentPerfRow = z.infer<typeof AgentPerfRow>;
+
+/** The agent with the most counted runs in the period. */
+export const MostActiveAgent = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  runs: z.number().int(),
+  accept_rate: z.number().nullable(),
+});
+export type MostActiveAgent = z.infer<typeof MostActiveAgent>;
+
+export const AgentPerfSummary = z.object({
+  runs: z.number().int(),
+  failed: z.number().int(),
+  cancelled: z.number().int(),
+  in_progress: z.number().int(),
+  total_cost_usd: z.number().nullable(),
+  unknown_cost_runs: z.number().int(),
+  previous_total_cost_usd: z.number().nullable(),
+  accepted: z.number().int(),
+  dismissed: z.number().int(),
+  pending: z.number().int(),
+  avg_accept_rate: z.number().nullable(),
+  small_sample: z.boolean(),
+  most_active: MostActiveAgent.nullable(),
+  agent_count: z.number().int(),
+  workspace_last_run_at: z.string().nullable(),
+});
+export type AgentPerfSummary = z.infer<typeof AgentPerfSummary>;
 
 /** A donut segment {label,value,color}. */
 export const PerfCostSegment = z.object({
@@ -171,18 +225,30 @@ export const PerfCostSegment = z.object({
 });
 export type PerfCostSegment = z.infer<typeof PerfCostSegment>;
 
+/** Cost of one agent (null id/name = the Deleted agent row). */
+export const CostByAgentEntry = z.object({
+  agent_id: z.string().nullable(),
+  agent_name: z.string().nullable(),
+  cost_usd: z.number(),
+});
+export type CostByAgentEntry = z.infer<typeof CostByAgentEntry>;
+
+/** Cost of one model (null model = runs with no recorded model). */
+export const CostByModelEntry = z.object({
+  model: z.string().nullable(),
+  cost_usd: z.number(),
+});
+export type CostByModelEntry = z.infer<typeof CostByModelEntry>;
+
 /** Response of GET /agents/performance. */
 export const AgentPerf = z.object({
-  summary: z.object({
-    runs: z.number().int(),
-    total_cost_usd: z.number().nullable(),
-    avg_accept_rate: z.number().nullable(),
-    most_active_agent: z.string().nullable(),
-  }),
+  period: StatsPeriod,
+  as_of: z.string(),
+  summary: AgentPerfSummary,
   agents: z.array(AgentPerfRow),
-  /** cost split by agent and by model (for the two cost-breakdown donuts). */
-  cost_by_agent: z.array(PerfCostSegment),
-  cost_by_model: z.array(PerfCostSegment),
+  cost_by_agent: z.array(CostByAgentEntry),
+  cost_by_model: z.array(CostByModelEntry),
+  runs_trend: z.array(RunsTrendPoint),
 });
 export type AgentPerf = z.infer<typeof AgentPerf>;
 

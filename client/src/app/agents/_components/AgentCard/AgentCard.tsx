@@ -1,13 +1,14 @@
-/* AgentCard — model chip, skills count, enabled toggle. Stats are an A5 mount;
-   we render the provider/model + skill count here. */
+/* AgentCard — model chip, skills count, enabled toggle and, once the 30-day performance
+   row is known, a stats line. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle } from "@devdigest/ui";
-import type { Agent } from "@devdigest/shared";
+import type { Agent, AgentPerfRow } from "@devdigest/shared";
 import { useDeleteAgent } from "../../../../lib/hooks/agents";
 import { ConfirmDeleteModal } from "../../../../components/ConfirmDeleteModal";
+import { StatsLine } from "./_components/StatsLine";
 import { modelColor } from "./helpers";
 import { s } from "./styles";
 
@@ -15,12 +16,15 @@ export function AgentCard({
   ag,
   active,
   skillCount,
+  statsRow,
   onClick,
   onToggle,
 }: {
   ag: Agent;
   active?: boolean;
   skillCount?: number;
+  /** The agent's 30-day dashboard row; the stats line shows only for an object (not while loading / on error). */
+  statsRow?: AgentPerfRow | null;
   onClick?: () => void;
   onToggle?: (enabled: boolean) => void;
 }) {
@@ -84,6 +88,7 @@ export function AgentCard({
           </Badge>
         )}
       </div>
+      {statsRow != null && <StatsLine row={statsRow} />}
     </div>
     </>
   );

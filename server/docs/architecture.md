@@ -246,6 +246,76 @@ Design records: [facts spec](../../docs/specs/2026-10-01-onboarding-tour-facts.m
   -> 4); no rule forbids it and `intent/` and `project-context/` do the same (F7,
   accepted). `test/onboarding.it.test.ts` and `test/onboarding-narrative.it.test.ts` were type-checked but never run.
 
+## Agent Performance (`modules/agent-stats/`)
+
+Read-only module behind `GET /agents/performance`, `GET /agents/:id/stats` and
+`GET /agents/:id/stats/runs` (shapes:
+[api-contracts](api-contracts.md#agent-performance)).
+
+- **Layers.** `routes.ts` validates the querystring with Zod and makes one
+  service call (`routes.ts:36-70`). `AgentStatsService` takes only ports
+  (`AgentStatsStore`, a logger, a clock) and writes one `info` log line per call
+  with ids and counts, never PR or finding text (`service.ts:1-7,60-76`).
+  `AgentStatsRepository` is the only file that names Drizzle.
+- **One snapshot per response.** Each repository method opens one
+  `repeatable read`, `read only` transaction, so a response never mixes two
+  states of the data (`repository.ts:26,39,127,176`). Every table read is
+  scoped by `workspace_id`.
+- **Where figures are decided.** SQL selects run facts and per-run decision
+  counts; JavaScript (`helpers.ts`) does the folding, grouping and bucketing.
+  The service passes ISO strings in and `Date`s into the store.
+- **Wiring.** `container.agentStatsService()` memoizes the service over
+  `overrides.agentStatsStore ?? agentStatsRepo` (`container.ts:432-443`); the
+  module is registered in `modules/index.ts:22,58`.
+- **Cost-fold rule.** Costs are folded in JavaScript from per-run values, never
+  summed in SQL, so totals are exact IEEE doubles; `cost_by_agent` and
+  `cost_by_model` entries add up to the total, with the last `cost_by_model`
+  entry taking `total - fold(others)` only when that residual is a finite number
+  above 0 (`helpers.ts:83-101,225-256`).
+- **Index migration.** `0022_perfect_kylun.sql` adds `reviews(run_id)` and
+  `findings(review_id)` indexes (declared in `db/schema/reviews.ts`) for the
+  decision joins. It is never applied on boot.
+- **Demo data.** `db/seed-agent-stats.ts` adds 18 demo runs on PR #479; it is
+  called only from the `pnpm db:seed` CLI block, not from `seed()`, because the
+  `*.it.test.ts` files use `seed(db)` as a fixture and some assert exact figures.
+
+### Shared stats rules (`modules/_shared/stats-rules.ts`)
+
+The rules both stats modules obey live in one pure file, so `agent-stats` and
+`skills` give the same numbers for the same fixed period without importing each
+other (`_shared` is exempt from the no-sideways-imports rule):
+`COUNTED_STATUSES`, `REVIEW_RUN_SOURCE = 'local'`, `periodIssue`
+(order, not in the future, at most 367 days), `acceptFigures` (small sample
+under 10 decided), `wholePercent`, and `isRecordedSkillList`. Nothing writes
+`agent_runs.source = 'ci'` today (CI runs live in `ci_runs`), so the `local`
+filter is defensive.
+
+### Skill stats (`modules/skills/`)
+
+`SkillStatsService` (`stats-service.ts`) is built in `skills/routes.ts` next to
+`SkillsService`, which receives it for the `GET /skills` list. It does not
+import `agent-stats/*`. `SkillsRepository.statsFacts` reads, in one
+`repeatable read` read-only transaction: links, every counted run of the
+workspace with only `trace->'config'->'skills'` leaving the database, and
+per-run decision counts. `computeSkillStats` is pure.
+
+- **Recorded skill list rule.** A run's list counts only when it is a JSON
+  array of strings; the check is in JavaScript (`isRecordedSkillList`), so a
+  malformed trace never fails a read. Ids are compared as text.
+- **`SkillRunIndex`.** For a list of skills, `indexSkillRuns` partitions the
+  facts once (findings by run, window runs by agent and by skill, `lastUsed`
+  per skill), so each skill reads only its own runs. `computeSkillStats` throws
+  if the index was built for different facts or another window
+  (`skills/helpers.ts:269-340`).
+- **Cost of the all-time scan.** `last_used_at` needs runs at any time, so each
+  request reads the skills path of every counted run; the perf test measures it
+  and a narrower scan is the named fallback (see
+  [api-contracts](api-contracts.md#not-verified-4)).
+
+Do not confuse these `skills` (rows of the `skills` table, linked through
+`agent_skills`) with the `.claude/skills/*` folders of the Claude Code harness;
+they are unrelated systems.
+
 ## Intent Layer pre-work
 
 `ReviewRunExecutor.executeRuns` derives the PR's intent as shared pre-work,

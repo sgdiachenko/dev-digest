@@ -1,0 +1,1792 @@
+# Implementation Plan: Agent Performance dashboard, agent Stats tab, agent-card stats line and skill Stats tab
+
+## Goal & scope
+- **In scope** — two approved specs, every active AC/EC/NFR of each:
+  - `docs/specs/2026-10-15-agent-performance-dashboard.md` (the **agent spec**; bare IDs such as `AC-17` refer to it);
+  - `docs/specs/2026-10-15-skill-stats-tab.md` (the **skill spec**; IDs written as `skill AC-n`).
+  - **Server read API:** `GET /agents/performance`, `GET /agents/:id/stats` and `GET /agents/:id/stats/runs`, in a new `agent-stats` module.
+  - **Server skill stats:** `GET /skills/:id/stats` (optional `from`/`to`) and the `stats` of every `GET /skills` row recomputed by the agent rules (W9).
+  - **Contracts:**
+    - the reserved `AgentPerf`/`AgentPerfRow`/`AgentStats` contracts are replaced, and `StatsPeriod`, `LastRun` and `AgentRunHistoryPage` are added, in both `vendor/shared` copies;
+    - `SkillStats` changes in all three `knowledge.ts` copies (server, client, mcp-server). This is an intentional, recorded semantic break (skill spec *Contracts*); `findings_30d` stays as a `@deprecated` alias.
+  - **Shared server rules:** one rules module, `server/src/modules/_shared/stats-rules.ts`, used by `agent-stats` and `skills`.
+  - **DB:** one index-only migration.
+  - **Demo data:** seeded demo runs on a new demo PR #479. They record only the skills each agent is linked to (REC13).
+  - **Client:**
+    - sidebar item, `g m` shortcut and topbar Refresh;
+    - the `/agent-performance` screen;
+    - the agent Stats tab;
+    - the 30-day line on every `AgentCard`;
+    - the skill Stats tab rebuilt on the shared period, accept and state rules;
+    - the skill rail-card footer.
+- **Out of scope:**
+  - **Agent-spec struck IDs** (dropped per Q23): US-6, AC-29, AC-58–AC-97, AC-105, AC-116, AC-137, AC-158, EC-34–EC-41, NFR-4, NFR-9, NFR-18.
+  - **Agent-spec Non-goals:**
+    - Most-pulled memory; CI and eval runs; billing reconciliation; per-run cost basis; recording failed-run cost (Q-6 (a)); polling; repository filter.
+    - Any change to `GET /runs/estimates`, the PR list, timeline, trace drawer or multi-agent cost columns, or `client/src/lib/format.ts`. The skill Stats tab is no longer excluded: the skill spec brings it in (W9). The agent spec itself is neither edited nor superseded (skill spec *Inputs and provenance*, C-1).
+    - CSV export; editing the multi-agent spec.
+    - `reviewer-core/` and `agent-runner/` are untouched.
+  - **Skill-spec Non-goals:**
+    - attributing a finding to the skill that caused it; any change to what a run records;
+    - on the skill tab: previous-period comparisons, a runs sparkline, Findings by severity, Run history, per-agent figures in the agents panel, any cost figure or cost label;
+    - a skill Evals tab, the "Run on evals" button, or other skill-editor header/tab changes;
+    - an "in progress" count; CI and eval runs; polling; a repository filter; export;
+    - removing `findings_30d`; a new e2e flow.
+  - **AC-186 / AC-187 e2e flow files** (`e2e/specs/*.flow.json`): handed to `test-writer` (your pass-2 answer). S3 provides their data. See *Review handoff → Tests*.
+  - **Docs:** go to `doc-writer` after verification.
+  - **Rejected RECs:** none.
+
+## Decisions
+- **Agent spec:** `2026-10-15-agent-performance-dashboard` (approved, commit 50ef57a) — `docs/specs/2026-10-15-agent-performance-dashboard.md`.
+- **Skill spec:** `2026-10-15-skill-stats-tab` (approved, commit 54a5660) — `docs/specs/2026-10-15-skill-stats-tab.md`. A separate spec, delivered in the same plan and the same `/run-plan` run (W9).
+- **Mode:** multi-agent (see below).
+
+| REC | Decision | Steps | What it means |
+|---|---|---|---|
+| REC1 | accepted | S2 | `reviews(run_id)` + `findings(review_id)` indexes, one generated migration |
+| REC2 | accepted | S5, verified in S8 | Exact cost totals by construction. "Exact" means an IEEE double, never rounded to cents. |
+| REC3 | accepted | S5–S7 | New `server/src/modules/agent-stats/` module |
+| REC4 | accepted | S6 | Skills read via `trace->'config'->'skills'` only |
+| REC5 | accepted | S5 (predicate), S7 (schema + no-DB tests) | Whole period validated in the Zod querystring |
+| REC6 | accepted | S4; used by S16, S21, S28 | `AppShell` `onRefresh` prop; Topbar label through `ctx.labelFor` |
+| REC7 | accepted | S12 | Own `ShareDonut` and `AcceptRing` |
+| REC8 | accepted | S9, S11 | `Intl` formatters |
+| REC9 | accepted | S4 (`shell.json`), S10 | Reuse `agentPerformance.json`; `agents.json` already has `editor.tabs.stats` |
+| REC10 | accepted | S12 | Inline custom range |
+| REC11 | accepted | S3 | Demo PR #479, fixed UUIDs, idempotent |
+| REC12 | accepted | S20, S21 | Stats line in both `AgentCard` placements |
+| REC13 | accepted | S3, T3, T8, AC-186 handoff | Demo traces record only linked skills; General Reviewer gets 2 demo runs, so `pr-quality-rubric` has data |
+| REC14 | accepted | S5 (creates), S23 (uses) | Shared rules in `server/src/modules/_shared/stats-rules.ts` |
+| REC15 | accepted | S5, S6 (C8), S23, S24 | "Recorded skill list" = a JSON array of strings, decided in JS by `isRecordedSkillList` |
+| REC16 | accepted | S23–S25 | Skill stats rebuilt in one consistent read, path-only trace reads, per-skill JS aggregation |
+| REC17 | accepted | S22 | `SkillStats` edited in W9 (all three `knowledge.ts` copies), not in W1 |
+| REC18 | accepted | S28 | Skill tab cards built locally from W6 parts; labels in catalog case, so e2e `08-skills` needs no edit |
+| REC19 | accepted | S28 | Skill period state lifted into `SkillsView`; Refresh; the rail link keeps the period |
+| REC20 | accepted | S8 (creates), S26 (uses) | Shared perf dataset builder `server/test/helpers/stats-dataset.ts` |
+
+- **Agent-spec Q-6–Q-9:** the `[proposed]` defaults (Q-6 (a), Q-7 as written, Q-8 all, Q-9 (a)).
+- **Skill-spec Q-1:** the `[proposed]` defaults, as written:
+  - the `skill_runs` field (skill AC-6);
+  - skill AC-34's condition "linked agents, no skill run **and** an empty pull base";
+  - "not used yet" when `last_used_at` is null;
+  - the skill AC-25 panel text;
+  - `period` as `{ from, to }`, without previous-period bounds.
+- **AC-149 copy:** the AC is planned as written. The catalog note may add that failed and cancelled runs have no skill data (your answer).
+- **Seed entry point (S3, inference):**
+  - The demo runs are added by the `pnpm db:seed` CLI entry (`server/src/db/seed.ts` CLI block), not inside `seed()`.
+  - Reason: 23 `*.it.test.ts` files call `seed(db)` as their fixture (`git grep -l "seed(" server/test/*.it.test.ts`). Some of them assert exact skill stats and run estimates (`server/test/skill-stats.it.test.ts:137-139`, `server/test/multi-agent.it.test.ts:291-313`).
+  - `scripts/dev.sh:88`, `scripts/e2e.sh:128` and `.github/workflows/e2e-web.yml:71` all run the CLI, so AC-183 holds for every stack that serves the UI.
+- **Amended after the first approval** (your W9 answers): S3, T3, T8 and the AC-186 handoff (REC13); S5 and T5 (REC14, REC15); S6 and C8 (REC15); S8 (REC20). Wave assignments are unchanged.
+
+## Execution mode
+multi-agent — 3 modules plus the mcp-server contract copy, ~150 active agent ACs and 40 skill ACs. The slices are independent once contracts and the client groundwork exist.
+
+Waves follow your answers:
+- **Wave 1:** contracts + DB + seed + shell.
+- **Wave 2:** server module + client groundwork.
+- **Wave 3:** the agent screens (W7, W8) and the skill Stats tab package (W9).
+
+W9 is a single package, sequential inside: contract → server → client. Its client part consumes a contract that must land together with its server producer (REC17), so splitting W9 would need a wave 4 and save nothing.
+
+## Work packages
+| WP | Steps | owns | depends-on | wave |
+|---|---|---|---|---|
+| W1 — contracts | S1 | `server/src/vendor/shared/contracts/productionize.ts`, `server/src/vendor/shared/contracts/observability.ts`, `client/src/vendor/shared/contracts/productionize.ts`, `client/src/vendor/shared/contracts/observability.ts`, `server/test/agent-stats-contracts.test.ts` | — | 1 |
+| W2 — DB indexes | S2 | `server/src/db/schema/reviews.ts`, `server/src/db/migrations/**` | — | 1 |
+| W3 — demo seed | S3 | `server/src/db/seed.ts`, `server/src/db/seed-agent-stats.ts`, `server/test/seed-agent-stats.it.test.ts` (unchanged paths; data amended by REC13) | — | 1 |
+| W4 — shell | S4 | `client/src/vendor/ui/nav.ts`, `client/src/vendor/ui/shell/Topbar.tsx`, `client/src/components/app-shell/**`, `client/messages/en/shell.json` | — | 1 |
+| W5 — server agent-stats | S5, S6, S7, S8 | `server/src/modules/agent-stats/**`, `server/src/modules/_shared/stats-rules.ts`, `server/src/modules/index.ts`, `server/src/platform/container.ts`, `server/test/agent-stats-helpers.test.ts`, `server/test/agent-stats-service.test.ts`, `server/test/agent-stats-routes.test.ts`, `server/test/helpers/agent-stats-fakes.ts`, `server/test/helpers/stats-dataset.ts`, `server/test/agent-stats.it.test.ts`, `server/test/agent-stats-perf.it.test.ts` | W1, W2, W3 | 2 |
+| W6 — client groundwork | S9, S10, S11, S12 | `client/src/lib/agent-stats/**`, `client/src/lib/hooks/agent-stats.ts`, `client/src/lib/hooks/agent-stats.test.tsx`, `client/src/lib/hooks/index.ts`, `client/src/components/agent-stats/**`, `client/messages/en/agentPerformance.json` | W1 | 2 |
+| W7 — dashboard screen | S13, S14, S15, S16 | `client/src/app/agent-performance/**` | W1, W4, W6 | 3 |
+| W8 — agent page, Stats tab, cards | S17, S18, S19, S20, S21 | `client/src/app/agents/**` | W1, W4, W6 | 3 |
+| W9 — skill Stats tab | S22, S23, S24, S25, S26, S27, S28, S29 | `server/src/vendor/shared/contracts/knowledge.ts`, `client/src/vendor/shared/contracts/knowledge.ts`, `mcp-server/src/vendor/shared/contracts/knowledge.ts`, `server/src/modules/skills/{helpers,repository,service,routes,constants,types,stats-service}.ts`, `server/test/skill-stats-contracts.test.ts`, `server/test/skill-stats.test.ts`, `server/test/skill-stats-routes.test.ts`, `server/test/skill-stats-service.test.ts`, `server/test/skill-stats.it.test.ts`, `server/test/skill-stats-perf.it.test.ts`, `client/src/lib/hooks/skills.ts`, `client/src/lib/hooks/skills.test.tsx`, `client/src/app/skills/**`, `client/messages/en/skills.json` | W3 (data only), W4, W5, W6 | 3 |
+- **Overlap check:** no path is owned by two packages in the same wave.
+  - Wave 1: contracts / `db/schema`+`migrations` / seed files / client shell are disjoint.
+  - Wave 2: `server/**` (W5, including the single file `modules/_shared/stats-rules.ts` and `test/helpers/stats-dataset.ts`) and `client/**` (W6) are disjoint.
+  - Wave 3:
+    - W7 `client/src/app/agent-performance/**`, W8 `client/src/app/agents/**` and W9 (`client/src/app/skills/**`, `client/src/lib/hooks/skills.ts` + its test, `client/messages/en/skills.json`, the three `knowledge.ts` copies, `server/src/modules/skills/*`, `server/test/skill-stats*`) are pairwise disjoint.
+    - W9 touches neither `client/src/lib/hooks/index.ts` (W6, which already re-exports `./skills`) nor `server/src/platform/container.ts` (W5).
+  - Messages: W7 and W8 edit no `messages/*.json`; S10 writes the whole `agentPerformance` catalog. W9 edits only `client/messages/en/skills.json`.
+- **Dependency check:** every `depends-on` is in an earlier wave.
+
+## Context
+**Agent spec.** Agent owners can't compare agents' runs, cost, speed or accept rate. No aggregate exists, the agent editor has no Stats tab (`client/src/app/agents/[id]/_components/AgentEditor/constants.ts:10-18`), and the two reserved contracts have no consumer (`git grep AgentPerf\|AgentStats` hits only the `vendor/shared` copies). The spec fixes the rules, and this plan only builds them. There was no brainstorm, so no options were rejected.
+
+**Skill spec.** The existing skill Stats tab follows its own rules:
+- findings come from reviews of the agents linked now, by review date over a fixed 30 days (`server/src/modules/skills/repository.ts:343-360`, `constants.ts:15-16`);
+- pull frequency counts every run at any time, whole traces loaded (`repository.ts:362-366`);
+- the tab has no period, no denominators and no small-sample marker (`StatsTab.tsx:37-40`);
+- the rail footer is hard-coded English ("1 agents", `client/src/app/skills/_components/SkillCard/helpers.ts:10-14`).
+
+W9 recomputes it with the agent spec's rules. The two specs must give the same numbers for the same fixed period (skill AC-13 and AC-14). W5 and W9 therefore share one rules module (REC14) and one "recorded skill list" predicate (REC15).
+
+INSIGHTS entries that shaped the plan:
+- `server/INSIGHTS.md:23` — a summed cost stays `null`, never 0 → C6.
+- `server/INSIGHTS.md:27` — the PR list uses the latest run round per PR → demo PR #479 (REC11).
+- `server/INSIGHTS.md:29` — `config.skills` is recorded only since L02, and the failure path has none (`server/src/modules/reviews/run-executor.ts:741-748`) → AC-32 denominators; skill AC-3, AC-20.
+- `server/INSIGHTS.md:33` — `knowledge.ts` is mirrored alone into mcp-server → `SkillStats.period` is declared inline (C25).
+- `server/INSIGHTS.md:39` — run-trace literals must match the contract → seeded traces typed as `RunTrace` (C12).
+- `server/INSIGHTS.md:41` — `skills` integration tests need a per-test unique skill name → T32.
+- `server/INSIGHTS.md:47` — drizzle-kit prompts only on add+drop; S2 is add-only.
+- `server/INSIGHTS.md:53` — memoize container getters → C2.
+- `server/INSIGHTS.md:55-61` — no sideways module imports, even `import type` → C1, C24, REC14.
+- `server/INSIGHTS.md:65` — `test/**` is not type-checked by `pnpm typecheck` → C11.
+- `server/INSIGHTS.md:87` — pre-existing typecheck errors when `reviewer-core/node_modules` is absent.
+- `client/INSIGHTS.md:27` — `messages/` import depth.
+- `client/INSIGHTS.md:39` — no `<letter` in messages.
+- `client/INSIGHTS.md:41` — every namespace must be in the test providers (agent and skill tests mounting the shared components).
+- `client/INSIGHTS.md:47` — `fireEvent`, no user-event.
+- `client/INSIGHTS.md:49` — `next typegen` for a new route.
+- `client/INSIGHTS.md:53,65` — `TABS` and `VALID_TABS` change together; the skill editor's `?tab=` must keep working with period params (skill AC-15).
+- `client/INSIGHTS.md:55` — Modal has no focus handling → REC10.
+- `client/INSIGHTS.md:67` — `beforeEach` must use a block body.
+- `e2e/INSIGHTS.md:21,23` — e2e matches rendered uppercase text and must wait before a click (handoff; REC18 keeps `08-skills` labels as rendered today).
+
+Design:
+- `docs/designs/agent-performance/screenshots/agent-performance-dashboard.png` (S13–S16)
+- `docs/designs/agent-performance/screenshots/agent-performance-row-expanded.png` (S14)
+- `docs/designs/agent-performance/screenshots/agent-stats-tab.png` (S17, S18, S20)
+- `docs/designs/agent-performance/screenshots/skill-stats-tab.png` (S28, S29; pattern for S18)
+- Prototype: `docs/designs/agent-performance/jsx/screen_agentperf.jsx`, `screen_agents.jsx`, `charts.jsx`, `primitives.jsx`, `kit2.jsx`, `chrome.jsx`, `data2.jsx`.
+  - Its mock values contain C-2 (by-agent sum ≠ total) and C-3 (plain-mean accept rate). Never copy its numbers or its accept rule.
+- Skill prototype: `docs/designs/eval-pipeline/jsx/screen_skills.jsx`:
+  - `:19-38` — card footer, hidden with no linked agent; its 60% threshold is overridden by the accept scale;
+  - `:140-157` — Stats tab layout;
+  - `:141` — "No usage yet".
+  - `docs/designs/eval-pipeline/jsx/data.jsx:251-264` is mock data only.
+
+## Affected modules
+| Package | Lanes (routing.md) | Package manager | Checks |
+|---|---|---|---|
+| server | 1, 2, 4, 5, 6, 7, 8, 13, 14, 17, 18, 19, 20 | pnpm | `pnpm -C server lint` · `pnpm -C server typecheck` · `pnpm -C server arch:check` · `pnpm -C server exec vitest run --exclude '**/*.it.test.ts'` · not run by implementer: `pnpm -C server exec vitest run .it.test` (CI `server-integration.yml`) |
+| client | 1, 2, 9, 10, 11, 12, 13, 17–20 (contracts copy) | pnpm | `pnpm -C client lint` · `pnpm -C client typecheck` (run `pnpm -C client exec next typegen` first if `.next/` is stale) · `pnpm -C client test` |
+| mcp-server | 1, 21 (`mcp-server/src/**`: `zod`, `typescript-expert`, `security`) — only the vendored `knowledge.ts` copy (W9) | pnpm | `pnpm -C mcp-server typecheck` · `pnpm -C mcp-server test` |
+| shared contracts | 2 | — | `./scripts/check-shared-sync.sh` (mcp-server mirrors `knowledge.ts` but neither `productionize.ts` nor `observability.ts`) · `server/test/eval-contract-parity.test.ts` (three `knowledge.ts` copies byte-identical) |
+| e2e | 15 | npm | `npm --prefix e2e run typecheck`. No e2e file changes in this plan. `./scripts/e2e.sh` is not run by implementers. |
+
+## Constraints
+**Server**
+- **C1 — onion layering.**
+  - `agent-stats/service.ts` takes ports only: `AgentStatsStore`, `AgentStatsLogger`, `now: () => Date`.
+  - Never the `Container`, `db`, `drizzle-orm`, or the LLM / GitHub / secrets ports.
+  - Only `repository.ts` names persistence.
+  - `routes.ts` = Zod schemas + `getContext` + one service call.
+  - No import from another module's `service|routes|repository`, not even `import type`; declare local structural types.
+  - Cross-module rules come only from `server/src/modules/_shared/stats-rules.ts` (REC14).
+  - Sources: `onion-architecture`; `server/.dependency-cruiser.cjs` rules `service-names-no-persistence`, `service-takes-ports-not-container`, `no-sideways-module-imports` (`:100-110`, `_shared` exempt), `route-is-a-transport-adapter`; `server/INSIGHTS.md:55-61`.
+- **C2 — container.**
+  - Memoized getters (`this._x ??= new X(...)`).
+  - Add a test override `agentStatsStore?: AgentStatsStore` to `ContainerOverrides`, mirroring `ciStore` (`server/src/platform/container.ts:81-83,429-431`).
+  - Logger = the existing `evalLogger` getter (`server/src/platform/container.ts:391-396`).
+  - W9 needs no container change: the skills services are built in `skills/routes.ts` as today (`:82`).
+  - Sources: `onion-architecture` container.md; `server/INSIGHTS.md:53`.
+- **C3 — routes.**
+  - Every route declares `params` / `querystring` / `response` Zod schemas, so invalid input → 422 before the handler.
+  - Never hand-roll `.parse()`.
+  - Timestamps: `z.string().datetime({ offset: true })` (`server/src/modules/eval/routes.ts:41`).
+  - `IdParams` from `server/src/modules/_shared/schemas.ts:11`.
+  - Skill stats: `from`/`to` are optional as a pair; exactly one given → 422; both given → `periodIssue`.
+  - Sources: `server/AGENTS.md` (Non-default conventions); `fastify-best-practices`; `zod` (`parse-validate-early`); agent AC-35–AC-37; skill AC-9.
+- **C4 — read-only and no outbound calls.**
+  - The three agent endpoints and `GET /skills/:id/stats` / `GET /skills` only read Postgres: no insert/update/delete, no `executeRuns`, no `fetch`.
+  - The client sends only GET requests.
+  - Sources: agent AC-40, AC-41, NFR-5; skill AC-12, AC-17, NFR-4.
+- **C5 — one consistent read.**
+  - All queries of one response run in one `db.transaction(fn, { isolationLevel: 'repeatable read', accessMode: 'read only' })`. This holds for every agent-stats response and every skill stats object (one transaction per `GET /skills` too).
+  - Sources: agent NFR-8; skill NFR-6; `server/node_modules/drizzle-orm/pg-core/session.d.ts:24-25`.
+- **C6 — cost arithmetic (REC2).**
+  - No SQL `sum()` / `avg()` on `cost_usd`.
+  - Costs are added in JS by one helper:
+    - row total = left fold from 0 over the row's known costs, ordered by run id;
+    - summary total = fold of row totals in response row order;
+    - `cost_by_agent` amounts = row totals > 0, in row order;
+    - `cost_by_model` = per-model folds, sorted by amount descending, with the last entry set to `total − fold(others)`.
+  - A null cost never becomes 0.
+  - Sources: AC-6, AC-7, AC-18, AC-25, AC-26; `server/INSIGHTS.md:23`.
+- **C7 — SQL safety and scoping.**
+  - Only drizzle builders or the `sql` template with bound parameters; never string-concatenated input.
+  - Every query filters on workspace: `agent_runs.workspace_id`, `reviews.workspace_id`, `agents.workspace_id`, `skills.workspace_id`.
+  - Skill links come from `agent_skills` joined to `agents` of the workspace.
+  - Counted runs also require `agent_runs.source = 'local'` (Q5, inference) — the shared constant from C22.
+  - Sources: `security` A01/A05; both specs' *Untrusted inputs*; agent NFR-10; skill NFR-7.
+- **C8 — traces (REC4, REC15).**
+  - Never select the whole `run_traces.trace`; it holds prompt, raw output and log (`run-executor.ts:427-449`).
+  - Select only `trace->'config'->'skills'` per counted run (LEFT JOIN `run_traces`).
+  - Whether a run has skill data is decided in JS by `isRecordedSkillList(value)` from `_shared/stats-rules.ts`: a JSON array whose elements are all strings. Anything else (absent, null, an object, an array with a non-string) is "no skill data" and never fails the read.
+  - Never expand the list in SQL (`jsonb_array_elements_text`).
+  - Skill ids taken from traces are compared as text (`sk.id::text = ANY($ids)`), never cast to `uuid`, so a malformed id can't raise a 5xx.
+  - Sources: REC4, REC15; agent NFR-2; skill *Terms* (Recorded skill list), EC-27, NFR-6.
+- **C9 — contracts.**
+  - Wire fields `snake_case`; PascalCase Zod const + same-name `z.infer` type.
+  - Server and client copies byte-identical; run `./scripts/check-shared-sync.sh`.
+  - `knowledge.ts` is also byte-identical in mcp-server (`server/test/eval-contract-parity.test.ts:15-19`) and must not import `productionize.ts` or `observability.ts`, which mcp-server doesn't mirror.
+  - `adapters.ts` untouched.
+  - Sources: root `AGENTS.md` (Naming, Non-default conventions); `zod` `type-export-schemas-and-types`; `server/INSIGHTS.md:33`.
+- **C10 — migrations.**
+  - Edit the Drizzle schema, then run `pnpm -C server db:generate`.
+  - Never hand-write, rename or edit a migration, and never run `db:migrate`.
+  - Source: root `AGENTS.md`; `server/AGENTS.md` (Do-not-touch).
+- **C11 — server tests.**
+  - DB-backed tests end in `.it.test.ts` and are not run by implementers.
+  - DB-free route tests use `buildApp({ config, overrides })` with `MockAuthProvider` (`server/test/ci-routes.test.ts:34-48`).
+  - Fakes implement the port type explicitly, since `test/**` is not type-checked (`server/INSIGHTS.md:65`).
+  - `skills` integration tests use per-test unique skill names (`server/INSIGHTS.md:41`).
+  - Source: `server/AGENTS.md` (Gotchas).
+- **C12 — seed.**
+  - Idempotent: a fixed-UUID guard plus `onConflictDoNothing`.
+  - Never writes rows that reference PRs #482, #483 or #484.
+  - Every trace is a `RunTrace`-typed literal that passes `RunTrace.parse`.
+  - Every recorded skill id is one of the run agent's linked skills at seed time (REC13; links at `server/src/db/seed.ts:700-703`, `:492-514`). The seed never adds or changes links.
+  - Sources: `server/INSIGHTS.md:27,39`; agent EC-26; skill EC-28; `drizzle-orm-patterns`.
+
+**Client**
+- **C13 — client layering.**
+  - Direction `vendor → lib → components → app`, enforced by `client/eslint.config.mjs:57-84`.
+  - Pure helpers and hooks in `client/src/lib/agent-stats/`; cross-screen UI in `client/src/components/agent-stats/`; screen-only UI in the route's `_components/`.
+  - The skill tab (W9) reuses the `lib/agent-stats` and `components/agent-stats` parts and keeps its own UI under `client/src/app/skills/**`.
+  - One component per folder `_components/<Name>/<Name>.tsx` + `index.ts` (+ `styles.ts` style objects, + `<Name>.test.tsx`).
+  - Only `vendor/ui/nav.ts` and the one `Topbar.tsx` label line are patched.
+  - Sources: `frontend-architecture` (One Rule, Rule of Two); root `AGENTS.md` (Naming); `client/AGENTS.md`.
+- **C14 — data fetching.**
+  - Only through `client/src/lib/hooks/agent-stats.ts` and `client/src/lib/hooks/skills.ts` → `api.get`.
+  - Query keys include `from` and `to`.
+  - No `refetchInterval`; no mutations.
+  - `retry` skips 4xx (the default is `retry: 1`, `client/src/lib/providers.tsx:27`). W9 writes the same 3-line predicate locally in `skills.ts`; S11 doesn't export its own.
+  - Sources: `client/AGENTS.md`; `react-best-practices` (Data Fetching); agent AC-41–AC-43; skill AC-17.
+- **C15 — period stability.**
+  - The URL (`range` = `1d` | `30d` | `custom`, `from`, `to` = `toISOString()`) is the source of truth on the agent screens and on the skills page.
+  - Never call `new Date()` during render to build a query key. Resolve once per mount (`useState` initializer) or in an event handler.
+  - Relative times are computed against the response's `as_of`.
+  - Sources: `react-best-practices` ("Derive, Don't Store", useEffect rules); agent AC-50, AC-51, EC-25; skill AC-15, AC-16.
+- **C16 — i18n.**
+  - Every visible string comes from `messages/en/*.json`; numbers and dates go through `Intl` with next-intl `useLocale()`.
+  - No `<` directly followed by a letter in a message (`client/INSIGHTS.md:39`).
+  - Every test provider lists every namespace the rendered tree reads (`client/INSIGHTS.md:41`). Skill tests that mount the shared components add `agentPerformance`.
+  - W7 and W8 don't edit messages; if a key is missing, stop and report it. W9 edits only `client/messages/en/skills.json`.
+  - Sources: agent NFR-20; skill NFR-12; `client/AGENTS.md` (Non-default conventions).
+- **C17 — untrusted text.**
+  - Agent, model, skill, category and repository names render as plain text only.
+  - Hrefs are built from ids/numbers (`/agents/${agent_id}`, `/repos/${repo_id}/pulls/${pr_number}`, `/skills/${id}`), and query values go through `URLSearchParams`.
+  - Sources: `security` A05; both specs' *Untrusted inputs*.
+- **C18 — client tests.**
+  - vitest + RTL; `fireEvent` (`client/INSIGHTS.md:47`); `beforeEach(() => { … })` block bodies (`client/INSIGHTS.md:67`).
+  - Mock `fetch` / next/navigation; no fixed delays.
+  - Date and time assertions are time-zone-independent: pass `timeZone: 'UTC'` to helpers or compute the expectation with the same `Intl` call.
+  - Source: `react-testing-library`.
+- **C19 — accessibility.**
+  - Sortable headers are `<button>` inside `<th aria-sort>`; expand buttons carry `aria-expanded`.
+  - Tooltips open on hover AND focus, with `role="tooltip"` + `aria-describedby`. Pattern: `client/src/components/context-attachments/TokenEstimate/TokenEstimate.tsx:8-31`.
+  - No meaning by colour alone.
+  - "Updated" and the refresh error sit in a `role="status"` `aria-live="polite"` region that doesn't move focus.
+  - Charts carry a text equivalent.
+  - Each skill "Open" link has the accessible name "Open <agent name>".
+  - Sources: agent NFR-11–NFR-14; skill NFR-8; `react-best-practices` (Accessibility).
+- **C20 — tab registries.** `TABS` and `VALID_TABS` change in the same step. Sources: `client/INSIGHTS.md:53,65`; `client/src/app/agents/[id]/constants.test.ts:6-11`. The skill editor's `VALID_TABS` already contains `stats` (`client/src/app/skills/_components/SkillsView/constants.ts:4`) and does not change.
+- **C21 — rendering hygiene.**
+  - No `{n && …}` with numbers; `key` = `agent_id ?? 'deleted'`, `run_id`, `bucket_start` or `skill_id`, never an index.
+  - Helpers live outside component bodies; components stay ≤200 lines.
+  - Source: `react-best-practices`.
+- **C22 — one rule set per layer** (shared by both specs).
+  - Counted run: statuses `done`/`failed`/`cancelled`, `source = 'local'`, `from` ≤ `ran_at` < `to`.
+  - Decisions: accepted = `accepted_at` not null; dismissed = `accepted_at` null and `dismissed_at` not null; pending = both null. Findings reach a run through `reviews.run_id` with `reviews.workspace_id`. The three `FILTER` expressions and the join are written identically in `agent-stats/repository.ts` (S6) and `skills/repository.ts` (S24); T32's skill AC-14 case pins them.
+  - Small sample < 10 decided (Q7).
+  - Accept scale on the displayed whole percent: ≥75 good, 50–74 warning, <50 poor, grey for a small sample (Q17).
+  - Whole percent = share × 100 rounded, halves up.
+  - Period limit 367 days (`MAX_PERIOD_MS`).
+  - Server rules live in `server/src/modules/_shared/stats-rules.ts` (REC14); client rules in `lib/agent-stats/accept.ts`. Never re-derive them elsewhere.
+  - Sources: agent spec *Terms*; skill spec *Terms*, AC-5, AC-13, AC-14.
+- **C23 — amount format** (Q11, Q-8, REC8).
+  - Totals and breakdowns: dollars and cents with thousands separators.
+  - Averages and per-run costs: under $1 → 2 significant digits (`$0.0013`); ≥ $1 → cents.
+  - A cost > 0 that rounds to $0.00 → `< $0.01`.
+  - `null` → `—`, never `$0.00`.
+  - Durations: seconds with one decimal (`6.2 s`).
+  - Source: agent spec *Terms*; AC-135; EC-3. (The skill tab and card show no cost.)
+
+**Skill Stats tab (W9)**
+- **C24 — skills-module layering.**
+  - `skills/stats-service.ts` `SkillStatsService(store: SkillStatsStore, log: SkillStatsLogger, now: () => Date = () => new Date())` takes ports from `skills/types.ts`.
+  - `SkillsService` receives the stats service for `list()`.
+  - The skills module imports `../_shared/stats-rules.js` and nothing from `agent-stats/*`.
+  - `SkillsRepository.forAgent` (prompt resolution for the run executor, `repository.ts:214-228`) is unchanged.
+  - Sources: `onion-architecture`; `.dependency-cruiser.cjs:100-110`; skill AC-13, AC-14.
+- **C25 — `SkillStats` compatibility (intentional semantic break).**
+  - Every old key keeps its name and type: `agent_count`, `agents`, `pull_pct`, `accept_pct`, `findings_30d`, `by_category`.
+  - `findings_30d` always equals `findings` and carries `@deprecated` ("use `findings`; removal not scheduled").
+  - A request without `from` and `to` answers 200 over the last 30 × 24 h.
+  - `period` is inline `{ from, to }`.
+  - All three `knowledge.ts` copies are identical.
+  - Sources: skill spec *Contracts*, NFR-11; `breaking-change`, `response-schema`, `deprecation-policy`.
+- **C26 — e2e label stability (REC18).**
+  - On the skill Stats tab, "Used by" and "Agents using this skill" render exactly as their catalog strings (`skills.json` `stats.usedBy`, `stats.agentsUsingThisSkill`), with no CSS `text-transform`.
+  - `e2e/specs/08-skills.flow.json` is not edited.
+  - Sources: skill AC-40; `e2e/INSIGHTS.md:21`.
+
+## Steps
+### S1 — Agent Performance contracts (both vendor copies)
+- **package:** W1
+- **files:**
+  - modify `server/src/vendor/shared/contracts/productionize.ts`:
+    - Replace the reserved block `:136-165` (`AgentPerfRow`) and `:175-187` (`AgentPerf`).
+    - Keep `PerfCostSegment` (`:167-172`); update header comment `:10`.
+    - New exports (fields exactly as the spec's *Contracts* section):
+      - `StatsPeriod {from,to,previous_from,previous_to: string}`
+      - `LastRun {run_id, ran_at: string; duration_ms: int|null; cost_usd: number|null}`
+      - `RunsTrendPoint {bucket_start: string; runs: int}`
+      - `AgentPerfRow` — every spec field; `last_runs: z.array(LastRun).max(5)`; `accept_rate` 0..1 nullable
+      - `MostActiveAgent`
+      - `AgentPerfSummary` — incl. `in_progress`, `previous_total_cost_usd`, `most_active` nullable, `agent_count`, `workspace_last_run_at`
+      - `CostByAgentEntry {agent_id|null, agent_name|null, cost_usd}`
+      - `CostByModelEntry {model|null, cost_usd}`
+      - `AgentPerf {period, as_of, summary, agents, cost_by_agent, cost_by_model, runs_trend}`
+  - modify `server/src/vendor/shared/contracts/observability.ts`:
+    - Replace `AgentStats` at `:119-150`; keep `StatPoint`; update header `:14`.
+    - Import `AgentPerfRow`, `StatsPeriod`, `RunsTrendPoint` from `./productionize.js`.
+    - New exports:
+      - `SeverityBucketCount {bucket_start, CRITICAL, WARNING, SUGGESTION}`
+      - `FindingCategoryCount {category, count}`
+      - `AgentSkillUsage {skill_id, skill_name|null, runs}`
+      - `AgentSkillsUsage {runs_with_skill_data, runs_without_skill_data, skills}`
+      - `AgentStats = AgentPerfRow.extend({ agent_id: string, agent_name: string, period, as_of, previous_avg_cost_usd, runs_trend, findings_by_severity, findings_by_category, skills_usage })`
+      - `RunHistoryStatus = z.enum(['done','failed','cancelled'])`
+      - `AgentRunHistoryItem` (spec table)
+      - `AgentRunHistoryPage {items, page: int ≥1, page_size: z.literal(20), total}`
+  - modify `client/src/vendor/shared/contracts/productionize.ts` and `client/src/vendor/shared/contracts/observability.ts` — byte-identical copies.
+  - create `server/test/agent-stats-contracts.test.ts` (T1).
+- **skills:**
+  - `zod` — lane 2
+  - `typescript-expert` — exported types, lane 13
+  - `response-schema` — lanes 18
+  - `breaking-change` — lane 17; the reserved shapes have no consumers
+- **constraints:** C9
+- **covers:** AC-22, AC-24, AC-33, AC-39 (shapes), NFR-19
+- **reuse:**
+  - `Severity` import pattern `server/src/vendor/shared/contracts/observability.ts:2`
+  - `AgentRunEstimate` (unchanged) `:111-117`
+- **done-when:**
+  - `./scripts/check-shared-sync.sh` exits 0;
+  - `pnpm -C server typecheck` and `pnpm -C client typecheck` pass;
+  - T1 passes;
+  - no new export name collides in `vendor/shared/index.ts`.
+- **depends-on:** —
+
+### S2 — Index the findings join (REC1)
+- **package:** W2
+- **files:**
+  - modify `server/src/db/schema/reviews.ts`:
+    - import `index` from `drizzle-orm/pg-core`;
+    - `reviews` gets an extras callback `(t) => ({ runIdx: index('reviews_run_id_idx').on(t.runId) })`;
+    - `findings` gets `(t) => ({ reviewIdx: index('findings_review_id_idx').on(t.reviewId) })`.
+  - create (generated by `pnpm -C server db:generate`) `server/src/db/migrations/0022_<auto>.sql`, `server/src/db/migrations/meta/0022_snapshot.json`; modify `server/src/db/migrations/meta/_journal.json`.
+- **skills:**
+  - `postgresql-table-design` — FK columns need explicit indexes, lane 7
+  - `drizzle-orm-patterns` — index declaration, lanes 6/7
+- **constraints:** C10
+- **covers:** NFR-1, NFR-2 (margin), NFR-19 (the migration is applied manually); skill NFR-1, NFR-2 (margin)
+- **reuse:**
+  - index syntax `server/src/db/schema/runs.ts:40-43`
+  - `drizzle.config.ts` falls back to a default `DATABASE_URL`, so generate needs no running DB (`server/drizzle.config.ts:4-5`)
+- **done-when:**
+  - The generated SQL contains exactly two statements: `CREATE INDEX "reviews_run_id_idx" … ("run_id")` and `CREATE INDEX "findings_review_id_idx" … ("review_id")`. If anything else appears, stop and report schema drift.
+  - The file name was not hand-edited; `pnpm -C server typecheck` and `lint` pass.
+  - No migration was run.
+- **depends-on:** —
+
+### S3 — Seeded demo runs on PR #479 (REC11, REC13)
+- **package:** W3
+- **files:**
+  - create `server/src/db/seed-agent-stats.ts`:
+    - Exports `AGENT_STATS_DEMO` (fixed UUIDs for the PR's runs, reviews and findings, plus the expected figures below, for tests).
+    - Exports `seedAgentStatsDemo(db: Db, workspaceId: string, now = new Date()): Promise<void>`.
+    - Returns early when the first demo run id exists, or when "Security Reviewer", "Performance Reviewer" or "General Reviewer" is missing.
+    - Otherwise, in one `db.transaction`:
+      - PR #479 in `acme/payments-api`: "Retry webhook deliveries with exponential backoff", `status: 'merged'`, `lastReviewedSha = headSha`. Use select-then-insert like `seed.ts:116-130`, plus `onConflictDoNothing` on `pr_repo_number_uq`.
+      - `agent_runs` (source `local`), `run_traces`, `reviews` (`run_id`, `agent_id`, kind `review`, `created_at = ran_at + duration`) and `findings` (`onConflictDoNothing` on id).
+    - `ran_at = now − d×24h − i×7min`, with every run between 1 and 20 days old.
+    - Skill ids are looked up by name. Every recorded skill id must be one of the run agent's links (C12):
+      - Security Reviewer → `secret-leakage-gate`;
+      - General Reviewer → `pr-quality-rubric`, `no-then-chains`;
+      - Performance Reviewer → none (`server/src/db/seed.ts:700-703`).
+    - Data:
+      - **Security Reviewer:** provider `openrouter`, model `deepseek/deepseek-v4-flash`. 13 runs: 11 `done` (days 1, 2, 3, 5, 6, 8, 10, 12, 14, 17, 19), 1 `failed` (day 4), 1 `cancelled` (day 7).
+        - done durations (ms): 5400, 6000, 6600, 7000, 5800, 6200, 6400, 6000, 6800, 5600, 6400 → mean 6200.
+        - done costs: 0.03, 0.05, 0.04, 0.04, 0.06, 0.02, 0.04, 0.05, 0.03, 0.06, and 0 (a known $0).
+        - failed/cancelled: `cost_usd null`, tokens 0 (as `run-executor.ts:161-169`).
+        - the run on day 1: `tokens_in 14000`, `tokens_out 2100`.
+        - 20 findings over the done runs: 13 accepted, 4 dismissed, 3 pending. Severities 3 CRITICAL / 9 WARNING / 8 SUGGESTION. Categories security 9, bug 4, perf 3, style 2, test 1, docs 1.
+        - `findings_count` = the run's own findings.
+        - traces: 9 done runs carry `config.skills: [<secret-leakage-gate id>]`. The day-17 and day-19 done runs and the failed/cancelled runs have no `config.skills`.
+      - **Performance Reviewer:** provider `openai`, model `openai/gpt-4.1-mini`. 3 `done` runs (days 9, 13, 18); durations 4000, 5000, 6000; costs 0.01, 0.02, 0.03.
+        - 6 findings: 3 accepted, 2 dismissed, 1 pending; categories perf 4, bug 2.
+        - `config.skills: []`.
+      - **General Reviewer** (REC13): provider `openrouter`, model `deepseek/deepseek-v4-flash`. 2 `done` runs (days 11, 16); durations 7000, 8000; costs 0.02, 0.02.
+        - traces: day 11 `config.skills: [<pr-quality-rubric id>, <no-then-chains id>]`, day 16 `[<pr-quality-rubric id>]`.
+        - 3 findings: 2 accepted, 1 pending; categories perf 2, bug 1.
+    - Resulting 30-day figures (for T3, T8 and the handoff):
+      - runs 18 (failed 1, cancelled 1); total cost 0.52; `unknown_cost_runs` 2;
+      - accepted 18, dismissed 6, pending 5 → pooled 75%;
+      - by model: `deepseek/deepseek-v4-flash` 0.46, `openai/gpt-4.1-mini` 0.06;
+      - Most-active: Security Reviewer.
+  - modify `server/src/db/seed.ts` — CLI entrypoint only (`:719-738`): after `seed(handle.db)` resolves, `await seedAgentStatsDemo(handle.db, r.workspaceId)`. `seed()` itself is unchanged.
+  - create `server/test/seed-agent-stats.it.test.ts` (T3).
+- **skills:**
+  - `drizzle-orm-patterns` — transaction, conflict handling, lane 6
+  - `typescript-expert` — `RunTrace`-typed literals
+- **constraints:** C12, C7 (workspace ids)
+- **covers:**
+  - AC-183, AC-184, AC-185 (data guard), EC-26; data for AC-186/AC-187
+  - skill EC-28 (the demo now records only linked skills); data for skill AC-40 (`pr-quality-rubric` has runs within 30 days)
+- **reuse:**
+  - idempotent select-then-insert `server/src/db/seed.ts:116-130`
+  - transactional review+findings insert `server/src/db/seed-eval.ts:76-130`
+  - `RunTrace` shape `server/src/vendor/shared/contracts/trace.ts:107-130`
+  - failure-trace shape `run-executor.ts:732-760`
+- **done-when:**
+  - T3 written;
+  - `pnpm -C server typecheck`, `lint` and `arch:check` pass;
+  - `git grep -n "seedAgentStatsDemo" server/src` shows the call only in the CLI block.
+- **depends-on:** —
+
+### S4 — Sidebar item, `g m`, topbar Refresh (REC6)
+- **package:** W4
+- **files:**
+  - modify `client/src/vendor/ui/nav.ts`:
+    - GLOBAL items `:45` become `[multi-agent, { key: "agent-performance", label: "Agent Performance", labelKey: "nav.agent-performance", icon: "Activity", href: "/agent-performance", gKey: "m" }]`;
+    - `SHORTCUTS` gets `{ keys: "g m", label: "Go to Agent Performance", group: "Navigation" }`.
+  - modify `client/src/vendor/ui/shell/Topbar.tsx:76` — `label={ctx.labelFor?.("topbar.refresh", "Refresh") ?? "Refresh"}`.
+  - modify `client/src/components/app-shell/AppShell.tsx` — optional `onRefresh?: () => void` prop merged into the memoized ctx (`:30-33`); other pages pass nothing and keep no Refresh button.
+  - modify `client/messages/en/shell.json` — add `topbar.refresh: "Refresh"`; `nav.agent-performance` already exists at `:32`.
+  - modify `client/src/components/app-shell/AppShell.test.tsx` — rewrite the "only GLOBAL item" test `:59-76` (T4).
+  - modify `client/src/components/app-shell/helpers.test.ts` (T4).
+- **skills:**
+  - `react-best-practices` — lane 10
+  - `frontend-architecture` — vendor patch limits, lane 10
+  - `react-testing-library` — lane 12
+- **constraints:** C13, C16, C18, C19
+- **covers:** AC-98, AC-99, AC-188, AC-56 (Refresh affordance), NFR-20 (nav/Refresh labels); the affordance for skill AC-32
+- **reuse:**
+  - `activeKeyFor` already maps `/agent-performance` (`client/src/components/app-shell/helpers.ts:38`)
+  - the g-key handler reads `NAV` (`client/src/components/app-shell/hooks/useGlobalShortcuts.ts:43-47`)
+  - Sidebar resolves `labelKey` via `labelFor`
+- **done-when:**
+  - T4 passes;
+  - `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** —
+
+### S5 — agent-stats ports, constants, pure aggregation; shared stats rules (REC2, REC3, REC5, REC14, REC15)
+- **package:** W5
+- **files:**
+  - create `server/src/modules/_shared/stats-rules.ts` (REC14; pure, no I/O; header comment names both consumers, like `_shared/review-rounds.ts:1-7`):
+    - `COUNTED_STATUSES = ['done','failed','cancelled'] as const`, `REVIEW_RUN_SOURCE = 'local'`;
+    - `SMALL_SAMPLE_MIN_DECIDED = 10`, `MAX_PERIOD_MS = 367 * 86_400_000`;
+    - `periodIssue(fromIso, toIso, nowMs): string | null` — from ≥ to, from > now, span > 367 days;
+    - `acceptFigures(accepted, dismissed): { accept_rate: number | null; small_sample: boolean }`;
+    - `wholePercent(share): number` — `Math.round(share * 100)`, halves up;
+    - `isRecordedSkillList(value: unknown): value is string[]` — an array whose elements are all strings (REC15).
+  - create `server/src/modules/agent-stats/types.ts`:
+    - Domain types:
+      - `StatsWindow {from,to,previousFrom,previousTo: Date}`, `AgentRef {id,name,enabled}`;
+      - `RunFact {id, agentId|null, status: 'done'|'failed'|'cancelled'|'running', ranAt, model|null, costUsd|null, durationMs|null}`;
+      - `RunDecisions {runId, accepted, dismissed, pending}`, `LastFinished {agentId|null, ranAt}`;
+      - `PerformanceRaw`;
+      - `AgentStatsRaw` — adds `severity {bucket, severity, count}[]`, `categories`, `skillLists {runId, value: unknown}[]` (raw `config.skills` per counted run, REC15), `skillNames {id, name}[]`, `lastFinishedAt`;
+      - `RunHistoryRow`.
+    - Ports: `AgentStatsStore { performance(ws, window); agentStats(ws, agentId, window, severityBucketMs): …|null; runHistory(ws, agentId, period, page, pageSize): {rows,total}|null }` and `AgentStatsLogger { info(obj, msg?) }`.
+  - create `server/src/modules/agent-stats/constants.ts`:
+    - `RUN_HISTORY_PAGE_SIZE = 20`, `LAST_RUNS_LIMIT = 5`;
+    - `TREND_BUCKETS` = 1h if span ≤ 2d, 1d if ≤ 90d, else 7d;
+    - `SEVERITY_BUCKETS` = 4h if ≤ 2d, 1d if ≤ 14d, 7d if ≤ 120d, else 30d.
+    - The shared rule constants come from `../_shared/stats-rules.js`, not from here.
+  - create `server/src/modules/agent-stats/helpers.ts` (pure, no I/O; imports the shared rules):
+    - `buildWindow`, `bucketSizeMs`, `bucketStarts` (all buckets from `from`, zero buckets included), `bucketIndex`.
+    - `foldCosts`.
+    - `buildRowFigures(runs, decisions)` — the single rule set for AC-4–AC-14 and AC-16, using `acceptFigures`.
+    - `lastRunsOf` — ≤5 done, oldest first.
+    - `buildSkillsUsage(skillLists, skillNames, countedRunIds)` — `runs_with_skill_data` = counted runs whose value passes `isRecordedSkillList`; per skill id, the number of those runs whose list contains it; `skill_name` null when the id isn't a workspace skill.
+    - `buildPerformance(raw, window, asOf): AgentPerf`:
+      - rows for every agent by `name.localeCompare(…,'en')` then id;
+      - the Deleted agent row last, only when it has counted runs in the period;
+      - summary = sums of rows; pooled rate;
+      - most-active: most runs, then latest counted `ranAt`, then name;
+      - REC2 cost breakdowns; `runs_trend`; previous-period figures.
+    - `buildAgentStats(raw, window, asOf): AgentStats` — reuses `buildRowFigures`, `lastRunsOf` and `buildSkillsUsage`, so AC-17 holds by construction.
+    - `toRunHistoryPage`.
+  - create `server/test/agent-stats-helpers.test.ts` (T5).
+- **skills:**
+  - `onion-architecture` — ring 3 pure helpers, ports in ring 2, `_shared` for cross-module rules, lane 5
+  - `typescript-expert` — exported port types, type guard, lane 13
+- **constraints:** C1, C6, C8, C22
+- **covers:**
+  - AC-1–AC-28, AC-30, AC-31, AC-32 (assembly), AC-34, AC-36 (predicate)
+  - NFR-8 (deterministic order)
+  - EC-1, EC-2, EC-3, EC-4, EC-6, EC-10, EC-11, EC-12, EC-16, EC-17, EC-24, EC-27, EC-28, EC-29, EC-31, EC-32, EC-48
+  - the shared rules behind skill AC-5, AC-9, AC-13, AC-14 and EC-27
+- **reuse:**
+  - port-file layout `server/src/modules/ci/types.ts:1-31`
+  - `NotFoundError` `server/src/platform/errors.ts`
+  - `_shared` precedent `server/src/modules/_shared/review-rounds.ts:1-7`
+- **done-when:**
+  - T5 passes (`pnpm -C server exec vitest run test/agent-stats-helpers.test.ts`);
+  - `pnpm -C server typecheck` and `arch:check` pass;
+  - `rg -n "SMALL_SAMPLE_MIN_DECIDED|MAX_PERIOD_MS" server/src/modules/agent-stats` shows only imports.
+- **depends-on:** S1
+
+### S6 — AgentStatsRepository (REC4, REC15)
+- **package:** W5
+- **files:** create `server/src/modules/agent-stats/repository.ts` — `class AgentStatsRepository implements AgentStatsStore`. Each method runs one C5 transaction.
+  - **`performance`:**
+    - (a) agents of the workspace;
+    - (b) runs with status in done/failed/cancelled/running and `ran_at` in `[previousFrom, to)`, `source='local'`, ordered by `id`, selecting only id, agent_id, status, ran_at, model, cost_usd, duration_ms;
+    - (c) per-run decision counts:
+      - join path `agent_runs ar → reviews rv ON rv.run_id = ar.id AND rv.workspace_id = ws → findings f ON f.review_id = rv.id`, for done runs in the same range, `GROUP BY ar.id`;
+      - accepted = `accepted_at` not null; dismissed = `accepted_at` null and `dismissed_at` not null; pending = both null (the C22 expressions);
+    - (d) `max(ran_at)` of finished runs per `agent_id`, at any time, including `agent_id IS NULL`.
+  - **`agentStats`:** returns `null` when the agent isn't in the workspace. Otherwise (b)–(d) filtered by agent, plus:
+    - severity counts `GROUP BY floor(extract(epoch from (ar.ran_at - $from)) * 1000 / $bucketMs)::int, f.severity` for current-period done runs;
+    - category counts;
+    - skill lists via C8: `SELECT ar.id, rt.trace->'config'->'skills' AS skills` for the agent's counted runs in the period (`LEFT JOIN run_traces rt ON rt.run_id = ar.id`), mapped to `skillLists {runId, value}`. No SQL expansion and no `jsonb_typeof` test: S5's `buildSkillsUsage` applies `isRecordedSkillList`.
+    - skill names: `SELECT id, name FROM skills WHERE workspace_id = $ws AND id::text = ANY($ids)` for the string ids found → `skillNames`.
+  - **`runHistory`:** returns `null` for an unknown agent. Otherwise counted runs in `[from, to)`:
+    - `LEFT JOIN pull_requests`, `repos`;
+    - ordered `ran_at DESC, id DESC`, `LIMIT 20 OFFSET (page−1)*20`, plus `count(*)`.
+  - Rows map to domain types (Date objects, numbers).
+- **skills:**
+  - `drizzle-orm-patterns` — transactions, `sql` template, lateral, lane 6
+  - `onion-architecture` — the only file that names persistence, lane 6
+  - `security` — builds SQL, lane 14
+- **constraints:** C1, C5, C6 (no SQL cost sums), C7, C8, C22
+- **covers:**
+  - AC-1, AC-2, AC-3, AC-11, AC-23, AC-28, AC-30, AC-31, AC-32, AC-33
+  - NFR-2, NFR-8, NFR-10
+  - EC-22, EC-23, EC-30, EC-42, EC-43, EC-44, EC-45
+  - the agent side of skill AC-13
+- **reuse:**
+  - raw `db.execute(sql\`…\`)` + row mapping `server/src/modules/reviews/repository/multi-agent.repo.ts:167-201`
+  - workspace-scoped joins `server/src/modules/skills/repository.ts:347-366` (pattern only, not the whole-trace select)
+- **done-when:**
+  - `pnpm -C server typecheck` and `arch:check` pass, and `lint` passes;
+  - no `sum(`/`avg(` on `cost_usd` (`rg -n "sum\(|avg\(" server/src/modules/agent-stats/repository.ts` shows none on cost);
+  - no select of `t.runTraces.trace` as a whole, and no `jsonb_array_elements_text` in the file;
+  - behaviour is proven by T8 (S8).
+- **depends-on:** S5
+
+### S7 — Service, routes, container, registration (REC3, REC5)
+- **package:** W5
+- **files:**
+  - create `server/src/modules/agent-stats/service.ts` — `AgentStatsService(store: AgentStatsStore, log: AgentStatsLogger, now: () => Date = () => new Date())`, with `performance(ws, from, to)`, `agentStats(ws, agentId, from, to)` and `runHistory(ws, agentId, from, to, page)`.
+    - `as_of = now()`.
+    - Throws `NotFoundError('Agent not found')` when the store returns `null`.
+    - Logs exactly one `info` per call: `{ route, workspace_id, from, to, rows, duration_ms }`, with no PR or finding text.
+  - create `server/src/modules/agent-stats/routes.ts`:
+    - `PeriodQuery = z.object({ from: datetime offset, to: datetime offset }).superRefine(periodIssue(…, Date.now()))` (from `_shared/stats-rules.ts`);
+    - `RunHistoryQuery` = the same object + `page: z.coerce.number().int().min(1)`, refined the same way;
+    - `GET /agents/performance` → `AgentPerf`; `GET /agents/:id/stats` (`IdParams`) → `AgentStats`; `GET /agents/:id/stats/runs` → `AgentRunHistoryPage`;
+    - each handler: `getContext` + one service call.
+  - modify `server/src/modules/index.ts` — import + `agentStats` entry (`:20-21`, `:55-56`).
+  - modify `server/src/platform/container.ts`:
+    - import `AgentStatsRepository`, `AgentStatsService` and type `AgentStatsStore`;
+    - `ContainerOverrides.agentStatsStore?`;
+    - `get agentStatsRepo()` (memoized);
+    - `agentStatsService()` (memoized; `this.overrides.agentStatsStore ?? this.agentStatsRepo`, `this.evalLogger`).
+  - create `server/test/helpers/agent-stats-fakes.ts` — `FakeAgentStatsStore implements AgentStatsStore`.
+  - create `server/test/agent-stats-routes.test.ts` (T6) and `server/test/agent-stats-service.test.ts` (T7).
+- **skills:**
+  - `fastify-best-practices` — schema-first routes, `inject` testing, lane 4
+  - `onion-architecture` — lanes 4/5/8
+  - `zod` — querystring refine, coerce
+  - `security` — request input, lane 14
+  - `response-schema` — new response bodies, lane 18
+- **constraints:** C1, C2, C3, C4, C7
+- **covers:**
+  - AC-35, AC-36, AC-37, AC-38, AC-39, AC-40 (structural)
+  - NFR-5, NFR-10, NFR-17
+  - EC-9 (server), EC-18 (server), EC-21
+- **reuse:**
+  - route shape `server/src/modules/ci/routes.ts:56-62`
+  - the body `.refine` pattern `server/src/modules/agents/routes.ts:68-76`
+  - memoized service + override `server/src/platform/container.ts:425-485`
+  - DB-free route test harness `server/test/ci-routes.test.ts:1-48`
+  - `MockAuthProvider` `server/src/adapters/mocks.ts:497-508`
+- **done-when:**
+  - T6 and T7 pass;
+  - `pnpm -C server lint`, `typecheck`, `arch:check` and `exec vitest run --exclude '**/*.it.test.ts'` pass.
+- **depends-on:** S5, S6
+
+### S8 — Integration and performance tests; shared perf dataset (REC20)
+- **package:** W5
+- **files:**
+  - create `server/test/helpers/stats-dataset.ts` (REC20):
+    - `buildStatsDataset(db, workspaceId, opts = { agents: 20, runs: 10_000, findings: 50_000, days: 400, traceExtraBytes: 5_000, skills: 0 })` → returns the agent, run and skill ids.
+    - Traces carry `config.skills` plus ~5 KB of `raw_output`/`log` each.
+    - With `skills > 0`, it creates that many workspace skills (unique names), links each to ≥1 agent, and records 1–3 of the run agent's linked skill ids in each done run's trace.
+    - Bulk inserts in chunks of ≤1,000 rows.
+  - create `server/test/agent-stats.it.test.ts` (T8) — Testcontainers. Seeds with direct inserts (pattern `server/test/reviews.it.test.ts:106-140`), and a seeded-demo case that calls `seed(db)` + `seedAgentStatsDemo(db, ws, now)`.
+  - create `server/test/agent-stats-perf.it.test.ts` (T9):
+    - `buildStatsDataset(db, ws)` with the defaults (20 agents, 10,000 runs over ~400 days, 50,000 findings);
+    - p95 of 20 warm samples (pattern `server/test/eval-perf.it.test.ts:16-20`).
+- **skills:**
+  - `drizzle-orm-patterns` — bulk inserts
+  - `fastify-best-practices` — `inject`
+  - `typescript-expert`
+- **constraints:** C11, C4
+- **covers:**
+  - verification of AC-1–AC-34, AC-38, AC-40
+  - NFR-1, NFR-2, NFR-5, NFR-8, NFR-19
+  - EC-7, EC-19, EC-29, EC-30
+  - the dataset for skill NFR-1 and NFR-2
+- **reuse:**
+  - `startPg` / `dockerAvailable` `server/test/helpers/pg.ts:23-35`
+  - `MockLLMProvider.calls` `server/src/adapters/mocks.ts:75`
+- **done-when:**
+  - T8 and T9 written and type-correct; `stats-dataset.ts` exported and used by T9;
+  - `pnpm -C server lint` passes;
+  - not run by the implementer (CI `server-integration.yml`). Record them as *skipped*.
+- **depends-on:** S7, S3, S2
+
+### S9 — Client pure helpers (REC8)
+- **package:** W6
+- **files:** create in `client/src/lib/agent-stats/`:
+  - `period.ts`:
+    - `PeriodOption = '1d'|'30d'|'custom'`;
+    - `resolvePreset(option, now)`;
+    - `resolveCustomRange(start, end)` — local midnights, `to` = the day after `end`;
+    - `validateCustomRange(start, end, today) → { ok: true } | { ok: false, reason: 'incomplete'|'startAfterEnd'|'endInFuture'|'tooLong' }` — ≤366 calendar days inclusive;
+    - `parsePeriodParams(sp, nowMs) → { period, invalid }`;
+    - `periodSearchParams(sp, period)` — keeps other params;
+    - `periodApiQuery(period)`;
+    - `trendUnit(spanMs)` — hour/day/week, matching server `TREND_BUCKETS`;
+    - limits.
+  - `format.ts` — pure `Intl` formatters taking `(locale, timeZone?)`:
+    - `formatTotalUsd`, `formatAvgUsd` (C23), `formatSeconds1`, `formatTokensK` (sum <1000 → integer, else `round(sum/1000)` + template), `formatCount`, `formatDateTime`, `formatTime`, `formatRelative(iso, nowIso)`;
+    - a cost > 0 that rounds to $0.00 returns a `{ lessThan: "$0.01" }` marker the hook renders through the catalog.
+  - `accept.ts` — `wholePercent`, `acceptLevel(rate, smallSample)`, `acceptArrow(cur, curSmall, prev, prevSmall)` (≥1 point on displayed whole percents; none when either side is null or a small sample).
+  - `breakdown.ts` — `topFivePlusOther`, `largestRemainderCents(amounts, total)` (sums to `round(total*100)`), `sharePercents`.
+  - tests `period.test.ts`, `format.test.ts`, `accept.test.ts`, `breakdown.test.ts` (T10–T13).
+- **skills:**
+  - `frontend-architecture` — lane 11; pure layer, files named by what they provide
+  - `typescript-expert` — lane 13
+  - `react-testing-library` — lane 12
+- **constraints:** C13, C15, C22, C23
+- **covers:**
+  - AC-45, AC-46, AC-47, AC-48, AC-50, AC-51, AC-52 (pure parts), AC-115, AC-117, AC-133, AC-134, AC-135, AC-140, AC-141, AC-159
+  - NFR-6, NFR-20 (`Intl`)
+  - EC-3, EC-9, EC-13, EC-15, EC-25, EC-31, EC-33
+- **reuse:** relative-time `Intl.RelativeTimeFormat` pattern `client/src/app/agents/[id]/_components/AgentEditor/_components/CiTab/helpers.ts:8-19` (pattern only; no import across trees). `client/src/lib/format.ts` stays untouched.
+- **done-when:**
+  - T10–T13 pass;
+  - `pnpm -C client typecheck` and `lint` pass.
+- **depends-on:** S1
+
+### S10 — Message catalog `agentPerformance` (REC9)
+- **package:** W6
+- **files:**
+  - rewrite `client/messages/en/agentPerformance.json`. The reserved keys have no consumer; `git grep "agentPerformance"` shows only `helpers.ts:38`.
+  - Key groups, with spec-fixed copy verbatim:
+    - **`period`:** `label`; `options.{1d,30d,custom}` = "1 day" / "30 days" / "Custom range"; `inLabel.{1d,30d,custom}` = "1 day" / "30 days" / "custom range"; `start`; `end`; `apply`; `resolved` "{from} – {to}"; `reasons.{incomplete,startAfterEnd,endInFuture,tooLong}`; `linkInvalid` "The link's period was invalid — showing the last 30 days"; `serverInvalid` "This period is invalid — choose another period".
+    - **`cost`:**
+      - `label` — the short marker "Recorded by DevDigest — not provider billing";
+      - `infoButton`;
+      - `info` — AC-189 intent: OpenRouter-reported cost when returned, otherwise a DevDigest price-table estimate; not reconciled with provider billing; runs without a recorded cost count as unknown;
+      - `unknownRuns` "cost unknown for {count, plural, one {# run} other {# runs}}";
+      - `noneInPeriod` "No cost recorded in this period";
+      - `lessThan` "< {amount}";
+      - `change.{up,down,flat}` "↑ {amount} vs previous {period}" etc.
+    - **`runs`:** `failedCancelled` "{failed} failed · {cancelled} cancelled"; `inProgress` "{count} in progress (not counted)".
+    - **`accept`:**
+      - `cell` "{percent} · {accepted}/{decided}";
+      - `smallSampleCell` "{percent} · {decided}/10 decisions — small sample";
+      - `none` "—"; `zeroDecided` "0 decided";
+      - `breakdown` "{accepted} accepted · {dismissed} dismissed · {pending} pending";
+      - `decidedLine` "{accepted} of {decided} decided · {pending} pending";
+      - `smallSample` "small sample";
+      - `up` "up {points} points vs previous period"; `down` "down {points} points vs previous period".
+    - **`charts`:** `runsSummary` "Runs per {unit}, {min} to {max}"; `units.{hour,day,week}`; `durationsSummary`; `other` "Other"; `deletedAgent` "Deleted agent"; `unknownModel` "Unknown model"; `deletedSkill` "Deleted skill".
+    - **`format`:** `seconds` "{value} s"; `tokensK` "{value}k".
+    - **`states`:** `scopeNote` "Local review runs only — CI runs and eval runs are on their own pages"; `updated` "Updated {time}"; `refreshFailed` "Couldn't refresh — showing data as of {time}"; `retry`; `noRunsInPeriod` "No runs in this period · last run {date}"; `showLast30` "Show last 30 days"; `reason`.
+    - **`dashboard`:**
+      - `title`, `subtitle`, `loadError` "Couldn't load agent performance";
+      - `kpi.{totalRuns,totalCost,avgAccept,mostActive}` with "({period})", `kpi.mostActiveLine` "{runs} runs · {accept} accept", `kpi.noMostActiveBody` "No agent ran in this period";
+      - `empty.{noAgents "No agents yet", createAgent "Create agent", noReviews "No reviews yet — run a review on a pull request", openPulls "Pull Requests"}`;
+      - `table.{agent,runs,avgCost,avgDuration,accept,lastRun,view,viewLabel "View {agent} stats",never "Never",sortBy,expand,collapse,cap "Showing 200 of {count} agents"}`;
+      - `expansion.{caption "last {count} runs · avg {duration} · {cost}", noRuns "No finished runs in this period", oneRun "Not enough runs for a trend"}`;
+      - `breakdown.{title "Cost breakdown", byAgent "By agent", byModel "By model"}`.
+    - **`stats`:**
+      - `loadError` "Couldn't load this agent's stats"; `neverRan` "This agent hasn't run yet";
+      - `kpi.{totalRuns,avgCost,avgDuration,acceptRate}`;
+      - `skills.{title "Most-used skills", basedOn "Based on {n} of {m} runs — runs recorded before skill tracking are not included; failed and cancelled runs have no skill data", noData "No skill data for this period"}`;
+      - `severity.{title, critical "Critical", warning "Warning", suggestion "Suggestion", bar}`;
+      - `category.title`; `noFindings` "No findings in this period";
+      - `runHistory.{title,timestamp,pr,tokens,cost,findings,status,viewTrace "View trace",viewTraceLabel,statuses.{done,failed,cancelled},previous "Previous",next "Next",range "{start}–{end} of {total}",loadError}`.
+    - **`card`:** `runs` "{count, plural, one {# run} other {# runs}}"; `accept` "{percent} accept"; `noAccept` "— accept"; `smallSample` "small sample"; `avg` "{amount} avg"; `noRuns` "No runs in 30 days".
+  - create `client/src/components/agent-stats/messages.test.ts` (T27) — no string matches `/<[A-Za-z]/`; every leaf is a non-empty string.
+- **skills:** `frontend-architecture` — one namespace per feature; catalog placement
+- **constraints:** C16
+- **covers:** NFR-20, AC-189 (copy); copy for AC-149, AC-165–AC-167; the shared copy reused by the skill tab (period, accept, states)
+- **reuse:**
+  - existing `shell.json` `nav.agent-performance` (`client/messages/en/shell.json:32`)
+  - `agents.json` `editor.tabs.stats` "Stats" already exists
+- **done-when:**
+  - T27 passes;
+  - JSON is valid;
+  - `pnpm -C client test` passes.
+- **depends-on:** —
+
+### S11 — Data hooks and URL period state
+- **package:** W6
+- **files:**
+  - create `client/src/lib/hooks/agent-stats.ts`:
+    - `agentStatsKeys` — `performance(p)`, `stats(id,p)`, `runs(id,p,page)`, `forAgent(id)` prefix;
+    - `useAgentPerformance(period|null)`, `useAgentStats(agentId, period|null)`, `useAgentRunHistory(agentId, period|null, page)`;
+    - `api.get`, `enabled: !!period`, a `retry` that returns false for `ApiError` 4xx, no interval.
+  - modify `client/src/lib/hooks/index.ts` — `export * from "./agent-stats"`.
+  - create `client/src/lib/agent-stats/usePeriodUrl.ts`:
+    - `usePeriodUrl({ enabled }): PeriodUrlState = { period, option, notice, select(p), refresh({ isFetching, refetchSame }), refreshFrom }`;
+    - parses the URL;
+    - for missing or invalid params: the fallback 30d is resolved once in a `useState` initializer, and one effect `router.replace`s it into the URL (only when `enabled`);
+    - `notice` = params were present but invalid;
+    - `select` clears `refreshFrom`;
+    - `refresh` is a no-op while `isFetching`; presets re-resolve to now and set `refreshFrom`; custom calls `refetchSame`.
+  - create `client/src/lib/agent-stats/useRefreshFallback.ts` — `qc.getQueryData(key)` for `refreshFrom`.
+  - create `client/src/lib/agent-stats/useStatsFormat.ts` — binds S9 formatters to `useLocale()` and `useTranslations("agentPerformance")`.
+  - tests `client/src/lib/hooks/agent-stats.test.tsx` (T14) and `client/src/lib/agent-stats/usePeriodUrl.test.tsx` (T15).
+- **skills:**
+  - `react-best-practices` — hooks own fetching; effect only for the router sync
+  - `next-best-practices` — `useSearchParams` / `useRouter` / `usePathname`
+  - `frontend-architecture` — lane 11
+  - `react-testing-library` — lane 12
+- **constraints:** C14, C15, C13, C18
+- **covers:** AC-41, AC-42, AC-43, AC-50, AC-51, AC-52, AC-53, AC-56 (semantics), EC-8, EC-18, EC-25
+- **reuse:**
+  - hook shape `client/src/lib/hooks/agents.ts:8-21`
+  - hook test harness `client/src/lib/hooks/multi-agent.test.tsx`
+  - `ApiError` `client/src/lib/api.ts:8-19`
+  - URL-state hook pattern `client/src/app/eval/_components/EvalDashboardView/useDashboardUrl.ts:19-46`
+- **done-when:**
+  - T14 and T15 pass;
+  - `pnpm -C client typecheck` and `lint` pass.
+- **depends-on:** S1, S9, S10
+
+### S12 — Shared stats components (REC7, REC10)
+- **package:** W6
+- **files:** create under `client/src/components/agent-stats/`, each as `<Name>/{<Name>.tsx, index.ts, styles.ts}`, plus a barrel `index.ts`:
+  - `PeriodControl` — AC-44, 48, 49, 55, 53, 176:
+    - three `aria-pressed` buttons, "30 days" default;
+    - "Custom range" reveals inline `<input type="date">` ×2 + Apply, disabled with the reason tied via `aria-describedby`;
+    - resolved local range text; `notice` / `serverInvalid` slots.
+  - `HoverHint` — hover+focus tooltip.
+  - `CostLabel` — marker text + info `<button>` + tooltip with `cost.info`.
+  - `TruncatedName` — one-line ellipsis; `tabIndex=0`; `title` and `aria-label` = full value; tooltip on focus.
+  - `ShareDonut` — recharts `PieChart` ring + text legend. Props `entries {key,label,value}`, `mode: 'usd'|'count'`, `total`, `emptyText`. Applies top-5 + Other, largest-remainder cents (usd), share %, `< $0.01`, no `$` in count mode.
+  - `AcceptRing` — SVG ring, colour by `acceptLevel`, grey for a small sample, percent text.
+  - `AcceptText` — coloured percent + small-sample text.
+  - `TrendSparkline` — vendored `Sparkline` inside `role="img"` with `aria-label` from `charts.runsSummary` / `durationsSummary`.
+  - `KpiCard` — frame.
+  - `RunsKpiCard` — runs, failed/cancelled line, sparkline, optional in-progress line.
+  - `AcceptKpiCard` — ring, percent, decided line, small sample.
+  - `CostDelta` — arrow, signed amount, "vs previous {period}", colour + text; renders nothing when either side is null.
+  - `StatsErrorPanel` — title + reason + catalog Retry; no vendor `ErrorState`, whose "Retry" is hardcoded at `client/src/vendor/ui/primitives/ErrorState.tsx:51-55`.
+  - `UpdatedStatus` — `role="status" aria-live="polite"`: "Updated HH:MM", or the refresh-failed banner + Retry.
+  - `NoRunsInPeriod` — text + optional "Show last 30 days".
+  - Tests (T16) beside: `PeriodControl`, `CostLabel`, `ShareDonut`, `AcceptKpiCard`, `RunsKpiCard`, `CostDelta`, `TruncatedName`, `UpdatedStatus`, `StatsErrorPanel`, `NoRunsInPeriod`.
+- **skills:**
+  - `react-best-practices` — composition, a11y, keys, lane 10
+  - `frontend-architecture` — shared components take props only, lane 10
+  - `react-testing-library` — lane 12
+  - `security` — plain-text rendering of untrusted names
+- **constraints:** C13, C16, C17, C18, C19, C21, C22, C23
+- **covers:**
+  - AC-44, AC-48, AC-49, AC-55, AC-57, AC-101, AC-102, AC-103, AC-106, AC-107, AC-127, AC-132, AC-136, AC-138, AC-139, AC-142, AC-147, AC-154, AC-173, AC-175, AC-176, AC-179, AC-181, AC-189 (components)
+  - NFR-11, NFR-12, NFR-13, NFR-14, NFR-16 (inline, no dialog)
+  - EC-14, EC-20
+- **reuse:**
+  - tooltip pattern `client/src/components/context-attachments/TokenEstimate/TokenEstimate.tsx:8-31`
+  - `Sparkline` `client/src/vendor/ui/charts/Sparkline.tsx`
+  - `Skeleton`, `Button` from `@devdigest/ui`
+  - ring maths `client/src/vendor/ui/primitives/CircularScore.tsx:11-28` (pattern; own colours)
+  - recharts `Pie` setup `client/src/vendor/ui/charts/Donut.tsx:24-42` (ring only)
+  - design `docs/designs/agent-performance/jsx/charts.jsx`, `primitives.jsx`
+- **done-when:**
+  - T16 passes;
+  - `pnpm -C client lint`, `typecheck` and `test` pass.
+- **depends-on:** S9, S10, S11
+
+### S13 — Dashboard KPI cards
+- **package:** W7
+- **files:** create `client/src/app/agent-performance/_components/KpiCards/{KpiCards.tsx, KpiCards.test.tsx, styles.ts, index.ts}`, `_components/KpiCards/_components/TotalCostCard/…`, `_components/KpiCards/_components/MostActiveCard/…`:
+  - shared `RunsKpiCard` (with `in_progress`), `TotalCostCard` (cents total + `CostLabel` + `CostDelta` vs `previous_total_cost_usd` + unknown-cost line), shared `AcceptKpiCard`, `MostActiveCard`;
+  - labels "… ({period})".
+  - Design: `docs/designs/agent-performance/screenshots/agent-performance-dashboard.png`.
+- **skills:**
+  - `react-best-practices` — lane 10
+  - `frontend-architecture`
+  - `react-testing-library` — lane 12
+- **constraints:** C13, C16, C17, C19, C21, C23
+- **covers:** AC-54, AC-101–AC-104, AC-106–AC-109, AC-138, AC-139, AC-190, EC-6, EC-11, EC-12, EC-15
+- **reuse:** S12 components; `useStatsFormat` (S11)
+- **done-when:** T18 passes; `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** S12
+
+### S14 — Agents table
+- **package:** W7
+- **files:** create `client/src/app/agent-performance/_components/AgentsTable/{AgentsTable.tsx, AgentsTable.test.tsx, helpers.ts, helpers.test.ts, constants.ts, styles.ts, index.ts}` and `_components/AgentsTable/_components/{SortHeader, AgentRow, AcceptCell, RowExpansion}/…`.
+  - **Sorting** — `helpers.ts` `sortAgentRows(rows, key, dir)`:
+    - default Accept descending;
+    - small-sample rows after the other rated rows, by decided count descending;
+    - "—" rows last in either direction;
+    - the Deleted row always last;
+    - ties by name `localeCompare('en')`.
+  - `capRows` — 200 rows + "Showing 200 of n agents".
+  - Columns Agent / Runs / Avg cost (header `CostLabel`) / Avg duration / Accept / Last run / View.
+  - `AcceptCell`: `AcceptText`, `HoverHint` breakdown, arrows from `acceptArrow`.
+  - Last run: relative to `as_of` + full date in `HoverHint`, or "Never".
+  - View `<Link>`: `/agents/${agent_id}?tab=stats&range&from&to`, `aria-label` "View {agent} stats"; absent for the Deleted row.
+  - `RowExpansion`: `TrendSparkline` of `last_runs` durations when ≥2 runs, caption, or texts for 0/1 runs.
+  - Sort and expand are local state; no requests.
+  - A `pending` prop renders disabled sort buttons and no rows.
+  - Design: `docs/designs/agent-performance/screenshots/agent-performance-dashboard.png`, `agent-performance-row-expanded.png`, `docs/designs/agent-performance/jsx/screen_agentperf.jsx:3-61`.
+- **skills:**
+  - `react-best-practices` — local UI state, keys, lane 10
+  - `frontend-architecture`
+  - `react-testing-library` — lane 12
+  - `security` — plain-text names, links from ids
+- **constraints:** C13, C16, C17, C19, C21, C22, C23
+- **covers:** AC-110–AC-115, AC-117–AC-131, AC-140, AC-141, AC-191, NFR-7, NFR-11, NFR-12, EC-1, EC-4, EC-14, EC-25, EC-27, EC-32, EC-47, EC-48
+- **reuse:** S12 `AcceptText`, `HoverHint`, `TruncatedName`, `TrendSparkline`, `CostLabel`; S9 `accept.ts`, `periodSearchParams`
+- **done-when:** T19 passes; `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** S12
+
+### S15 — Cost breakdown
+- **package:** W7
+- **files:** create `client/src/app/agent-performance/_components/CostBreakdown/{CostBreakdown.tsx, CostBreakdown.test.tsx, styles.ts, index.ts}`:
+  - heading "Cost breakdown" + `CostLabel`;
+  - By agent / By model `ShareDonut` (`mode="usd"`, `total = summary.total_cost_usd`);
+  - null agent → "Deleted agent", null model → "Unknown model";
+  - `ShareDonut`'s empty text when the total is null or 0.
+  - Design: `docs/designs/agent-performance/screenshots/agent-performance-dashboard.png`.
+- **skills:** `react-best-practices`, `frontend-architecture`, `react-testing-library`
+- **constraints:** C13, C16, C17, C19, C23
+- **covers:** AC-132–AC-136, AC-192, EC-1, EC-2, EC-12, EC-13, EC-33
+- **reuse:** S12 `ShareDonut`, `CostLabel`; S9 `breakdown.ts`
+- **done-when:** T20 passes; `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** S12
+
+### S16 — `/agent-performance` route and screen container
+- **package:** W7
+- **files:**
+  - create `client/src/app/agent-performance/page.tsx` — metadata title + `<Suspense><AgentPerformanceView /></Suspense>`.
+  - create `client/src/app/agent-performance/_components/AgentPerformanceView/{AgentPerformanceView.tsx, AgentPerformanceView.test.tsx, helpers.ts, helpers.test.ts, styles.ts, index.ts}`:
+    - `usePeriodUrl({ enabled: true })` + `useAgentPerformance(period)`;
+    - `shown = data ?? (refreshFrom ? useRefreshFallback(...) : undefined)`;
+    - `AppShell` gets `onRefresh={() => refresh({ isFetching, refetchSame: refetch })}` and crumb.
+  - **States** (`helpers.ts` `dashboardState(...)`):
+    - **Pending, nothing to show:** skeletons without digits or `$`, and a disabled table header.
+    - **422:** `PeriodControl` `serverInvalid` and no figures.
+    - **Error, nothing to show:** `StatsErrorPanel` "Couldn't load agent performance" with the reason.
+    - **Error while showing data:** figures + `UpdatedStatus` banner.
+    - **Empty states:**
+      - `agent_count === 0` → "No agents yet" + link to `/agents`;
+      - `workspace_last_run_at == null` → "No reviews yet…" + link to the PR list (`resolveHref("/repos/:repoId/pulls", repoId)` via `useActiveRepo`, or `/` with no repo);
+      - `runs === 0` → `NoRunsInPeriod` with "Show last 30 days" unless 30d is selected.
+    - **Data:** `KpiCards`, `AgentsTable`, `CostBreakdown`.
+  - Always rendered: the scope note, `PeriodControl`, `UpdatedStatus`.
+  - Design: `docs/designs/agent-performance/screenshots/agent-performance-dashboard.png`.
+- **skills:**
+  - `next-best-practices` — thin `page.tsx`, metadata, Suspense for `useSearchParams`, lane 9
+  - `frontend-architecture` — lane 9
+  - `react-best-practices` — container with early-return states, lane 10
+  - `react-testing-library` — lane 12
+- **constraints:** C13, C14, C15, C16, C18, C19
+- **covers:**
+  - AC-41, AC-42, AC-43, AC-44, AC-54, AC-56, AC-57, AC-100, AC-170, AC-171, AC-173, AC-174, AC-175, AC-176, AC-177, AC-178, AC-179
+  - NFR-3 (manual), NFR-14, NFR-15 (manual)
+  - EC-5, EC-7, EC-8, EC-18, EC-20
+- **reuse:**
+  - thin-page pattern `client/src/app/eval/page.tsx`
+  - `AppShell` `onRefresh` (S4)
+  - `resolveHref` `client/src/vendor/ui/nav.ts:83-86`
+  - `useActiveRepo` `client/src/lib/repo-context.tsx`
+- **done-when:**
+  - T17 passes;
+  - `pnpm -C client exec next typegen` (if `.next/` exists) and `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** S13, S14, S15
+
+### S17 — Stats tab: Run history section
+- **package:** W8
+- **files:** create `client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/_components/RunHistory/{RunHistory.tsx, RunHistory.test.tsx, helpers.ts, styles.ts, index.ts}`:
+  - `useAgentRunHistory(agentId, period, page)`; local `page` state, reset by `key={period.from+period.to}` at the parent.
+  - Columns Timestamp / PR / Tokens / Cost (header `CostLabel`) / Findings / Status / View trace; no Source column.
+  - PR cell: `TruncatedName` `repo_full_name` + `#n`, linking to `/repos/${repo_id}/pulls/${pr_number}`; "—" and no View trace when `pr_number` is null.
+  - View trace → `…?trace=${run_id}`.
+  - Tokens: "—" for failed or cancelled runs. Cost: "—" for null.
+  - Previous / Next with "n–m of total".
+  - On page error: an in-section `StatsErrorPanel` + Retry.
+  - Design: `docs/designs/agent-performance/screenshots/agent-stats-tab.png`.
+- **skills:** `react-best-practices`, `frontend-architecture`, `react-testing-library`, `security` (links from ids)
+- **constraints:** C13, C14, C16, C17, C19, C21, C23
+- **covers:** AC-156, AC-157, AC-159, AC-160, AC-161, AC-162, AC-163, AC-193, AC-194, NFR-6, NFR-11, EC-42, EC-45
+- **reuse:**
+  - `?trace=` deep link `client/src/app/repos/[repoId]/pulls/[number]/page.tsx:81-82,225-232`
+  - S11 hook; S12 components
+- **done-when:** T22 passes; `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** S12
+
+### S18 — Stats tab: container, KPI cards and panels
+- **package:** W8
+- **files:** create `client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/{StatsTab.tsx, StatsTab.test.tsx, helpers.ts, helpers.test.ts, styles.ts, index.ts}` and `StatsTab/_components/{StatsKpiCards, MostUsedSkills, FindingsBySeverity, FindingsByCategory}/…`.
+  - Props `{ agentId, periodState: PeriodUrlState, onAgentNotFound: () => void }`.
+  - `useAgentStats` + refresh fallback.
+  - **States:**
+    - skeleton without digits or `$`;
+    - 404 → `onAgentNotFound()` and render nothing else;
+    - 422 → `serverInvalid`;
+    - error → "Couldn't load this agent's stats";
+    - `last_run_at == null` → "This agent hasn't run yet";
+    - `runs === 0` → `NoRunsInPeriod`.
+  - **KPI cards:** `RunsKpiCard`; Avg cost card (`formatAvgUsd` + `CostLabel` + `CostDelta` vs `previous_avg_cost_usd` + unknown-cost line); Avg duration (`6.2 s` or "—"); `AcceptKpiCard`.
+  - **`MostUsedSkills`:** top 5 by `runs / runs_with_skill_data` with vendored `BarRow`; the "Based on n of m runs…" note; no-data text; "Deleted skill" for a null name.
+  - **`FindingsBySeverity`:** one stacked bar per `bucket_start`, made of divs, with the text legend. Each bar is focusable with `aria-label` + `HoverHint` (bucket dates + counts). `helpers.ts` provides the bucket end label.
+  - **`FindingsByCategory`:** `ShareDonut mode="count"`.
+  - "No findings in this period" in both findings panels.
+  - Also: scope note, `PeriodControl`, `UpdatedStatus`, `RunHistory` (S17).
+  - Design: `docs/designs/agent-performance/screenshots/agent-stats-tab.png`, `docs/designs/agent-performance/jsx/screen_agents.jsx:60-119`.
+- **skills:** `react-best-practices`, `frontend-architecture`, `react-testing-library`, `security`
+- **constraints:** C13, C14, C15, C16, C17, C18, C19, C21, C22, C23
+- **covers:**
+  - AC-54, AC-57, AC-100, AC-142, AC-144–AC-155, AC-172–AC-176 (Stats), AC-180, AC-181, AC-182 (callback), AC-196
+  - EC-4, EC-13, EC-43, EC-44
+- **reuse:**
+  - `BarRow` `client/src/vendor/ui/charts/BarRow.tsx`
+  - state pattern `client/src/app/skills/_components/SkillsView/_components/SkillEditor/_components/StatsTab/StatsTab.tsx:18-30`
+  - S11, S12
+- **done-when:** T21 passes; `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** S17
+
+### S19 — Editor tab wiring
+- **package:** W8
+- **files:**
+  - modify `client/src/app/agents/[id]/_components/AgentEditor/constants.ts` — insert `{ key: "stats", labelKey: "editor.tabs.stats", icon: "Activity" }` between `evals` and `ci`; drop the "later lesson" note.
+  - modify `client/src/app/agents/[id]/_components/AgentEditor/AgentEditor.tsx` — optional props `statsPeriod?: PeriodUrlState`, `onAgentNotFound?: () => void`; render `<StatsTab>` when `tab === "stats" && statsPeriod`.
+  - modify `client/src/app/agents/[id]/constants.ts` — `VALID_TABS` adds `"stats"`.
+  - modify `client/src/app/agents/[id]/constants.test.ts` — `:9-10` order becomes evals → stats → ci.
+  - modify `client/src/app/agents/[id]/_components/AgentEditor/AgentEditor.test.tsx` — add the `agentPerformance` messages to the provider (`:39`); assert the Stats tab label and body.
+- **skills:**
+  - `next-best-practices` — `app/**/*.ts`, lane 9
+  - `react-best-practices` — lane 10
+  - `react-testing-library` — lane 12
+- **constraints:** C20, C16, C18
+- **covers:** AC-143
+- **reuse:** existing `editor.tabs.stats` key in `client/messages/en/agents.json`
+- **done-when:** T23 passes; `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** S18
+
+### S20 — Agent card stats line (REC12)
+- **package:** W8
+- **files:**
+  - create `client/src/app/agents/_components/AgentCard/_components/StatsLine/{StatsLine.tsx, styles.ts, index.ts}`:
+    - "n runs · x% accept · $y avg"; "small sample" or "— accept" in place of the percent; "No runs in 30 days";
+    - the avg wrapped in `HoverHint` with `CostLabel` text as hover / focus text and `aria-describedby`.
+  - modify `client/src/app/agents/_components/AgentCard/AgentCard.tsx` — optional prop `statsRow?: AgentPerfRow | null`; render `StatsLine` only when it is an object.
+  - modify `client/src/app/agents/_components/AgentsListView/AgentsListView.tsx`:
+    - `const [period] = useState(() => resolvePreset("30d", new Date()))`, `useAgentPerformance(period)`;
+    - pass `statsRow={isSuccess ? byId.get(a.id) ?? null : undefined}`.
+  - modify `client/src/app/agents/_components/AgentCard/AgentCard.test.tsx` — add `agentPerformance` to the provider (`:30`); T24.
+  - Design: `docs/designs/agent-performance/screenshots/agent-stats-tab.png` (left list).
+- **skills:** `react-best-practices`, `frontend-architecture`, `react-testing-library`
+- **constraints:** C13, C14, C15, C16, C19, C21, C22, C23
+- **covers:** AC-165, AC-166, AC-167, AC-168, AC-169, AC-195
+- **reuse:** S12 `AcceptText`, `HoverHint`, `CostLabel`; S11 `useAgentPerformance`; S9 `resolvePreset`
+- **done-when:** T24 passes; `pnpm -C client typecheck`, `lint` and `test` pass.
+- **depends-on:** S12
+
+### S21 — Agent page integration
+- **package:** W8
+- **files:**
+  - create `client/src/app/agents/[id]/helpers.ts` — `agentHref(agentId, search)`, which keeps every current param (tab, range, from, to).
+  - create `client/src/app/agents/[id]/helpers.test.ts` (T25).
+  - modify `client/src/app/agents/[id]/page.tsx`:
+    - `const statsPeriod = usePeriodUrl({ enabled: tab === "stats" })`;
+    - `AppShell onRefresh={tab === "stats" ? () => statsPeriod.refresh({ isFetching: qc.isFetching({ queryKey: agentStatsKeys.forAgent(id) }) > 0, refetchSame: () => qc.refetchQueries({ queryKey: agentStatsKeys.forAgent(id) }) }) : undefined}`;
+    - `AgentEditor` gets `statsPeriod` and `onAgentNotFound={() => refetch()}`, so the existing "Couldn't load this agent" state at `:39-50` shows;
+    - the left list: `onClick={() => router.push(agentHref(a.id, search))}` replaces `:87`;
+    - the left-list `AgentCard` gets `statsRow` from a 30-day `useAgentPerformance` resolved once per mount.
+  - Design: `docs/designs/agent-performance/screenshots/agent-stats-tab.png`.
+- **skills:**
+  - `next-best-practices` — client page with `useSearchParams` / router, lane 9
+  - `frontend-architecture` — lane 9
+  - `react-best-practices`
+  - `react-testing-library` — helpers test
+- **constraints:** C13, C14, C15, C20
+- **covers:** AC-56 (Stats), AC-119 (target reads the URL), AC-164, AC-165 (left list), AC-182, EC-21, EC-46
+- **reuse:**
+  - existing `setTab` param-preserving pattern `client/src/app/agents/[id]/page.tsx:27-31`
+  - `useAgent(...).refetch` `:23`
+- **done-when:**
+  - T25 passes;
+  - `pnpm -C client lint`, `typecheck` and `test` pass;
+  - `git grep -n "tab=\${tab}" client/src/app/agents/[id]/page.tsx` is empty.
+- **depends-on:** S19, S20
+
+### S22 — `SkillStats` contract, all three copies (REC17)
+- **package:** W9
+- **files:**
+  - modify `server/src/vendor/shared/contracts/knowledge.ts:487-507` (`SkillStats`):
+    - keep `agent_count`, `agents` (now ordered by name), `pull_pct`, `accept_pct`, `by_category` with their names and types; update their doc comments to the new meaning (skill AC-1–AC-5);
+    - `findings_30d` gets `/** @deprecated Use `findings` — always equal to it; removal not scheduled. */`;
+    - add `findings`, `skill_runs`, `pull_runs`, `pull_runs_total`, `runs_without_skill_data`, `accepted`, `dismissed`, `pending` (int); `accept_rate` (number 0..1, nullable); `small_sample` (boolean); `last_used_at` (string, nullable); `period: z.object({ from: z.string(), to: z.string() })` declared inline; `as_of` (string);
+    - `SkillWithStats` (`:510-511`) is unchanged.
+  - modify `client/src/vendor/shared/contracts/knowledge.ts` and `mcp-server/src/vendor/shared/contracts/knowledge.ts` — byte-identical copies (`./scripts/check-shared-sync.sh --fix` copies the mcp subset).
+  - create `server/test/skill-stats-contracts.test.ts` (T28).
+- **skills:**
+  - `zod` — lane 2
+  - `typescript-expert` — exported types, lane 13
+  - `breaking-change` — lane 17; intentional semantic break
+  - `response-schema` — lane 18
+  - `deprecation-policy` — lane 20; the `findings_30d` marker
+- **constraints:** C9, C25
+- **covers:** skill NFR-11 (shape, copies), the shapes for skill AC-1–AC-8
+- **reuse:**
+  - the existing `SkillStats` doc comment and field order `knowledge.ts:487-507`
+  - parity test `server/test/eval-contract-parity.test.ts:15-19`
+- **done-when:**
+  - `./scripts/check-shared-sync.sh` exits 0; `server/test/eval-contract-parity.test.ts` and T28 pass; `pnpm -C mcp-server typecheck` passes.
+  - Server and client typecheck are expected to fail only on the old producer and consumers (`skills/service.ts`, `SkillCard`, `StatsTab` fixtures) until S25 (server) and S29 (client); they are not part of this step's done-when.
+- **depends-on:** —
+
+### S23 — Skill aggregation on the shared rules (REC14, REC15, REC16)
+- **package:** W9
+- **files:**
+  - create `server/src/modules/skills/types.ts`:
+    - `SkillStatsWindow {from: Date, to: Date}`;
+    - `SkillLink {skillId, agentId, agentName}`;
+    - `SkillRunFact {id, agentId|null, status: 'done'|'failed'|'cancelled', ranAt: Date, skills: unknown}`;
+    - `SkillRunFindings {runId, category, accepted, dismissed, pending}`;
+    - `SkillStatsFacts {links, runs, runFindings}`;
+    - ports `SkillStatsStore { skillRef(ws, id): Promise<{ id: string; enabled: boolean } | null>; statsFacts(ws, window, skillIds): Promise<SkillStatsFacts> }` and `SkillStatsLogger { info(obj, msg?) }`.
+  - modify `server/src/modules/skills/helpers.ts`:
+    - remove `traceHasSkill`, the old `computeSkillStats`, `SkillStatsRaw` and `Stats{Agent,Finding,Run}Row` (`:263-313`);
+    - add `computeSkillStats(skillId, facts, window, asOf): SkillStats`. Using `_shared/stats-rules.ts`:
+      - **Linked agents:** the links of `skillId`; `agents` sorted by `name.localeCompare(…,'en')` then id; `agent_count` = their number.
+      - **Window runs:** `facts.runs` with `window.from ≤ ranAt < window.to` (facts already hold counted statuses only).
+      - **Pull:**
+        - pull base = window runs of linked agents whose `skills` passes `isRecordedSkillList`; `pull_runs_total` = their number;
+        - `pull_runs` = those whose list includes `skillId`;
+        - `pull_pct = pull_runs_total ? wholePercent(pull_runs / pull_runs_total) : null`.
+      - `runs_without_skill_data` = window runs of linked agents without a recorded list.
+      - **Skill runs:** window runs of any agent (linked, unlinked, deleted) whose recorded list includes `skillId`; `skill_runs` = their number.
+      - **Findings:** sum the `runFindings` rows whose `runId` is a `done` skill run → `findings`, `by_category` (count descending, then category A→Z), `accepted`, `dismissed`, `pending`.
+      - `acceptFigures` → `accept_rate`, `small_sample`; `accept_pct = accept_rate == null ? null : wholePercent(accept_rate)`.
+      - `last_used_at` = the latest `ranAt` among all `facts.runs` (any time) whose recorded list includes `skillId`, or null.
+      - `findings_30d = findings`; `period` = window as ISO; `as_of`.
+  - modify `server/src/modules/skills/constants.ts` — replace `STATS_WINDOW_DAYS` (`:15-16`) with `SKILL_CARD_PERIOD_MS = 30 * 86_400_000` (skill *Terms*, Card period).
+  - rewrite `server/test/skill-stats.test.ts` (`:12-92`; T29).
+- **skills:**
+  - `onion-architecture` — ring 3 pure helpers, ring 2 ports, `_shared` rules, lane 5
+  - `typescript-expert` — lane 13
+- **constraints:** C8, C22, C24, C25
+- **covers:**
+  - skill AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-11 (assembly), NFR-6 (invariants by construction)
+  - skill EC-1, EC-2, EC-3, EC-4, EC-5, EC-6, EC-7, EC-8, EC-10, EC-11, EC-12, EC-13, EC-14, EC-20, EC-24, EC-25, EC-26, EC-27, EC-28
+- **reuse:**
+  - `_shared/stats-rules.ts` (S5)
+  - the null-not-0% rule `knowledge.ts:487-492`
+- **done-when:**
+  - T29 passes (`pnpm -C server exec vitest run test/skill-stats.test.ts`);
+  - `pnpm -C server arch:check` passes;
+  - `rg -n "agent-stats" server/src/modules/skills` is empty.
+- **depends-on:** S22, S5
+
+### S24 — Skill stats facts in one consistent read (REC16)
+- **package:** W9
+- **files:** modify `server/src/modules/skills/repository.ts`:
+  - remove `statsRawFor` / `statsRawForMany` (`:314-382`) and their imports (`STATS_WINDOW_DAYS`, old row types);
+  - `class SkillsRepository implements SkillStatsStore` (`forAgent` `:214-228` and every non-stats method unchanged);
+  - add `skillRef(ws, id)` → `{ id, enabled }` | null (workspace-scoped);
+  - add `statsFacts(ws, window, skillIds)` — one C5 transaction:
+    - (a) links: `agent_skills ⨝ agents` where `agents.workspace_id = ws` and `skill_id IN (skillIds)` → `{ skillId, agentId, agentName }`;
+    - (b) counted runs at any time: `agent_runs` with `workspace_id = ws`, `source = 'local'`, `status IN COUNTED_STATUSES`, `LEFT JOIN run_traces` selecting only `trace->'config'->'skills'` → `{ id, agentId, status, ranAt, skills }`. One scan serves the window figures and `last_used_at`.
+    - (c) per (done run in window, category) decision counts, using the C22 join path and the same three `FILTER` expressions as S6, `GROUP BY ar.id, f.category`.
+- **skills:**
+  - `drizzle-orm-patterns` — transaction, `sql` template, lane 6
+  - `onion-architecture` — the only file that names persistence, lane 6
+  - `security` — builds SQL, lane 14
+- **constraints:** C5, C7, C8, C22, C24
+- **covers:** skill AC-1, AC-2, AC-3, AC-4, AC-7, AC-11, NFR-1, NFR-2, NFR-6, NFR-7; skill EC-3, EC-9, EC-12, EC-27
+- **reuse:**
+  - S6's join and `FILTER` expressions (copied verbatim; C22)
+  - workspace-scoped link join `server/src/modules/skills/repository.ts:330-340`
+- **done-when:**
+  - `pnpm -C server typecheck` passes for the module (the service is updated in S25), and `lint` passes;
+  - no whole-trace select and no `jsonb_array_elements_text` in the file;
+  - behaviour is proven by T32 (S26).
+- **depends-on:** S23
+
+### S25 — Skill stats service and route (REC16)
+- **package:** W9
+- **files:**
+  - create `server/src/modules/skills/stats-service.ts` — `SkillStatsService(store: SkillStatsStore, log: SkillStatsLogger, now: () => Date = () => new Date())`:
+    - `forSkill(ws, id, from?, to?): Promise<SkillStats>`:
+      - `skillRef` null → `NotFoundError('Skill not found')`;
+      - window = the given pair, or `[now − SKILL_CARD_PERIOD_MS, now)` when both are omitted;
+      - `statsFacts` + `computeSkillStats`;
+      - logs exactly one `info` `{ route: 'GET /skills/:id/stats', workspace_id, from, to, duration_ms }` with no finding text and no skill body.
+    - `forList(ws, skillIds): Promise<Map<string, SkillStats>>` — one `statsFacts` call over the card period `[now − 30×24h, now)`.
+  - modify `server/src/modules/skills/service.ts`:
+    - `SkillsService(repo, stats: Pick<SkillStatsService, 'forList'>)`;
+    - `list()` uses `stats.forList`;
+    - remove the old `stats()` method (`:68-73`) and the `computeSkillStats` import (`:11`).
+  - modify `server/src/modules/skills/routes.ts`:
+    - `const stats = new SkillStatsService(app.container.skillsRepo, app.log)`; `const service = new SkillsService(app.container.skillsRepo, stats)` (`:82`);
+    - `GET /skills/:id/stats` (`:150-159`) gets `querystring: SkillStatsQuery`:
+      - `z.object({ from: z.string().datetime({ offset: true }).optional(), to: z.string().datetime({ offset: true }).optional() })`;
+      - `.superRefine`: exactly one given → issue; both given → `periodIssue(from, to, Date.now())`;
+    - handler: `getContext` + `stats.forSkill(…)`.
+  - create `server/test/skill-stats-routes.test.ts` (T30) and `server/test/skill-stats-service.test.ts` (T31, with an in-file `FakeSkillStatsStore implements SkillStatsStore`).
+- **skills:**
+  - `fastify-best-practices` — querystring schema, `inject`, lane 4
+  - `onion-architecture` — lanes 4/5
+  - `zod` — optional pair refine
+  - `security` — request input, lane 14
+  - `response-schema` — lane 18
+- **constraints:** C1, C3, C4, C11, C24, C25
+- **covers:** skill AC-8, AC-9, AC-10, AC-11, AC-12 (structural), NFR-7, NFR-10, NFR-11 (default period); skill EC-14, EC-15, EC-18
+- **reuse:**
+  - S7's route and service shape (`agent-stats/routes.ts`, `service.ts`)
+  - `periodIssue` (`_shared/stats-rules.ts`)
+  - DB-free harness `server/test/ci-routes.test.ts:1-48` with `MockAuthProvider`
+- **done-when:**
+  - T30 and T31 pass;
+  - `pnpm -C server lint`, `typecheck`, `arch:check` and `exec vitest run --exclude '**/*.it.test.ts'` pass (the whole server package is green again here).
+- **depends-on:** S24, S7
+
+### S26 — Skill integration and performance tests
+- **package:** W9
+- **files:**
+  - rewrite `server/test/skill-stats.it.test.ts` (`:121-231`; T32):
+    - keep the harness `:98-119` (`appWith()` with `MockGitClient` + `MockLLMProvider`);
+    - per-test unique skill and agent names (C11);
+    - direct inserts of runs, traces, reviews and findings (pattern `server/test/reviews.it.test.ts:106-140`), plus one real `POST` review run for skill NFR-4.
+  - create `server/test/skill-stats-perf.it.test.ts` (T33) — `buildStatsDataset(db, ws, { skills: 50 })` (S8), p95 of 20 warm samples.
+- **skills:**
+  - `drizzle-orm-patterns` — direct inserts
+  - `fastify-best-practices` — `inject`
+  - `typescript-expert`
+- **constraints:** C4, C11
+- **covers:**
+  - verification of skill AC-1–AC-14
+  - skill NFR-1, NFR-2, NFR-4, NFR-6, NFR-7, NFR-11
+  - skill EC-1–EC-15, EC-19, EC-20, EC-24–EC-28
+- **reuse:**
+  - `startPg` / `dockerAvailable` `server/test/helpers/pg.ts:23-35`
+  - `buildStatsDataset` (S8)
+  - `GET /agents/:id/stats` (S7) for skill AC-13 and AC-14
+  - `MockLLMProvider.calls` `server/src/adapters/mocks.ts:75`
+- **done-when:**
+  - T32 and T33 written and type-correct; `pnpm -C server lint` passes;
+  - not run by the implementer (CI `server-integration.yml`). Record them as *skipped*.
+- **depends-on:** S25, S8
+
+### S27 — Skill stats hook and catalog
+- **package:** W9
+- **files:**
+  - modify `client/src/lib/hooks/skills.ts`:
+    - `skillKeys.stats(id, period?)` → `["skill-stats", id]` without a period (the prefix used by the existing invalidation at `:90`), `["skill-stats", id, from, to]` with one;
+    - `useSkillStats(id, period: Period | null)` (`:106-112`) → `api.get<SkillStats>(`/skills/${id}/stats?${periodApiQuery(period)}`)`, `enabled: !!id && !!period`;
+    - a local `retry` that returns false for `ApiError` 4xx (same rule as S11); no interval.
+  - create `client/src/lib/hooks/skills.test.tsx` (T34).
+  - modify `client/messages/en/skills.json`:
+    - **`stats.*`:**
+      - kept exactly (C26): `usedBy` "Used by", `agentsUsingThisSkill` "Agents using this skill";
+      - `agentsCount` "{count, plural, one {# agent} other {# agents}}";
+      - `pullFrequency` "Pull frequency ({period})", `pullHint` "Share of linked agents' runs whose prompt included this skill", `pullRuns` "{pulled} of {total} runs", `noSkillData` "No skill data for this period", `runsWithoutData` "{count, plural, one {# run} other {# runs}} without skill data are not included — runs recorded before skill tracking, and failed or cancelled runs";
+      - `acceptRate` "Accept rate ({period})", `findings` "Findings ({period})", `findingsByCategory` "Findings by category ({period})", `noFindings` "No findings in this period";
+      - `open` "Open", `openLabel` "Open {agent}", `notLinkedFigures` "Not linked to any agent — the figures come from runs of agents that are no longer linked";
+      - `attributionNote` (skill AC-27 verbatim), `disabledHint` "This skill is disabled — linked agents' runs don't load it";
+      - `loadError` "Couldn't load this skill's stats", `notFound` "This skill no longer exists", `backToSkills`;
+      - `noUsage` (skill AC-33 verbatim), `noRunsInPeriod` "No runs used this skill in this period · last used {date}", `notUsedYet` "No runs used this skill in this period · not used yet".
+    - Remove `stats.findings30d`, `stats.noData`, `stats.noAgents`, `stats.noCategories` only after `git grep` shows no other caller (today only `StatsTab.tsx:29,40,47,60`).
+    - **`card.footer.*`:** `agents` (plural as above), `pull` "{percent} pull", `noPull` "— pull", `accept` "{percent} accept", `noAccept` "— accept", `smallSample` "small sample", `breakdown` "{pulled} of {total} runs · {accepted} of {decided} decided".
+- **skills:**
+  - `react-best-practices` — hooks own fetching
+  - `frontend-architecture` — lane 11
+  - `react-testing-library` — lane 12
+- **constraints:** C14, C15, C16
+- **covers:** skill AC-17, NFR-12 (catalog); skill EC-19
+- **reuse:**
+  - `periodApiQuery` (S9)
+  - the hook test harness `client/src/lib/hooks/agent-stats.test.tsx` (S11)
+- **done-when:**
+  - T34 passes;
+  - `skills.json` is valid JSON with no `/<[A-Za-z]/` in the new strings.
+- **depends-on:** S22, S11
+
+### S28 — Skill Stats tab rebuilt, period wiring and rail link (REC18, REC19)
+- **package:** W9
+- **files:**
+  - rewrite `client/src/app/skills/_components/SkillsView/_components/SkillEditor/_components/StatsTab/{StatsTab.tsx, StatsTab.test.tsx, helpers.ts, helpers.test.ts, styles.ts, index.ts}`:
+    - props `{ skill: Skill; periodState: PeriodUrlState }`;
+    - `useSkillStats(skill.id, period)` + `useRefreshFallback` for `refreshFrom`;
+    - `helpers.ts` `skillTabState(query, stats)` → `pending` | `invalid` (422) | `notFound` (404) | `error` | `noUsage` (skill AC-33) | `noRuns` (skill AC-34: agents non-empty, `skill_runs` 0, `pull_runs_total` 0) | `figures`.
+  - create under `StatsTab/_components/`:
+    - `SkillKpiCards/` + `_components/{UsedByCard, PullFrequencyCard, AcceptRateCard, FindingsCard}/`:
+      - Used by: "1 agent" / "3 agents";
+      - Pull frequency: percent, "m of n runs", or "—" + "No skill data for this period"; the AC-20 line when `runs_without_skill_data > 0`; the label hint in `HoverHint`;
+      - Accept rate: `AcceptRing` + `AcceptText` + `accept.decidedLine`, small sample; a null rate shows "—", "0 decided" and a ring with no accept colour;
+      - Findings: count with separators;
+      - labels in catalog case, no `text-transform` (C26).
+    - `AgentsUsingPanel/`:
+      - title `stats.agentsUsingThisSkill` (no `text-transform`);
+      - one row per agent: `Cpu` icon, `TruncatedName`, an `Open` `<Link href={`/agents/${id}?tab=skills`} aria-label="Open {agent}">`;
+      - `notLinkedFigures` when the list is empty while figures show.
+    - `SkillUsageEmpty/` — the skill AC-33 and AC-34 texts; "Show last 30 days" (`agentPerformance` `states.showLast30`) unless 30 days is selected.
+    - Findings by category: `ShareDonut mode="count"` with `noFindings`.
+  - **States and copy:**
+    - skeleton (no digits, no `$`);
+    - 422 → `PeriodControl serverInvalid`;
+    - 404 → "This skill no longer exists" + link `/skills`;
+    - error → `StatsErrorPanel` "Couldn't load this skill's stats" + reason; refresh failure → `UpdatedStatus` banner;
+    - note (skill AC-27); disabled hint when `!skill.enabled`;
+    - `PeriodControl` and `UpdatedStatus` always rendered.
+  - modify `client/src/app/skills/_components/SkillsView/_components/SkillEditor/SkillEditor.tsx` — optional `statsPeriod?: PeriodUrlState`; render `<StatsTab skill={skill} periodState={statsPeriod} />` when `tab === "stats" && statsPeriod` (`:28`).
+  - modify `client/src/app/skills/_components/SkillsView/SkillsView.tsx`:
+    - `const statsPeriod = usePeriodUrl({ enabled: tab === "stats" })`;
+    - `AppShell onRefresh={tab === "stats" && selectedId ? () => statsPeriod.refresh({ isFetching: qc.isFetching({ queryKey: skillKeys.stats(selectedId) }) > 0, refetchSame: () => qc.refetchQueries({ queryKey: skillKeys.stats(selectedId) }) }) : undefined}`;
+    - the rail `onClick={() => router.push(skillHref(sk.id, search))}` replaces `:106`;
+    - pass `statsPeriod` to `SkillEditor` (`:134`).
+  - modify `client/src/app/skills/_components/SkillsView/helpers.ts` — add `skillHref(id, search)`, keeping `tab`, `range`, `from` and `to`; create `client/src/app/skills/_components/SkillsView/helpers.test.ts` (T36).
+  - Design: `docs/designs/agent-performance/screenshots/skill-stats-tab.png`, `docs/designs/eval-pipeline/jsx/screen_skills.jsx:140-157`.
+- **skills:**
+  - `react-best-practices` — composition, a11y, lane 10
+  - `frontend-architecture` — reuse of shared parts, lane 10
+  - `next-best-practices` — `useSearchParams` / router in `SkillsView`
+  - `react-testing-library` — lane 12
+  - `security` — plain-text names, links from ids
+- **constraints:** C13, C14, C15, C16, C17, C18, C19, C21, C22, C26
+- **covers:**
+  - skill AC-15, AC-16, AC-18, AC-19, AC-20, AC-21, AC-22, AC-23, AC-24, AC-25, AC-26, AC-27, AC-28, AC-29, AC-30, AC-31, AC-32, AC-33, AC-34
+  - skill NFR-3 (manual), NFR-5 (legend), NFR-8, NFR-9 (manual), NFR-12
+  - skill EC-2, EC-4, EC-9, EC-15, EC-16, EC-17, EC-18, EC-20, EC-21, EC-22, EC-23, EC-26
+- **reuse:**
+  - S12 `PeriodControl`, `AcceptRing`, `AcceptText`, `HoverHint`, `TruncatedName`, `ShareDonut`, `StatsErrorPanel`, `UpdatedStatus`
+  - S11 `usePeriodUrl`, `useRefreshFallback`, `useStatsFormat`
+  - S4 `AppShell onRefresh`
+  - the agent page's lifted-state pattern (S21)
+  - `setTab` param preservation `SkillsView.tsx:38-43`
+- **done-when:**
+  - T35 and T36 pass;
+  - `pnpm -C client lint` and `typecheck` pass (if the only remaining errors are in `SkillCard` fixtures, S29 clears them).
+- **depends-on:** S27, S12
+
+### S29 — Skill rail-card footer
+- **package:** W9
+- **files:**
+  - create `client/src/app/skills/_components/SkillCard/_components/StatsFooter/{StatsFooter.tsx, styles.ts, index.ts}`:
+    - "n agent(s) · x% pull · y% accept" from `skill.stats`;
+    - accept through `AcceptText` (scale colour + text);
+    - "small sample" in grey when `small_sample` and the rate isn't null;
+    - "— pull" / "— accept" for nulls;
+    - the breakdown "m of n runs · x of y decided" in `HoverHint` (hover and focus).
+  - modify `client/src/app/skills/_components/SkillCard/SkillCard.tsx` — the footer `:110-117` renders `<StatsFooter stats={skill.stats} />` only when `agent_count > 0`.
+  - rewrite `client/src/app/skills/_components/SkillCard/helpers.ts` — replace `footerSegments` (`:10-14`, hard-coded English) with pure `footerParts(stats)`.
+  - modify `client/src/app/skills/_components/SkillCard/SkillCard.test.tsx` — fixtures `:21,50` to the new `SkillStats` shape; add `agentPerformance` to the provider (`:28`); T37.
+  - Design: `docs/designs/agent-performance/screenshots/skill-stats-tab.png` (rail), `docs/designs/eval-pipeline/jsx/screen_skills.jsx:19-38`.
+- **skills:** `react-best-practices`, `frontend-architecture`, `react-testing-library`
+- **constraints:** C13, C16, C17, C18, C19, C21, C22
+- **covers:** skill AC-35, AC-36, AC-37, AC-38, AC-39, NFR-5 (no per-card request), NFR-12; skill EC-18
+- **reuse:** S12 `AcceptText`, `HoverHint`; S9 `accept.ts`
+- **done-when:**
+  - T37 passes;
+  - `pnpm -C client lint`, `typecheck` and `test` pass;
+  - `pnpm -C mcp-server typecheck` and `test` pass;
+  - `./scripts/check-shared-sync.sh` exits 0.
+- **depends-on:** S28
+
+## Test plan
+- **T1** (S1) `server/test/agent-stats-contracts.test.ts` — unit:
+  - AC-39: `AgentPerf` / `AgentStats` / `AgentRunHistoryPage` parse samples carrying `period` + `as_of`.
+  - AC-24: `last_runs` of 6 is rejected.
+  - AC-22: `AgentPerfRow` accepts a null `agent_id`; `AgentStats` rejects one.
+  - AC-33: `page_size: 21` and status `running` are rejected.
+  - NFR-19: `Object.keys(AgentRunEstimate.shape)`, `RunSummary`, `MultiAgentRun`, `CiRun` equal their current key lists.
+- **T3** (S3) `server/test/seed-agent-stats.it.test.ts` — it:
+  - AC-183: after `seed` + `seedAgentStatsDemo`, the demo runs cover 3 agents and 2 models; Security has 17 decided findings, Performance 5 and General 2; costs > 0, = 0 and null all occur; every `ran_at` is between now−20d and now−1d.
+  - AC-184: a second call adds 0 rows to `agent_runs` / `reviews` / `findings` / `run_traces` / `pull_requests`.
+  - AC-185 / EC-26 (data guard): PRs #482, #483 and #484 have 0 `agent_runs`, and their review and finding counts equal those after `seed()` alone.
+  - Every demo trace passes `RunTrace.parse`.
+  - REC13 / skill EC-28: every recorded skill id in a demo trace is linked to that run's agent.
+  - skill AC-40 (data): `pr-quality-rubric` is recorded in ≥1 demo run within the last 30 days.
+- **T4** (S4) `client/src/components/app-shell/AppShell.test.tsx` + `client/src/components/app-shell/helpers.test.ts` — component:
+  - AC-98: GLOBAL keys = `["multi-agent","agent-performance"]`; the link "Agent Performance" has href `/agent-performance`.
+  - AC-99: `activeKeyFor("/agent-performance")` → `"agent-performance"`, and `/agents/x` stays `"agents"`.
+  - AC-188: keydown `g` then `m` on body → `push("/agent-performance")`; the same inside an `<input>` → no push.
+  - AC-56: with `onRefresh` a "Refresh" button (catalog label) calls it; without the prop there is none.
+- **T5** (S5) `server/test/agent-stats-helpers.test.ts` — unit:
+  - AC-1 / EC-24: a run at `from` counts; one at `to` doesn't.
+  - AC-2 / AC-3: `running` runs are excluded from every figure but counted in `in_progress`.
+  - AC-4 / AC-5: runs, failed and cancelled counts.
+  - AC-6 / AC-7 / AC-8 / EC-12: the total folds known costs; all-null → null; a $0 run → 0; avg = total / known count.
+  - AC-9 / AC-10: avg duration over done runs only; no done run → null.
+  - AC-11–AC-14 / EC-27 / EC-48: decision counts; rate; null rate at 0 decided; small sample at 9 and not at 10.
+  - AC-15 / EC-1: the null-agent row is last.
+  - AC-16: unknown-cost counts.
+  - AC-17: `buildAgentStats` figures equal the matching `buildPerformance` row.
+  - AC-18: summary = sums of rows.
+  - AC-19: pooled rate.
+  - AC-20 / EC-10, AC-21 / EC-11: most-active and its tie-breaks; null when only deleted-agent runs exist.
+  - AC-22 / EC-16: every agent gets a row (disabled and 0-run included); renamed agents are keyed by id.
+  - AC-23 / EC-32: `last_run_at` comes from finished runs at any time.
+  - AC-24: ≤5 done runs, oldest first.
+  - AC-25 / AC-26 / EC-2 / EC-17 (REC2): with costs 0.1, 0.2, 0.3, 0.7 across 3 agents and 3 models (one null model), `rows.reduce(+)` in response order === total, `cost_by_agent` fold === total, and `cost_by_model` fold === total.
+  - NFR-8 / EC-28: shuffled raw input → deep-equal output.
+  - AC-27 / EC-31: bucket counts and sizes at the 2d / 90d / 91d boundaries.
+  - AC-30: severity bucket sizes at 2d / 14d / 120d / 121d.
+  - AC-34: previous-period figures.
+  - AC-36: `periodIssue` rejects from = to, from > now, span 367d + 1 ms, and accepts exactly 367d.
+  - REC14 / REC15 (`_shared/stats-rules.ts`):
+    - `isRecordedSkillList` accepts `[]` and `["a","b"]`, and rejects `undefined`, `null`, `{}`, `"a"` and `["a", 1]`;
+    - `acceptFigures(9, 0)` → small sample; `(10, 0)` → not small; `(0, 0)` → rate null;
+    - `wholePercent(0.125)` → 13 (halves up).
+  - AC-32 (REC15): `buildSkillsUsage` counts a run whose list is `["s1", 1]` as without skill data.
+- **T6** (S7) `server/test/agent-stats-routes.test.ts` — unit, DB-free `inject`:
+  - AC-35: a missing `to`, `from=2026-10-01T00:00:00` with no offset, and `from=x` → 422 with no `summary` key.
+  - AC-36: the reversed, future and too-long cases → 422.
+  - AC-37: `page=0`, `1.5` and `x` → 422.
+  - AC-38 / EC-21: the fake store returns null → 404 on `/stats` and `/stats/runs`.
+  - AC-39: 200 bodies parse with the contracts; `period.previous_from` = from − (to − from); `as_of` = the injected clock.
+  - `GET /agents/performance` is served by agent-stats (200, not an `IdParams` 422).
+  - NFR-10: covered by the cases above.
+- **T7** (S7) `server/test/agent-stats-service.test.ts` — unit:
+  - NFR-17: exactly one `info` per call with keys `{route, workspace_id, from, to, rows, duration_ms}`, and no finding title or PR text anywhere in the call.
+  - AC-38: `NotFoundError` on a null store result.
+- **T8** (S8) `server/test/agent-stats.it.test.ts` — it:
+  - AC-1 / EC-29 / EC-30: another workspace's runs and status filters; multi-agent group members counted once per agent; a deleted run vanishes.
+  - AC-2 / AC-3: running runs.
+  - AC-11 / EC-22 / EC-23: real join; a review without a run is excluded; re-triage counted at read time.
+  - AC-15 / EC-1: deleting an agent yields the Deleted row.
+  - AC-17 / EC-7: dashboard row = Stats for 3 agents on the same data.
+  - AC-18, AC-20–AC-24 on real data.
+  - AC-25 / AC-26: exact fold on real data.
+  - AC-27.
+  - AC-28: `agent_count`; `workspace_last_run_at` includes deleted agents' runs.
+  - AC-30 / AC-31: all kinds and decisions counted.
+  - AC-32 / EC-43 / EC-44: with/without skill data; a deleted skill → `skill_name` null; a trace without `config.skills`; a trace whose `config.skills` is `["x", 1]` counts as without skill data and the read answers 200 (REC15).
+  - AC-33 / EC-42 / EC-45: newest first, 20 per page, a page past the end → empty items with the right `total`, a deleted PR → nulls, a failed run → stored 0 tokens.
+  - AC-34: previous period.
+  - AC-38 / EC-21: another workspace's agent → 404.
+  - AC-40 / NFR-5 / EC-18: after calling all three endpoints, `MockLLMProvider.calls` is empty, the `fetch` spy has 0 calls, and the `agent_runs` count is unchanged.
+  - NFR-8 / EC-19: two reads are equal apart from `as_of`.
+  - NFR-19: `GET /runs/estimates` still parses as `AgentRunEstimate[]`.
+  - Seeded demo (`seedAgentStatsDemo`), 30-day window:
+    - Security row: runs 13, failed 1, cancelled 1, `unknown_cost_runs` 2, `avg_duration_ms` 6200, accepted 13, dismissed 4, pending 3, `small_sample` false, `avg_cost_usd` = `total_cost_usd / 11`;
+    - Performance row: `small_sample` true;
+    - General row: runs 2, accepted 2, pending 1, `small_sample` true;
+    - summary: runs 18, failed 1, cancelled 1, `unknown_cost_runs` 2, accepted 18, dismissed 6, pending 5;
+    - `cost_by_model`: `deepseek/deepseek-v4-flash` ≈ 0.46, `openai/gpt-4.1-mini` ≈ 0.06 (their fold equals `total_cost_usd`).
+- **T9** (S8) `server/test/agent-stats-perf.it.test.ts` — it, on `buildStatsDataset` (S8):
+  - NFR-1: p95 ≤ 500 ms (20 warm samples) for `/agents/performance` with 30-day and 366-day periods.
+  - NFR-2: the same budget for `/agents/:id/stats` and `/agents/:id/stats/runs?page=1`.
+- **T10** (S9) `client/src/lib/agent-stats/period.test.ts` — unit:
+  - AC-45: 1d = now−24h..now.
+  - AC-46: 30d = now−720h..now.
+  - AC-47: custom = local 00:00 of the start date .. local 00:00 of the day after the end date.
+  - AC-48 / EC-9: the incomplete / start-after-end / end-in-future reasons; 367 days rejected, 366 accepted.
+  - AC-50: `periodSearchParams` writes `range` / `from` / `to` and keeps `tab`.
+  - AC-51: valid params parse to exactly those values.
+  - AC-52: missing params → fallback.
+  - AC-53: `invalid` only when params are present and bad.
+  - NFR-6: limit constants.
+  - EC-31: `trendUnit`.
+- **T11** (S9) `client/src/lib/agent-stats/format.test.ts` — unit:
+  - AC-104 / EC-15: `1234.56` → "$1,234.56".
+  - Q-8: `0.0013` → "$0.0013"; `0.0381818` → "$0.038"; `1.234` (avg) → "$1.23".
+  - AC-135 / EC-33: `0.004` → the less-than marker for "$0.01".
+  - EC-3: `null` → "—"; `0` → "$0.00".
+  - AC-117: 6200 → "6.2 s".
+  - AC-159: 14000 + 2100 → "16k"; failed → "—".
+  - Counts with separators: "1,000".
+- **T12** (S9) `client/src/lib/agent-stats/accept.test.ts` — unit:
+  - AC-115: 0.745 → good; 0.744 → warning; 0.495 → warning; 0.494 → poor; small sample → muted.
+  - AC-140: +1 displayed point → up with points 1; +0 → none.
+  - AC-141: no arrow when either side is null or a small sample.
+- **T13** (S9) `client/src/lib/agent-stats/breakdown.test.ts` — unit:
+  - AC-133 / EC-13: 7 entries → 5 + "Other" = the sum of the other 2.
+  - AC-134: largest-remainder cents of [0.333, 0.333, 0.334] sum to `round(1.0*100)`, and a random set always sums to `round(total*100)`.
+- **T14** (S11) `client/src/lib/hooks/agent-stats.test.tsx` — unit:
+  - AC-41: every request is a GET with `from` / `to` URL-encoded.
+  - AC-42: two consumers of the same period → 1 fetch.
+  - AC-43 / EC-8: no fetch after advancing fake timers 10 minutes.
+  - 422 is not retried; 500 is retried once.
+- **T15** (S11) `client/src/lib/agent-stats/usePeriodUrl.test.tsx` — unit:
+  - AC-50: `select` → `replace` with the params, `tab` kept.
+  - AC-51: a valid URL → no `replace` and the exact period.
+  - AC-52: missing params → one `replace` with 30d resolved once; stable across re-renders with a moved clock.
+  - AC-53: `notice` set for invalid params.
+  - AC-56 / EC-25: preset refresh → re-resolved `to` and `refreshFrom` = the old period; custom → `refetchSame` called.
+  - EC-18: refresh while `isFetching` → no-op.
+- **T16** (S12) `client/src/components/agent-stats/*/*.test.tsx` — component:
+  - `PeriodControl`:
+    - AC-44: three options, "30 days" `aria-pressed`;
+    - AC-48 / AC-49: Apply disabled + the reason text referenced by `aria-describedby`;
+    - AC-55: resolved range text;
+    - AC-176: `serverInvalid` text;
+    - AC-53: notice;
+    - NFR-11: the controls are buttons and inputs;
+    - NFR-16: the custom fields are inline (no `role="dialog"`).
+  - `CostLabel`: AC-189 — the tooltip with the info text appears on hover and on focus of the info button, with `aria-describedby`.
+  - `ShareDonut`:
+    - AC-132: label + amount + share %;
+    - AC-154: count mode shows "9" and no "$";
+    - AC-133: "Other";
+    - AC-135: "< $0.01";
+    - AC-136: the empty text replaces the ring;
+    - NFR-13: legend values are text.
+  - `AcceptKpiCard`:
+    - AC-106: "73%" + "16 of 22 decided · 4 pending";
+    - AC-107 / AC-147: small sample → muted plus the text "small sample";
+    - NFR-12: colour always paired with text.
+  - `RunsKpiCard`:
+    - AC-101 / AC-144: "16" + "1 failed · 1 cancelled";
+    - AC-102 / NFR-13: the `role=img` name "Runs per day, 0 to 3";
+    - AC-103: the in-progress line only when > 0.
+  - `CostDelta`:
+    - AC-138: "↓ $1.20 vs previous 30 days" in the success colour when cost fell, the error colour when it rose;
+    - AC-139: nothing when either side is null;
+    - AC-142: the avg format.
+  - `TruncatedName` (AC-127 / EC-14): ellipsis style; `title` and accessible name = the full value; a tooltip on focus.
+  - `UpdatedStatus`:
+    - AC-57: "Updated 14:05" from `as_of` (UTC);
+    - AC-175: "Couldn't refresh — showing data as of 14:05" + Retry;
+    - NFR-14: `role=status`, `aria-live=polite`, focus unchanged.
+  - `StatsErrorPanel` (AC-173): title + reason; Retry calls the handler.
+  - `NoRunsInPeriod` (AC-179 / AC-181): the date text; "Show last 30 days" hidden when 30d is selected.
+- **T17** (S16) `client/src/app/agent-performance/_components/AgentPerformanceView/AgentPerformanceView.test.tsx` — component:
+  - AC-170: pending → `textContent` has no `[0-9$]`.
+  - AC-171: sort buttons disabled; no View link.
+  - AC-173: 500 → "Couldn't load agent performance" + reason + Retry, and no figures.
+  - AC-174 / EC-20: select another period → 500 → the error state replaces the old figures.
+  - AC-175: Refresh → 500 → the old figures + banner.
+  - AC-176: 422 → "This period is invalid — choose another period".
+  - AC-177: `agent_count` 0 → "No agents yet" and a "Create agent" link with href `/agents`.
+  - AC-178: no runs ever → "No reviews yet — run a review on a pull request" + "Pull Requests" link.
+  - AC-179: runs 0 → "No runs in this period · last run …" + "Show last 30 days" (absent when 30d is selected).
+  - AC-56: Refresh → a new GET whose `to` is later.
+  - AC-57: "Updated".
+  - AC-100: scope note.
+  - AC-54: "Total runs (30 days)".
+  - AC-41 / EC-18: every fetch during open / refresh / period change / sort / expand is a GET.
+  - AC-42: two Refresh clicks while in flight → 1 request.
+  - AC-44: the period control is present.
+  - EC-5, EC-7, EC-8: covered by the cases above.
+- **T18** (S13) `client/src/app/agent-performance/_components/KpiCards/KpiCards.test.tsx` — component:
+  - AC-101–AC-103: runs card.
+  - AC-104: "$0.48" + cost label.
+  - AC-190: "cost unknown for 2 runs".
+  - AC-138 / AC-139: delta present / absent.
+  - AC-106 / AC-107: accept card.
+  - AC-108: "Security Reviewer" + "13 runs · 76% accept".
+  - AC-109 / EC-11: null → "—" + "No agent ran in this period".
+  - EC-6: the in-progress line.
+  - EC-15: "$1,234.56".
+  - AC-54: labels.
+- **T19** (S14) `client/src/app/agent-performance/_components/AgentsTable/{AgentsTable.test.tsx, helpers.test.ts}` — component + unit:
+  - AC-110: column headers.
+  - AC-111 / EC-4: a 0-run row shows "0" and "—" ×3.
+  - AC-112 / EC-48: "78% · 39/50"; a null rate → "—" and "0 decided".
+  - AC-113: "60% · 5/10 decisions — small sample", muted.
+  - AC-114 / EC-27: "13 accepted · 4 dismissed · 3 pending" on hover and on focus.
+  - AC-115: colour + text.
+  - AC-117: "6.2 s".
+  - AC-118 / EC-32: relative time + the full date on focus; "Never".
+  - AC-119 / EC-25: View href `/agents/<id>?tab=stats&range=30d&from=…&to=…`.
+  - AC-120 / EC-1: "Deleted agent" without View.
+  - AC-121: Accept descending first.
+  - AC-122: a header click sorts and toggles, `aria-sort` updates, and the `fetch` count is unchanged.
+  - AC-123: small-sample rows after the rated ones, by decided count descending.
+  - AC-124: "—" rows last in both directions.
+  - AC-125: Deleted always last.
+  - AC-126: ties A→Z.
+  - AC-127 / EC-14: truncation.
+  - AC-128: `aria-expanded` toggles without a fetch.
+  - AC-129: sparkline when ≥2 runs.
+  - AC-130: "last 5 runs · avg 6.2 s · $0.036", and "—" when no cost is known.
+  - AC-131: the texts for 0 and 1 runs.
+  - AC-140: "up 3 points vs previous period" arrow.
+  - AC-141: no arrow when small or null.
+  - AC-191: the Avg cost header has the cost label.
+  - NFR-7 / EC-47: 250 rows → 200 rendered + "Showing 200 of 250 agents".
+  - NFR-11: `th[aria-sort] > button`.
+  - NFR-12: text with every colour.
+- **T20** (S15) `client/src/app/agent-performance/_components/CostBreakdown/CostBreakdown.test.tsx` — component:
+  - AC-132 / EC-1 / EC-2: two cards; "Deleted agent" and "Unknown model".
+  - AC-133: "Other".
+  - AC-134: the legend cents sum to the displayed total.
+  - AC-135: "< $0.01".
+  - AC-136 / EC-12: null and 0 totals → "No cost recorded in this period".
+  - AC-192: the heading has the cost label.
+- **T21** (S18) `client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/{StatsTab.test.tsx, helpers.test.ts}` + sub-component tests — component:
+  - AC-144: runs card.
+  - AC-145: "$0.038" + cost label.
+  - AC-146: "6.2 s" and "—".
+  - AC-147: ring, decided line, small sample.
+  - AC-148: 3 bars "100%", "67%", "33%".
+  - AC-149 / EC-44: "Based on 9 of 13 runs — …".
+  - AC-150: "No skill data for this period".
+  - AC-151 / EC-43: "Deleted skill".
+  - AC-152: one bar per bucket + the "Critical" / "Warning" / "Suggestion" legend.
+  - AC-153: a bar's accessible name and its focus tooltip include the dates and counts.
+  - AC-154 / EC-13: category counts with no "$"; top 5 + Other.
+  - AC-155: "No findings in this period" in both panels.
+  - AC-142: the avg cost delta.
+  - AC-172: skeleton without `[0-9$]`.
+  - AC-173: "Couldn't load this agent's stats".
+  - AC-174 / AC-175: through the shared components.
+  - AC-176: 422 text.
+  - AC-180: "This agent hasn't run yet".
+  - AC-181 / EC-4: "No runs in this period · last run …".
+  - AC-182: 404 → `onAgentNotFound` called once and no figures.
+  - AC-196: "cost unknown for 2 runs".
+  - AC-54: "Total runs (30 days)".
+  - AC-57, AC-100.
+  - AC-41: only GETs.
+- **T22** (S17) `client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/_components/RunHistory/RunHistory.test.tsx` — component:
+  - AC-156: columns include Status and no "Source".
+  - AC-157: "acme/payments-api #479" links to `/repos/<repo_id>/pulls/479`.
+  - AC-159 / EC-45: "16k"; failed → "—".
+  - AC-160: href `…/pulls/479?trace=<run_id>`.
+  - AC-161 / EC-42: null PR → "—" and no View trace.
+  - AC-162: Next → one GET with `page=2` and "21–25 of 25".
+  - AC-163: page 500 → section error + Retry while the KPI cards remain.
+  - AC-193: the Cost header has the cost label.
+  - AC-194: null → "—", never "$0.00".
+  - NFR-6: 20 rows per page.
+- **T23** (S19) `client/src/app/agents/[id]/constants.test.ts` + `client/src/app/agents/[id]/_components/AgentEditor/AgentEditor.test.tsx` — unit + component:
+  - AC-143: `TABS` order …evals, stats, ci; every key is in `VALID_TABS`; the editor shows "Stats" and renders the Stats body for `tab="stats"`.
+- **T24** (S20) `client/src/app/agents/_components/AgentCard/AgentCard.test.tsx` — component:
+  - AC-165: "13 runs · 76% accept · $0.038 avg".
+  - AC-166: "small sample" / "— accept".
+  - AC-167: "No runs in 30 days".
+  - AC-168 / AC-169: `statsRow` undefined → no line, while name, model chip and toggle still render.
+  - AC-195: the avg shows the cost label on hover and focus and in its accessible description.
+- **T25** (S21) `client/src/app/agents/[id]/helpers.test.ts` — unit:
+  - AC-164 / EC-46: `agentHref("b", "?tab=stats&range=30d&from=X&to=Y")` → `/agents/b?tab=stats&range=30d&from=X&to=Y`.
+- **T27** (S10) `client/src/components/agent-stats/messages.test.ts` — unit:
+  - NFR-20 / `client/INSIGHTS.md:39`: no `<letter` in any `agentPerformance.json` string; all leaves are non-empty.
+- **T28** (S22) `server/test/skill-stats-contracts.test.ts` — unit:
+  - skill NFR-11: `Object.keys(SkillStats.shape)` contains every old key (`agent_count`, `pull_pct`, `accept_pct`, `findings_30d`, `by_category`, `agents`) with the same Zod type, plus the new keys of the spec's *Contracts*.
+  - A full sample parses; `period` is `{ from, to }`; `accept_rate` 2 is rejected.
+  - (Three-copy byte equality stays pinned by `server/test/eval-contract-parity.test.ts:15-19`.)
+- **T29** (S23) `server/test/skill-stats.test.ts` (rewritten) — unit, `computeSkillStats` over hand-built facts:
+  - skill AC-1 / EC-24 / EC-25: Used by = linked agents A→Z, including a disabled one, no cap at 30; `agent_count` = length.
+  - skill AC-2 / EC-1 / EC-4 / EC-5 / EC-6 / EC-20:
+    - pull base = linked agents' window runs with a recorded list;
+    - a linked run with `[]` counts in the base, not in `pull_runs`;
+    - a run recorded before linking counts in `pull_runs_total` only;
+    - `pull_pct` = 67 for 2 of 3;
+    - an empty base → null, never 0.
+  - skill AC-3 / EC-7 / EC-27: runs without a list, with `null`, with `{}` or with `["x", 1]` → `runs_without_skill_data`, never in the base.
+  - skill AC-4 / EC-2 / EC-3 / EC-12 / EC-13:
+    - findings of done skill runs by an unlinked agent and by a deleted agent (null `agentId`) count;
+    - findings of a failed skill run don't;
+    - two agents' findings on one PR both count;
+    - `by_category` is sorted.
+  - skill AC-5 / EC-11 / EC-26: `accepted`/`dismissed`/`pending` sums; `accept_rate` via `acceptFigures`; small sample at 9 decided and not at 10; rate null with 0 decided → `accept_pct` null.
+  - skill AC-6: `skill_runs` counts skill runs of every agent in the window.
+  - skill AC-7: `last_used_at` = the latest run at any time (outside the window too); null when never used.
+  - skill EC-8 / EC-14: running runs are absent from facts; a run at `from` counts, one at `to` doesn't.
+  - skill NFR-6 / NFR-11: `pull_runs ≤ pull_runs_total`; Σ `by_category` = `findings` = `accepted + dismissed + pending`; `findings_30d` = `findings`; shuffled facts → deep-equal output.
+  - skill EC-10: a review without a run never reaches facts (asserted in T32).
+- **T30** (S25) `server/test/skill-stats-routes.test.ts` — unit, DB-free `inject` with `MockAuthProvider`:
+  - skill AC-9: only `from`, only `to`, a value without offset, `from=x`, from ≥ to, from in the future, and span 367d + 1 ms → 422 with no `agent_count` key.
+  - skill NFR-7: the same cases are rejected before any handler runs (no store call).
+- **T31** (S25) `server/test/skill-stats-service.test.ts` — unit, `FakeSkillStatsStore`:
+  - skill AC-8: with no period, the window = `[as_of − 720h, as_of)` and `period` echoes it; with a period, exactly the given bounds; `as_of` = the injected clock.
+  - skill AC-10 / EC-15: `skillRef` null → `NotFoundError`.
+  - skill AC-11 / EC-18: `forList` makes one `statsFacts` call over `[now − 720h, now)` for all ids.
+  - skill NFR-10: exactly one `info` per `forSkill` call with keys `{route, workspace_id, from, to, duration_ms}` and no finding title or skill body.
+- **T32** (S26) `server/test/skill-stats.it.test.ts` (rewritten) — it:
+  - skill AC-1–AC-7 on real rows, covering skill EC-1, EC-2, EC-3, EC-4, EC-6, EC-7, EC-12, EC-13 and EC-28.
+  - skill AC-8: no period → 200 over the last 30 days; skill NFR-11: the body has every old key, and `findings_30d` = `findings`.
+  - skill AC-10 / EC-15: unknown and other-workspace skill → 404.
+  - skill AC-11: `GET /skills` rows carry `stats` over the card period, with `period.to − period.from` = 720h.
+  - skill AC-12 / NFR-4 / EC-19: after `GET /skills/:id/stats` and `GET /skills`, `MockLLMProvider.calls` is unchanged, the `fetch` spy has 0 calls, and the `agent_runs` count is unchanged.
+  - skill EC-9 / EC-8: runs with `source = 'ci'` and `status = 'running'` are in no figure.
+  - skill EC-10 / EC-11: a run-less review's findings are not counted; re-triage counted at read time.
+  - skill EC-27 / NFR-6: a trace with `config.skills: ["x", 1]` → 200 and that run is without skill data; Σ invariants hold; a repeated read is equal apart from `as_of`.
+  - skill AC-13: a skill with one linked agent, read for the same fixed period as `GET /agents/:id/stats` → `pull_runs` = that skill's `skills_usage.skills[].runs` and `pull_runs_total` = `skills_usage.runs_with_skill_data`.
+  - skill AC-14: an agent all of whose done runs loaded the skill, no other agent loading it → `findings` = Σ `findings_by_category`, `by_category` = `findings_by_category`, and accepted/dismissed/pending/`accept_rate` equal the agent's. Includes a finding with both `accepted_at` and `dismissed_at` set, to pin C22's identical `FILTER` expressions.
+- **T33** (S26) `server/test/skill-stats-perf.it.test.ts` — it, `buildStatsDataset(db, ws, { skills: 50 })`:
+  - skill NFR-1: p95 ≤ 500 ms (20 warm samples) for `GET /skills/:id/stats` with 30-day and 366-day periods.
+  - skill NFR-2: p95 ≤ 500 ms for `GET /skills` with 50 skills.
+- **T34** (S27) `client/src/lib/hooks/skills.test.tsx` — unit:
+  - skill AC-17 / EC-19: every stats request is a GET with `from` / `to`; two consumers of the same period → 1 fetch; no fetch after advancing fake timers 10 minutes; 404 and 422 are not retried.
+  - The invalidation prefix `skillKeys.stats(id)` still matches a period key.
+- **T35** (S28) `client/src/app/skills/_components/SkillsView/_components/SkillEditor/_components/StatsTab/{StatsTab.test.tsx, helpers.test.ts}` + sub-component tests — component (providers include `skills` and `agentPerformance`):
+  - skill AC-15: `PeriodControl` with "30 days" pressed; labels "Pull frequency (30 days)", "Accept rate (30 days)", "Findings (30 days)", "Findings by category (30 days)"; resolved range text; the invalid-link notice.
+  - skill AC-18: "1 agent" and "3 agents".
+  - skill AC-19 / EC-20: "71%" + "5 of 7 runs"; a null rate → "—" + "No skill data for this period".
+  - skill AC-20 / EC-7: "4 runs without skill data are not included — …".
+  - skill AC-21: the pull hint on hover and on focus.
+  - skill AC-22 / EC-26: ring + "74%" + decided line; small sample → grey + "small sample"; a null rate → "—", "0 decided" and a ring with no accept colour.
+  - skill AC-23 / EC-21: "1,234".
+  - skill AC-24 / EC-22 / EC-24 / NFR-8:
+    - 30 agents listed A→Z, each with an `Open` link `/agents/<id>?tab=skills`, accessible name "Open <agent>";
+    - long names truncated with the full name in the accessible name.
+  - skill AC-25 / EC-2: the "Not linked to any agent — …" text.
+  - skill AC-26 / EC-23 / NFR-5: category counts with no "$", top 5 + "Other", "No findings in this period" at 0.
+  - skill AC-27 / EC-9: the note; skill AC-28 / EC-4: the disabled hint when `enabled` is false.
+  - skill AC-29: pending → no `[0-9$]` in the tab.
+  - skill AC-30: 500 → "Couldn't load this skill's stats" + reason + Retry; a period change then 500 → error state with no old figures; 422 → "This period is invalid — choose another period".
+  - skill AC-31 / EC-15: 404 → "This skill no longer exists" + a link to `/skills`.
+  - skill AC-32 / EC-18: refresh failure → old figures + "Couldn't refresh" banner; "Updated HH:MM"; `role=status` polite region (NFR-8).
+  - skill AC-33: no agents and `skill_runs` 0 → the "No usage yet — …" text instead of cards, panels and note.
+  - skill AC-34: agents, `skill_runs` 0, `pull_runs_total` 0 → "… · last used <date>" or "… · not used yet", and "Show last 30 days" unless 30 days is selected; the agents panel stays.
+  - REC18 / C26 (skill AC-40 guard): "Used by" and "Agents using this skill" are in the document with no `text-transform: uppercase` in their computed style.
+  - skill NFR-12: every asserted string comes from the catalog.
+- **T36** (S28) `client/src/app/skills/_components/SkillsView/helpers.test.ts` — unit:
+  - skill AC-16 / EC-16 / EC-17: `skillHref("b", "?tab=stats&range=30d&from=X&to=Y")` → `/skills/b?tab=stats&range=30d&from=X&to=Y`; with no params → `/skills/b`.
+- **T37** (S29) `client/src/app/skills/_components/SkillCard/SkillCard.test.tsx` (rewritten fixtures) — component:
+  - skill AC-35: "3 agents · 71% pull · 74% accept", the accept percent coloured by the scale with its text; "1 agent" singular.
+  - skill AC-36: `small_sample` true with a rate → "small sample" in grey instead of the percent.
+  - skill AC-37: null rates → "— pull" and "— accept".
+  - skill AC-38: `agent_count` 0 → no footer.
+  - skill AC-39: "5 of 7 runs · 12 of 16 decided" on hover and on focus.
+  - skill NFR-5: rendering the card issues no fetch; skill NFR-12: "1 agent" and "3 agents" come from the catalog.
+- **Handed off** (not written by implementers):
+  - **AC-185:** run the existing flows via `./scripts/e2e.sh` / CI `e2e-web.yml`.
+  - **AC-186, AC-187:** `test-writer` (see *Review handoff → Tests*).
+  - **skill AC-40:** run `./scripts/e2e.sh`. `08-skills` must pass unchanged. No flow edit is expected (REC18; data from REC13). If it fails on label text, `test-writer` adjusts the waits.
+- **Manual** (no T row): agent NFR-3, NFR-15; skill NFR-3, NFR-9.
+- **Commands:**
+  - server: `pnpm -C server lint` · `pnpm -C server typecheck` · `pnpm -C server arch:check` · `pnpm -C server exec vitest run --exclude '**/*.it.test.ts'`
+  - client: `pnpm -C client lint` · `pnpm -C client typecheck` · `pnpm -C client test`
+  - mcp-server: `pnpm -C mcp-server typecheck` · `pnpm -C mcp-server test`
+  - e2e: `npm --prefix e2e run typecheck`
+  - shared: `./scripts/check-shared-sync.sh`
+  - not run by implementer: `pnpm -C server exec vitest run .it.test` (T3, T8, T9, T32, T33) and `./scripts/e2e.sh`.
+- **Multi-agent:** implementers run targeted tests (e.g. `pnpm -C client exec vitest run src/lib/agent-stats`) + their package's typecheck; the full table runs once per wave in the main session.
+
+## Risks & open questions
+- **REC2 fold order** (inference): exactness is guaranteed for the response-order fold that T5 and T8 use. A different summation order may differ in the last binary digit. Accepted with REC2. — for: user
+- **Schema drift:** `db:generate` (S2) may add unrelated statements if `0021_snapshot.json` differs from the current schema. The S2 done-when stops on anything beyond the two indexes. — for: user
+- **Fastify route precedence:** static `/agents/performance` should take precedence over `/agents/:id` from another plugin regardless of registration order (inference, find-my-way). T6 asserts it. If T6 fails there → question for `researcher`: find-my-way static vs parametric precedence across encapsulated plugins.
+- **Demo data ages:**
+  - On a dev DB seeded long ago, the demo runs drift out of "30 days" (they are 1–20 days old at seeding).
+  - The AC-186 flow must run on the hermetic stack (`./scripts/e2e.sh`).
+  - A dev DB that was already seeded only gets the demo after `pnpm db:seed` is run again.
+  - — for: user
+- **Demo seed lives only in the `db:seed` CLI path:** integration tests that call `seed()` won't see it unless they call `seedAgentStatsDemo` (T3, T8 do). — for: user
+- **Perf test on CI runners:** the 500 ms p95 budget is set by agent NFR-1 and skill NFR-1/NFR-2; T9 and T33 may flake on slow runners (inference). — for: user
+- **Agent page `page.tsx` has no test file:** its new behaviour is pushed into `helpers.ts` (T25) and the `StatsTab` callback (T21). The Refresh → re-resolve flow on the agent page needs a live check. — for: user
+- **Client clock ahead of the server:** a preset period can fail AC-36's "from in the future" check and get a 422 (AC-176 shows it). — for: user
+- **All-time trace scan per skill read** (REC16, inference):
+  - `last_used_at` and the window figures read the skills path of every counted run, de-TOASTing each trace once per request.
+  - T33 measures it on the shared dataset.
+  - If skill NFR-1/NFR-2 fail, the fallback is a narrower `last_used_at` scan (newest first, stop at the first match per skill) — decision for user.
+- **W9 is red mid-package:**
+  - Between S22 and S25 the server typecheck fails on the old skill-stats producer; between S22 and S29 the client typecheck fails on old `SkillStats` fixtures.
+  - This is expected inside W9's sequence (REC17). The wave-3 full check runs only after W9 completes. — for: user
+- **Intentional `SkillStats` semantic break:**
+  - Every in-repo consumer is updated in W9, but an unknown external consumer would see new meanings under old keys (skill spec Q3, accepted).
+  - `findings_30d` stays as a deprecated alias with no removal date. — for: user
+- **`08-skills` depends on demo data and label case:**
+  - It needs REC13's General Reviewer runs, so `pr-quality-rubric` isn't in the skill AC-34 empty state.
+  - It needs C26's unstyled labels.
+  - A DB seeded only by `seed()` (no CLI demo) would show the AC-34 state for that skill and the "Used by" wait would fail. The hermetic stack uses the CLI. — for: user
+- **Skill card vs tab period:** the rail's 30 days is fixed when `GET /skills` is read, and the tab's 30 days when the tab loads, so the two can differ by runs finished in between (skill EC-18). Refresh realigns them. — for: user
+
+## Review handoff
+- **Architecture:**
+  - `server/src/modules/agent-stats/**`: service ports only, one read-only transaction per response, no sideways imports.
+  - `server/src/modules/_shared/stats-rules.ts`: the only cross-module rule source (REC14).
+  - `server/src/modules/skills/**`: `SkillStatsService` ports (`types.ts`), `SkillsService` → stats service, no import of `agent-stats/*`, `forAgent` unchanged.
+  - The `container.ts` getter and override.
+  - `modules/index.ts` registration.
+  - Client layering: `lib/agent-stats` → `components/agent-stats` → `app/*` (agent screens and `app/skills/**`).
+  - `vendor/ui` patches limited to `nav.ts` and the `Topbar.tsx` label.
+  - `AppShell` `onRefresh` prop; Stats period state lifted into `agents/[id]/page.tsx` and `SkillsView.tsx`.
+  - Seed called from the CLI block only; demo traces record only linked skills.
+- **Security:**
+  - Querystring validation (`from` / `to` / `page`; the skill optional pair); workspace scoping in every query of both repositories.
+  - Raw `sql` with jsonb operators and bucket arithmetic (bound parameters only).
+  - Trace skill lists treated as untrusted: JS predicate; ids compared as text, never cast.
+  - The agent NFR-17 and skill NFR-10 log line contents.
+  - Plain-text rendering of agent, model, skill, category and repository names (LLM-produced categories included).
+  - Hrefs built from ids; URL period params validated client-side.
+- **API compatibility:**
+  - New: `GET /agents/performance`, `GET /agents/:id/stats`, `GET /agents/:id/stats/runs`.
+  - Changed reserved contracts `AgentPerf` / `AgentPerfRow` / `AgentStats`, with no consumers (lanes 17–20: non-breaking).
+  - **Changed `SkillStats` — intentional, recorded semantic break** (lanes 17–20):
+    - `breaking-change` / `response-schema`: `GET /skills/:id/stats` and every `GET /skills` row keep every old key and type but compute them by the new rules; new keys are additive; new optional query pair `from`/`to`, 422 only when sent invalid.
+    - `deprecation-policy`: `findings_30d` `@deprecated`, replacement `findings`, removal not scheduled.
+    - `semver-discipline`: `server`, `client` and `mcp-server` are private `0.0.0` packages, so no version bump is required; record the break in the PR description.
+  - Unchanged: `/runs/estimates`, PR run history, trace, multi-agent, CI runs (NFR-19); `RunTrace`, `POST /agents/:id/skills` and the other skill and agent-link endpoints (skill NFR-11).
+  - One additive index migration, applied manually.
+- **Tests:**
+  - `test-writer`, run separately (outside `/run-plan`):
+    - **AC-186 flow:**
+      1. `open {BASE}/agent-performance`, `wait --load networkidle`, `wait --text "Security Reviewer"`.
+      2. Assert the row values: Runs `13`; Avg cost `$0.038`; Avg duration `6.2 s`; Accept `76% · 13/17`.
+      3. `find role link click --name "View Security Reviewer stats"`, then `wait --url tab=stats`.
+      4. Assert on the Stats tab: `$0.038`, `6.2 s`, `76%`, `13 of 17 decided · 3 pending`, `13`.
+      - Dashboard totals: `$0.52`, `cost unknown for 2 runs`, `18 of 24 decided · 5 pending`; Most-active still Security Reviewer.
+      - Performance Reviewer: `60% · 5/10 decisions — small sample`.
+    - **AC-187 flow:** `open {BASE}/agent-performance?range=custom&from=2025-01-01T00:00:00.000Z&to=2025-01-02T00:00:00.000Z`, then `wait --text "No runs in this period"`.
+    - URL parameters: `range` = `1d` | `30d` | `custom`; `from` / `to` = ISO-8601 with an offset.
+    - Rendered text may be uppercased by styles (`e2e/INSIGHTS.md:21`), and every click must be preceded by a `wait --text` (`e2e/INSIGHTS.md:23`).
+    - Update `e2e/specs/coverage.md`.
+  - AC-185: run `./scripts/e2e.sh` once (flows 02 and 04 must still pass).
+  - **skill AC-40:** the same `./scripts/e2e.sh` run must pass `08-skills` unchanged.
+    - Its waits `"Used by"` and `"Agents using this skill"` (`e2e/specs/08-skills.flow.json:20-21`) match the catalog text rendered without `text-transform` (C26, T35).
+    - `pr-quality-rubric` shows cards on the seeded stack (REC13, T3).
+    - No flow edit is expected; if one is needed, it goes to `test-writer`.
+  - Integration tests T3 / T8 / T9 / T32 / T33 run in CI only.
+- **Docs** (`doc-writer`):
+  - `server/docs/api-contracts.md` and the `server/README.md` API map:
+    - the 3 agent endpoints, the 422 rules, 367-day limit, 20 per page;
+    - `GET /skills/:id/stats` with the optional `from`/`to` pair, its 422/404 rules, the default 30 × 24 h and the new `SkillStats` fields;
+    - `GET /skills` card period;
+  - `server/docs/architecture.md` (agent-stats module, `_shared/stats-rules.ts`, cost-fold rule REC2, recorded-skill-list rule REC15, index migration);
+  - `client/docs/ui-architecture.md` (`hooks/agent-stats`, `hooks/skills` `useSkillStats(id, period)`, `lib/agent-stats`, `components/agent-stats`, URL period params);
+  - the `client/README.md` route map (`/agent-performance`, `?tab=stats` on agents and skills);
+  - `client/specs/pages.md` (both agent screens' guarantees; the skill Stats tab and rail footer at `:116-135`);
+  - `docs/specs/conventions.md:238-239` (`SkillStats.accept_pct` meaning; `findings_30d` deprecated);
+  - `docs/specs/README.md` registry status for both specs;
+  - the cost-label meaning (DevDigest-recorded, not billing).
+- **Manual verification** (live browser on the seeded stack, before `doc-writer`):
+  - agent NFR-3: skeleton within 100 ms; sort/expand ≤100 ms at 200 rows.
+  - agent NFR-15: 320 px, 200 % zoom, 4.5:1 muted text including the cost label, 3:1 chart marks and focus rings, 24 px targets.
+  - skill NFR-3: the skill tab's skeletons within 100 ms of opening Stats.
+  - skill NFR-9: the skill tab and the rail footer reflow at 320 px and 200 % zoom; 4.5:1 for muted text and for the coloured accept text on a card; 3:1 chart marks and focus rings; "Open" links ≥24 × 24 px.
+  - Tooltips on hover and focus (no clipping).
+  - Native date inputs in Chrome / Firefox / Safari.
+  - Topbar Refresh on all three screens (preset re-resolve and custom refetch), and switching skills in the rail keeps the period.
+  - The recharts ring renders.
+  - No step measures DOM nodes (no `ref.current` / `getBoundingClientRect` / `ResizeObserver` planned).
+
+## Not found / gaps
+- **Tooltip primitive in `vendor/ui`:**
+  - searched: `client/src/vendor/ui/primitives/*`, `client/src/vendor/ui/kit/*`, `git grep 'role="tooltip"' client/src`;
+  - result: none in the vendored design system; only feature-local `TokenEstimate` → new shared `HoverHint` (S12).
+- **Date-range control:**
+  - searched: `git grep -n "type=\"date\"\|RangeFilter" client/src`;
+  - result: only `eval/_components/RangeFilter` (30 / all) → new `PeriodControl` (S12).
+- **Test for `client/src/app/agents/[id]/page.tsx`:**
+  - searched: `git grep -l "AgentEditorPage" client/src`;
+  - result: none → behaviour moved into `helpers.ts` (T25) + manual check.
+- **i18n Retry in the vendored `ErrorState`:**
+  - searched: `client/src/vendor/ui/primitives/ErrorState.tsx:51-55`;
+  - result: "Retry" is hardcoded → `StatsErrorPanel` (S12).
+- **Code writing `agent_runs.source = 'ci'`:**
+  - searched: `git grep -n "'ci'" server/src`;
+  - result: none (CI runs live in `ci_runs`; eval suite runs don't touch `agent_runs`, `server/src/modules/eval/suite-run-service.ts:4`) → the `source = 'local'` filter is defensive (C7).
+- **Test for `SkillsView`:**
+  - searched: `git grep -ln "SkillsView" -- 'client/src/**/*.test.tsx'`;
+  - result: none → the rail link moved into `skillHref` (T36) + the manual Refresh / rail check.
+- **Hook test for `client/src/lib/hooks/skills.ts`:**
+  - searched: `ls client/src/lib/hooks/*.test.tsx`;
+  - result: none for skills → new T34.
+- **An exported 4xx retry predicate:**
+  - searched: S11's planned exports;
+  - result: none → W9 keeps a local copy of the same rule (C14).
+- **A per-run "recorded skill list" validity rule in the agent spec:**
+  - searched: agent spec *Terms* and AC-32;
+  - result: undefined there → the skill spec's definition (*Terms*, EC-27) is applied to both sides through `isRecordedSkillList` (REC15).

@@ -5,17 +5,19 @@
 
 import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { Badge, Button, EmptyState, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
-import { useSkill, useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
+import { usePeriodUrl } from "../../../../lib/agent-stats/usePeriodUrl";
+import { skillKeys, useSkill, useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { SkillCard } from "../SkillCard";
 import { ImportSkillModal } from "./_components/ImportSkillModal";
 import { CreateSkillModal } from "./_components/CreateSkillModal/CreateSkillModal";
 import { ImportUrlSkillModal } from "./_components/ImportUrlSkillModal/ImportUrlSkillModal";
 import { SkillEditor } from "./_components/SkillEditor";
 import { DEFAULT_TAB, VALID_TABS, type SkillTab } from "./constants";
-import { filterSkills } from "./helpers";
+import { filterSkills, skillHref } from "./helpers";
 import { s } from "./styles";
 
 export function SkillsView({ selectedId }: { selectedId?: string }) {
@@ -35,6 +37,20 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
   const requested = search.get("tab") ?? "";
   const tab = ((VALID_TABS as readonly string[]).includes(requested) ? requested : DEFAULT_TAB) as SkillTab;
 
+  // The Stats period lives in the URL; it is lifted here so the rail link and Refresh can keep and re-read it.
+  const qc = useQueryClient();
+  const statsPeriod = usePeriodUrl({ enabled: tab === "stats" && !!selectedId });
+  const { refresh } = statsPeriod;
+  const onRefresh = React.useMemo(() => {
+    if (tab !== "stats" || !selectedId) return undefined;
+    const queryKey = skillKeys.stats(selectedId);
+    return () =>
+      refresh({
+        isFetching: qc.isFetching({ queryKey }) > 0,
+        refetchSame: () => void qc.refetchQueries({ queryKey }),
+      });
+  }, [tab, selectedId, refresh, qc]);
+
   const setTab = (next: string) => {
     if (!selectedId) return;
     const sp = new URLSearchParams(search.toString());
@@ -51,7 +67,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
   const filtered = filterSkills(skills ?? [], query);
 
   return (
-    <AppShell crumb={crumb}>
+    <AppShell crumb={crumb} onRefresh={onRefresh}>
       {addMode === "file" && (
         <ImportSkillModal onClose={() => setAddMode(null)} onCreate={() => setAddMode("create")} onUrl={() => setAddMode("url")} />
       )}
@@ -103,7 +119,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
                 key={sk.id}
                 skill={sk}
                 active={sk.id === selectedId}
-                onClick={() => router.push(`/skills/${sk.id}?tab=${tab}`)}
+                onClick={() => router.push(skillHref(sk.id, search.toString()))}
                 onToggle={(enabled) => update.mutate({ id: sk.id, patch: { enabled } })}
               />
             ))}
@@ -131,7 +147,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
               {!skill.enabled && <Badge color="var(--text-muted)">{t("editor.disabled")}</Badge>}
             </div>
             <div style={s.editorBody}>
-              <SkillEditor skill={skill} tab={tab} onTab={setTab} />
+              <SkillEditor skill={skill} tab={tab} onTab={setTab} statsPeriod={statsPeriod} />
             </div>
           </div>
         )}

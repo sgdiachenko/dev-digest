@@ -488,21 +488,46 @@ export type SkillDraft = z.infer<typeof SkillDraft>;
  * Skill editor "Stats" tab + rail-card counters — every field is derived from
  * existing tables (agent_skills / findings / reviews / agent_runs / run_traces),
  * never a separate analytics table. Nullable fields mean "not enough data yet",
- * rendered as "—", never coerced to 0/0%.
+ * rendered as "—", never coerced to 0/0%. The figures follow the agent
+ * performance rules (counted runs, decided findings, small sample < 10) over
+ * `period`; the old keys keep their names and types but carry the new meaning.
  */
 export const SkillStats = z.object({
+  /** Number of agents linked to the skill now (enabled or not). */
   agent_count: z.number().int(),
-  /** % of linked agents' runs whose trace recorded this skill id; null when
-      those agents have no runs yet (or all predate trace.config.skills). */
+  /** Whole % of linked agents' runs (with a recorded skill list) in the period
+      whose prompt included this skill; null when there is no such run. */
   pull_pct: z.number().nullable(),
-  /** accepted / (accepted + dismissed) findings attributed to linked agents in
-      the stats window; null when nothing has been triaged yet. */
+  /** `accept_rate` as a whole %; null when nothing in the period is decided. */
   accept_pct: z.number().nullable(),
-  /** Findings from linked agents' runs in the stats window (findings are
-      attributed at agent granularity, not provably caused by this skill). */
+  /** @deprecated Use `findings` — always equal to it; removal not scheduled. */
   findings_30d: z.number().int(),
+  /** Findings of the skill's runs per category — count descending, then A→Z. */
   by_category: z.array(z.object({ category: z.string(), count: z.number().int() })),
+  /** Linked agents, ordered by name A→Z (no cap). */
   agents: z.array(z.object({ id: z.string(), name: z.string() })),
+  /** Findings of `done` runs whose recorded skill list contains the skill. */
+  findings: z.number().int(),
+  /** Counted runs (any agent) whose recorded skill list contains the skill. */
+  skill_runs: z.number().int(),
+  /** Pull base runs whose recorded skill list contains the skill. */
+  pull_runs: z.number().int(),
+  /** Counted runs of linked agents that have a recorded skill list. */
+  pull_runs_total: z.number().int(),
+  /** Counted runs of linked agents with no recorded skill list. */
+  runs_without_skill_data: z.number().int(),
+  accepted: z.number().int(),
+  dismissed: z.number().int(),
+  pending: z.number().int(),
+  /** accepted / (accepted + dismissed), 0..1; null when nothing is decided. */
+  accept_rate: z.number().min(0).max(1).nullable(),
+  /** True when fewer than 10 findings are decided. */
+  small_sample: z.boolean(),
+  /** Start of the latest run (any time) that used the skill; null when none. */
+  last_used_at: z.string().nullable(),
+  /** The period the figures cover; inline so mcp-server's copy has no import. */
+  period: z.object({ from: z.string(), to: z.string() }),
+  as_of: z.string(),
 });
 export type SkillStats = z.infer<typeof SkillStats>;
 

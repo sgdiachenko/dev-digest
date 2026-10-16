@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Severity } from './findings.js';
+import { AgentPerfRow, RunsTrendPoint, StatsPeriod } from './productionize.js';
 
 /**
  * A5 — Observability / Multi-agent contracts (L07).
@@ -11,7 +12,8 @@ import { Severity } from './findings.js';
  *   - FindingGroup         findings of different member runs grouped by location
  *   - Conflict / ConflictTake  what each member run said about one finding group
  *   - AgentRunEstimate     per-agent averages over its last 5 done runs (GET /runs/estimates)
- *   - AgentStats           per-agent quality aggregates (GET /agents/:id/stats)
+ *   - AgentStats           per-agent stats for a period (GET /agents/:id/stats)
+ *   - AgentRunHistoryPage  paged run history (GET /agents/:id/stats/runs)
  *   - CuratorResult        the cross-session memory curator outcome
  *
  * The single-document run trace itself stays in `contracts/trace.ts` (RunTrace).
@@ -124,30 +126,76 @@ export type AgentRunEstimate = z.infer<typeof AgentRunEstimate>;
 export const StatPoint = z.object({ label: z.string(), value: z.number() });
 export type StatPoint = z.infer<typeof StatPoint>;
 
-export const AgentStats = z.object({
+/** Findings of counted runs in one time bucket, by severity. */
+export const SeverityBucketCount = z.object({
+  bucket_start: z.string(),
+  CRITICAL: z.number().int(),
+  WARNING: z.number().int(),
+  SUGGESTION: z.number().int(),
+});
+export type SeverityBucketCount = z.infer<typeof SeverityBucketCount>;
+
+export const FindingCategoryCount = z.object({
+  category: z.string(),
+  count: z.number().int(),
+});
+export type FindingCategoryCount = z.infer<typeof FindingCategoryCount>;
+
+/** `skill_name` is null when the recorded skill no longer exists. */
+export const AgentSkillUsage = z.object({
+  skill_id: z.string(),
+  skill_name: z.string().nullable(),
+  runs: z.number().int(),
+});
+export type AgentSkillUsage = z.infer<typeof AgentSkillUsage>;
+
+export const AgentSkillsUsage = z.object({
+  runs_with_skill_data: z.number().int(),
+  runs_without_skill_data: z.number().int(),
+  skills: z.array(AgentSkillUsage),
+});
+export type AgentSkillsUsage = z.infer<typeof AgentSkillsUsage>;
+
+/** Response of GET /agents/:id/stats — every AgentPerfRow field, for one existing agent. */
+export const AgentStats = AgentPerfRow.extend({
   agent_id: z.string(),
   agent_name: z.string(),
-  runs: z.number().int(),
-  findings_total: z.number().int(),
-  /** accept-rate is the headline quality signal. 0..1 over acted findings. */
-  accepted: z.number().int(),
-  dismissed: z.number().int(),
-  pending: z.number().int(),
-  accept_rate: z.number().nullable(),
-  dismiss_rate: z.number().nullable(),
-  avg_findings_per_run: z.number().nullable(),
-  total_cost_usd: z.number().nullable(),
-  avg_cost_usd: z.number().nullable(),
-  avg_latency_ms: z.number().nullable(),
-  findings_by_severity: z.object({
-    CRITICAL: z.number().int(),
-    WARNING: z.number().int(),
-    SUGGESTION: z.number().int(),
-  }),
-  /** recent runs for a small trend chart (oldest→newest). */
-  trend: z.array(StatPoint),
+  period: StatsPeriod,
+  as_of: z.string(),
+  previous_avg_cost_usd: z.number().nullable(),
+  runs_trend: z.array(RunsTrendPoint),
+  findings_by_severity: z.array(SeverityBucketCount),
+  findings_by_category: z.array(FindingCategoryCount),
+  skills_usage: AgentSkillsUsage,
 });
 export type AgentStats = z.infer<typeof AgentStats>;
+
+export const RunHistoryStatus = z.enum(['done', 'failed', 'cancelled']);
+export type RunHistoryStatus = z.infer<typeof RunHistoryStatus>;
+
+/** One row of the agent's Run history table. */
+export const AgentRunHistoryItem = z.object({
+  run_id: z.string(),
+  ran_at: z.string(),
+  status: RunHistoryStatus,
+  repo_id: z.string().nullable(),
+  repo_full_name: z.string().nullable(),
+  pr_number: z.number().int().nullable(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  findings_count: z.number().int().nullable(),
+});
+export type AgentRunHistoryItem = z.infer<typeof AgentRunHistoryItem>;
+
+/** Response of GET /agents/:id/stats/runs. */
+export const AgentRunHistoryPage = z.object({
+  items: z.array(AgentRunHistoryItem),
+  page: z.number().int().min(1),
+  page_size: z.literal(20),
+  total: z.number().int(),
+});
+export type AgentRunHistoryPage = z.infer<typeof AgentRunHistoryPage>;
 
 // ---------------------------------------------------------------------------
 // Cross-session memory curator

@@ -10,7 +10,7 @@ import type { SkillWithStats } from "@devdigest/shared";
 import { useDeleteSkill } from "../../../../lib/hooks/skills";
 import { ConfirmDeleteModal } from "../../../../components/ConfirmDeleteModal";
 import { TYPE_COLOR } from "./constants";
-import { footerSegments } from "./helpers";
+import { StatsFooter } from "./_components/StatsFooter";
 import { s } from "./styles";
 
 export function SkillCard({
@@ -27,7 +27,6 @@ export function SkillCard({
   const t = useTranslations("skills");
   const del = useDeleteSkill();
   const [confirming, setConfirming] = React.useState(false);
-  const segments = footerSegments(skill.stats);
   // Imported skills stay flagged until someone reads the body and re-enables it.
   const needsVetting = skill.source !== "manual" && !skill.enabled;
 
@@ -107,14 +106,11 @@ export function SkillCard({
         )}
       </div>
 
-      <div style={s.footer}>
-        {segments.map((seg, i) => (
-          <React.Fragment key={seg.key}>
-            {i > 0 && <span style={s.sep}>·</span>}
-            <span className="tnum">{seg.label}</span>
-          </React.Fragment>
-        ))}
-      </div>
+      {skill.stats.agent_count > 0 && (
+        <div style={s.footer}>
+          <StatsFooter stats={skill.stats} />
+        </div>
+      )}
     </div>
     </>
   );

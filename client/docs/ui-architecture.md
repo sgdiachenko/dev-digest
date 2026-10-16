@@ -16,7 +16,12 @@ Hooks are grouped by domain, not by page:
 - `hooks/reviews.ts` — runs, findings, accept/dismiss
 - `hooks/agents.ts` — agent CRUD + `useAgentSkills`/`useSetAgentSkills` (an
   agent's linked, ordered skills)
-- `hooks/skills.ts` — skill CRUD, versions/restore, stats, file import (L02)
+- `hooks/skills.ts` — skill CRUD, versions/restore, file import (L02), and
+  `useSkillStats(id, period)` (`GET /skills/:id/stats?from&to`, enabled only
+  with an id and a resolved period; see
+  [Agent Performance](#agent-performance-and-skill-stats))
+- `hooks/agent-stats.ts` — `useAgentPerformance(period)`, `useAgentStats(id, period)`,
+  `useAgentRunHistory(id, period, page)` and the `agentStatsKeys` query keys
 - `hooks/repo-intel.ts` — index state, resync
 - `hooks/tour.ts` — `useRepoTour`, `useGenerateNarrative` (see
   [Onboarding Tour](#onboarding-tour-hooks-and-view))
@@ -85,6 +90,72 @@ Route map: [README](../README.md#ui-route-map).
 - **Layout gotcha.** The "On this page" rail is sticky; its wrapper needs
   `align-self: stretch` or it never sticks (`styles.ts:10-11`; see
   [INSIGHTS](../INSIGHTS.md)).
+
+## Agent Performance and Skill Stats
+
+Three screens share one set of building blocks, layered
+`lib/agent-stats` -> `components/agent-stats` -> `app/*`:
+
+- `/agent-performance` (`src/app/agent-performance/`), the agent Stats tab
+  (`app/agents/[id]/_components/AgentEditor/_components/StatsTab/`) and the skill
+  Stats tab and rail footer (`app/skills/**`).
+- `src/lib/agent-stats/` — pure period, accept, breakdown and format helpers
+  (`period.ts`, `accept.ts`, `breakdown.ts`, `format.ts`, none reads the clock;
+  callers pass `now`) and three hooks: `usePeriodUrl`, `useRefreshFallback`,
+  `useStatsFormat` (`Intl` formatters).
+- `src/components/agent-stats/` — domain-neutral pieces (`PeriodControl`,
+  `KpiCard`, `ShareDonut`, `AcceptRing`, `TrendSparkline`, `CostLabel`,
+  `HoverHint`, `StatsErrorPanel`, `UpdatedStatus`, `NoRunsInPeriod`, ...,
+  exported from `index.ts`). Messages come from `messages/en/agentPerformance.json`
+  (the skill screens add `skills.json`), so a test provider that mounts these
+  components needs the `agentPerformance` namespace (`renderWithMessages.tsx`).
+
+### URL period params
+
+The URL is the source of truth for the period: `range` is `1d`, `30d` or
+`custom`; `from` and `to` are canonical ISO-8601 timestamps
+(`lib/agent-stats/period.ts:89-110`, `parsePeriodParams`). `usePeriodUrl`
+(`lib/agent-stats/usePeriodUrl.ts`) reads them and behaves like this:
+
+- Missing or invalid params fall back to 30 days. `notice` is set when a link
+  carried an unusable period. The fallback's "now" is taken at mount and
+  **re-taken in the render where `enabled` flips to true**, so a hook mounted on
+  another tab never queries a window anchored at mount. One effect then writes
+  the window already shown to the URL, so the write does not change the query
+  key a second time.
+- `select(period)` writes the new period to the URL.
+- `refresh({ isFetching, refetchSame })` is a no-op while a fetch runs. A preset
+  (`1d`, `30d`) re-resolves to now and rewrites the URL, with the previous
+  period saved in `refreshFrom` so `useRefreshFallback` can show its cached data
+  while the new window loads; a custom range refetches as is.
+- The pages pass `enabled`: always on `/agent-performance`; `tab === "stats"` on
+  the agent page; `tab === "stats" && !!selectedId` in `SkillsView`.
+
+### Topbar Refresh
+
+`AppShell` takes an optional `onRefresh` prop and shows a Refresh action in the
+Topbar when it is set (label from `shell.json` `topbar.refresh`). The callback
+must be stable, or the shell context churns. The dashboard and `SkillsView`
+pass one; the agent page passes one only on the Stats tab.
+
+On the agent page Refresh also re-resolves the **left list's card period** (the
+30-day figures of every `AgentCard`): `cardPeriod` is state, resolved once per
+mount and again on Refresh, never in render. Repeated clicks while any
+`agent-stats` query is fetching are a no-op, and the cards keep the last figures
+(`lastPerf`) while the new window loads instead of blanking
+(`agents/[id]/page.tsx:46-70`). The rail link to another agent keeps every
+current query param (`agentHref`, `agents/[id]/helpers.ts`); the skills rail does the
+same through `skillHref` (`skills/_components/SkillsView/helpers.ts:28-31`).
+
+### Data rules
+
+- Query keys put the period in the key (`agentStatsKeys`, `skillKeys.stats`);
+  a 4xx is never retried, a network or 5xx failure once.
+- Names (agent, model, skill, category, repository) render as plain text.
+- The dashboard's state is decided by `dashboardState`
+  (`pending`, `invalid`, `error`, `noAgents`, `noReviews`, `noRuns`, `data`);
+  with figures on screen a failed refresh keeps them and shows a banner.
+- Behavioural guarantees per screen: [specs/pages.md](../specs/pages.md#agent-performance).
 
 ## Route → component structure
 

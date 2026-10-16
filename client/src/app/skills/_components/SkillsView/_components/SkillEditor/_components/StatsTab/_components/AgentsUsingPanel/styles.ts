@@ -1,0 +1,48 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  panel: { border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-surface)", padding: 16, minWidth: 0 } satisfies CSSProperties,
+  title: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--text-muted)",
+    margin: "0 0 12px",
+  } satisfies CSSProperties,
+  empty: { fontSize: 13, color: "var(--text-muted)", margin: 0 } satisfies CSSProperties,
+  list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
+  row: {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    minWidth: 0,
+    padding: "8px 10px",
+    borderRadius: 7,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+  } satisfies CSSProperties,
+  iconBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    flexShrink: 0,
+    background: "var(--accent-bg)",
+    color: "var(--accent)",
+    display: "grid",
+    placeItems: "center",
+  } satisfies CSSProperties,
+  name: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
+  open: {
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 24,
+    minWidth: 24,
+    padding: "0 4px",
+    fontSize: 12.5,
+    color: "var(--accent-text)",
+    textDecoration: "none",
+  } satisfies CSSProperties,
+};

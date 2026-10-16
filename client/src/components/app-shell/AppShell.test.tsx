@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { NAV } from "@devdigest/ui";
 import shellMessages from "../../../messages/en/shell.json";
@@ -7,9 +7,10 @@ import { activeKeyFor } from "./helpers";
 import { AppShell } from "./AppShell";
 
 const mockPathname = "/eval";
+const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push }),
 }));
 vi.mock("../../lib/theme", () => ({ useTheme: () => ({ theme: "dark", toggle: vi.fn() }) }));
 vi.mock("../../lib/repo-context", () => ({
@@ -20,12 +21,15 @@ vi.mock("../../lib/hooks", () => ({
   useDeleteRepo: () => ({ mutate: vi.fn() }),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  push.mockReset();
+});
 
-function renderShell() {
+function renderShell(onRefresh?: () => void) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ shell: shellMessages }}>
-      <AppShell>content</AppShell>
+      <AppShell onRefresh={onRefresh}>content</AppShell>
     </NextIntlClientProvider>,
   );
 }
@@ -57,12 +61,13 @@ describe("Eval Dashboard sidebar item (AC-100, AC-101, NFR-16)", () => {
   });
 });
 
-describe("Multi-Agent Review sidebar item (AC-43, NFR-11)", () => {
-  it("is the only GLOBAL item, with the shell-catalog label, linking to the repo's multi-agent route", () => {
+describe("Multi-Agent Review and Agent Performance sidebar items (AC-43, AC-98, NFR-11)", () => {
+  it("GLOBAL holds multi-agent then agent-performance, with shell-catalog labels and hrefs", () => {
     const globals = NAV.filter((g) => g.section === "GLOBAL");
     expect(globals).toHaveLength(1);
-    expect(globals[0]!.items).toHaveLength(1);
+    expect(globals[0]!.items.map((i) => i.key)).toEqual(["multi-agent", "agent-performance"]);
     expect(globals[0]!.items[0]).toMatchObject({ key: "multi-agent", href: "/repos/:repoId/multi-agent" });
+    expect(globals[0]!.items[1]).toMatchObject({ href: "/agent-performance", gKey: "m" });
 
     const messages = { shell: { ...shellMessages, nav: { ...shellMessages.nav, "multi-agent": "Multi (i18n)" } } };
     render(
@@ -73,5 +78,36 @@ describe("Multi-Agent Review sidebar item (AC-43, NFR-11)", () => {
     const link = screen.getByRole("link", { name: /Multi \(i18n\)/ });
     // No active repo in this test, so the :repoId token resolves to "_".
     expect(link).toHaveAttribute("href", "/repos/_/multi-agent");
+    expect(screen.getByRole("link", { name: /Agent Performance/ })).toHaveAttribute("href", "/agent-performance");
+  });
+});
+
+describe("g m shortcut (AC-188)", () => {
+  it("navigates to /agent-performance on g then m, but not while typing in an input", () => {
+    renderShell();
+    fireEvent.keyDown(document.body, { key: "g" });
+    fireEvent.keyDown(document.body, { key: "m" });
+    expect(push).toHaveBeenCalledWith("/agent-performance");
+
+    push.mockReset();
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    fireEvent.keyDown(input, { key: "g" });
+    fireEvent.keyDown(input, { key: "m" });
+    expect(push).not.toHaveBeenCalled();
+    input.remove();
+  });
+});
+
+describe("Topbar Refresh (AC-56)", () => {
+  it("shows a Refresh button that calls onRefresh, and none without the prop", () => {
+    const onRefresh = vi.fn();
+    const { unmount } = renderShell(onRefresh);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    unmount();
+
+    renderShell();
+    expect(screen.queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument();
   });
 });

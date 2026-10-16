@@ -70,3 +70,10 @@ describe("CI Runs sidebar entry", () => {
     expect(activeKeyFor("/ci-runs")).toBe("ci-runs");
   });
 });
+
+describe("Agent Performance sidebar entry (AC-99)", () => {
+  it("is active on /agent-performance while /agents/x stays agents", () => {
+    expect(activeKeyFor("/agent-performance")).toBe("agent-performance");
+    expect(activeKeyFor("/agents/x")).toBe("agents");
+  });
+});

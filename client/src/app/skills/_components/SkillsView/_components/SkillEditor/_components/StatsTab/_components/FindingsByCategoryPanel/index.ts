@@ -1,0 +1,1 @@
+export { FindingsByCategoryPanel } from "./FindingsByCategoryPanel";

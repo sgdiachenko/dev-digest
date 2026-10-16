@@ -14,7 +14,9 @@ import {
 import { getContext } from '../_shared/context.js';
 import { IdParams, OkAck } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
+import { periodIssue } from '../_shared/stats-rules.js';
 import { SkillsService } from './service.js';
+import { SkillStatsService } from './stats-service.js';
 
 /** `/skills/:id/versions/:version` — id is a uuid, version a positive integer. */
 const VersionParams = z.object({
@@ -31,7 +33,7 @@ const VersionParams = z.object({
  *   POST   /skills                    → create (source: manual)
  *   PUT    /skills/:id                → update; a body change bumps version
  *   DELETE /skills/:id                → delete
- *   GET    /skills/:id/stats          → Stats tab
+ *   GET    /skills/:id/stats?from&to → Stats tab (optional period pair, default last 30 days)
  *   GET    /skills/:id/versions       → body-snapshot history (newest first)
  *   GET    /skills/:id/versions/:version → one snapshot (Diff modal)
  *   POST   /skills/:id/restore        → restore a past snapshot (appends a new version)
@@ -75,11 +77,36 @@ const ImportSkillBody = z.object({
   filename: z.string().min(1),
   content_b64: z.string().min(1),
 });
+/**
+ * `from`/`to` are an optional PAIR of ISO-8601 timestamps with an offset: both
+ * omitted = the last 30 days; exactly one = 422; both = a valid period (order,
+ * not in the future, at most 367 days).
+ */
+const SkillStatsQuery = z
+  .object({
+    from: z.string().datetime({ offset: true }).optional(),
+    to: z.string().datetime({ offset: true }).optional(),
+  })
+  .superRefine((q, ctx) => {
+    if (q.from === undefined && q.to === undefined) return;
+    if (q.from === undefined || q.to === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'from and to must be given together',
+        path: [q.from === undefined ? 'from' : 'to'],
+      });
+      return;
+    }
+    const issue = periodIssue(q.from, q.to, Date.now());
+    if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue, path: ['to'] });
+  });
+
 const ImportSkillUrlBody = z.object({ url: z.string().min(1).max(2048) });
 
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
-  const service = new SkillsService(app.container.skillsRepo);
+  const stats = new SkillStatsService(app.container.skillsRepo, app.log);
+  const service = new SkillsService(app.container.skillsRepo, stats);
 
   app.get('/skills', { schema: { response: { 200: z.array(SkillWithStats) } } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
@@ -149,12 +176,10 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
 
   app.get(
     '/skills/:id/stats',
-    { schema: { params: IdParams, response: { 200: SkillStats } } },
+    { schema: { params: IdParams, querystring: SkillStatsQuery, response: { 200: SkillStats } } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const stats = await service.stats(workspaceId, req.params.id);
-      if (!stats) throw new NotFoundError('Skill not found');
-      return stats;
+      return stats.forSkill(workspaceId, req.params.id, req.query.from, req.query.to);
     },
   );
 

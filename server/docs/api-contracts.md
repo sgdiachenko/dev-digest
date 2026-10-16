@@ -4,7 +4,8 @@ Wire contracts are Zod schemas in `src/vendor/shared/contracts/`, hand-mirrored
 into `client/src/vendor/shared/contracts/` (see the root [AGENTS.md](../../AGENTS.md)).
 All wire fields are `snake_case`. This file currently documents the Project
 Context routes (catalog and attachments), the Onboarding Tour routes, the
-Export to CI routes and the Multi-Agent Review routes; the
+Export to CI routes, the Multi-Agent Review routes, the Agent Performance
+routes and the Skill Stats routes; the
 other modules' shapes live in their `modules/<name>/routes.ts` and
 `contracts/*.ts`.
 
@@ -421,3 +422,144 @@ Requests with `agentId` or `all` behave as before.
 No live multi-agent run with a real LLM key was done. Times and costs in the
 estimates are not measured against a real provider yet; the tests cover the
 logic with mocked adapters.
+
+## Agent Performance
+
+Schemas: `AgentPerf`, `AgentPerfRow`, `StatsPeriod` in
+`src/vendor/shared/contracts/productionize.ts:140-253`; `AgentStats`,
+`AgentRunHistoryPage` in `contracts/observability.ts:160-198`. Routes:
+`src/modules/agent-stats/routes.ts`; logic: `modules/agent-stats/service.ts`
+and `helpers.ts`; rules shared with skills: `modules/_shared/stats-rules.ts`.
+Wiring: [architecture](architecture.md#agent-performance-modulesagent-stats).
+Design record: [the spec](../../docs/specs/2026-10-15-agent-performance-dashboard.md#implementation).
+
+All three routes are read-only, workspace-scoped and start no review run.
+`from` and `to` are required ISO-8601 timestamps with an offset; the period is
+`[from, to)` (`routes.ts:21-28`).
+
+| Route | Response |
+|---|---|
+| `GET /agents/performance?from&to` | `AgentPerf`: `period` (with the equally long `previous_*` period), `as_of`, `summary`, one `agents` row per agent (plus one "Deleted agent" row with null `agent_id`), `cost_by_agent`, `cost_by_model`, `runs_trend` (`routes.ts:42-68`). |
+| `GET /agents/:id/stats?from&to` | `AgentStats`: every `AgentPerfRow` field for one agent, plus `previous_avg_cost_usd`, `runs_trend`, `findings_by_severity` (buckets), `findings_by_category`, `skills_usage` (`observability.ts:160-170`). |
+| `GET /agents/:id/stats/runs?from&to&page` | `AgentRunHistoryPage`: newest first, `page_size` is always `20` (`constants.ts:5`; `observability.ts:192-197`). |
+
+`/agents/performance` is static and wins over `/agents/:id` regardless of
+registration order; `test/agent-stats-routes.test.ts` asserts it.
+
+| Code | When |
+|---|---|
+| `200` | Valid period; the agent exists in the workspace. |
+| `404` | `:id` is unknown or belongs to another workspace (`service.ts:33,54`). |
+| `422` | `from` or `to` missing or not ISO-8601 with an offset; `from` not before `to`; `from` in the future; span over 367 days (`MAX_PERIOD_MS`, `stats-rules.ts:21,28-38`); `page` missing or below 1 (`routes.ts:31-35`). |
+
+### Counting rules
+
+- A run counts when its status is `done`, `failed` or `cancelled` and its source
+  is `local`; `running` only feeds `summary.in_progress`
+  (`stats-rules.ts:9-14`).
+- Cost totals are folded in JavaScript from per-run costs, never summed in SQL,
+  in a fixed order (the response order the tests fold in), so totals are exact
+  IEEE doubles that are never rounded to cents; `null` when no run has a known cost
+  (`agent-stats/helpers.ts:83-101`).
+- `cost_by_model` entries are per-model folds, biggest first. The last entry is
+  `total - fold(others)` so the entries add up to the total. When that residual
+  is not a finite number above 0 (float rounding between differently ordered
+  folds), the last entry keeps its own fold and the entries may differ from the
+  total by float error (`helpers.ts:225-256`).
+- Accept rate is `accepted / (accepted + dismissed)` as 0..1, `null` with
+  nothing decided; fewer than 10 decided findings is `small_sample`
+  (`stats-rules.ts:17,38-46`).
+- Buckets: runs trend 1 h up to 2 days, 1 d up to 90 days, 7 d beyond; findings
+  by severity 4 h up to 2 days, 1 d up to 14, 7 d up to 120, 30 d beyond
+  (`constants.ts:16-28`).
+
+### Cost meaning
+
+`cost_usd` fields are what DevDigest recorded for a run: the amount OpenRouter
+reported when it returned one, otherwise a DevDigest estimate from its price
+table. They are not reconciled with provider billing, and a run without a
+recorded cost counts as unknown (`unknown_cost_runs`). The client states this
+in the cost label (`client/messages/en/agentPerformance.json:22`).
+
+### Compatibility (agent performance)
+
+The three routes are new. `AgentPerf`, `AgentPerfRow` and `AgentStats` were
+reserved contracts with no route, hook or screen using them, so replacing them
+breaks no consumer; `AgentStats.findings_by_severity` is now an array of
+buckets. One additive migration adds `reviews_run_id_idx` and
+`findings_review_id_idx` (`db/migrations/0022_perfect_kylun.sql`); it is applied
+manually with `pnpm -C server db:migrate`.
+
+### Not verified
+
+The SQL predicates, joins and bucket arithmetic are covered by
+`*.it.test.ts` files (`agent-stats.it.test.ts`, `agent-stats-perf.it.test.ts`)
+that need Docker and run in CI; they were not run in the implementation
+session. The 500 ms p95 budget is measured only by those tests.
+
+## Skill Stats
+
+Schema: `SkillStats` and `SkillWithStats` in
+`src/vendor/shared/contracts/knowledge.ts:487-535` (three identical copies:
+server, client, mcp-server). Routes: `src/modules/skills/routes.ts:80-102,
+:177-183`; logic: `modules/skills/stats-service.ts` and `helpers.ts`. Design
+record: [the spec](../../docs/specs/2026-10-15-skill-stats-tab.md#implementation).
+
+### `GET /skills/:id/stats?from&to` -> `SkillStats` (200)
+
+`from` and `to` are an optional pair. Both omitted returns the last 30 x 24 h
+ending now (`SKILL_CARD_PERIOD_MS`, `skills/constants.ts:17`; `stats-service.ts:21-28`).
+
+| Code | When |
+|---|---|
+| `200` | Both omitted, or a valid pair. `period` echoes the window used. |
+| `404` | Unknown skill or a skill of another workspace (`stats-service.ts:23-24`). |
+| `422` | Exactly one of the pair; or the pair fails the agent rules (order, not in the future, at most 367 days) (`routes.ts:85-102`). |
+
+### `GET /skills` -> `SkillWithStats[]` (200)
+
+Each row carries `stats` for the fixed card period (30 x 24 h ending when the
+list is read), built from one `statsFacts` read for the whole list, with no
+request per card (`stats-service.ts:42-51`; `skills/service.ts:56-61`). The
+tab's 30 days start when the tab loads, so the two can differ by runs that
+finished in between; the client's Refresh realigns them.
+
+### `SkillStats` fields
+
+| Field | Meaning |
+|---|---|
+| `agent_count`, `agents` | Agents linked now, enabled or not; `agents` is ordered by name then id, with no cap (`helpers.ts:263-264`, `knowledge.ts:497-508`). |
+| `pull_pct`, `pull_runs`, `pull_runs_total`, `runs_without_skill_data` | Pull base is the linked agents' counted runs in the period that have a recorded skill list. `pull_pct` is a whole percent of base runs whose list contains the skill, `null` when the base is empty. Runs with no recorded list count only in `runs_without_skill_data`. |
+| `skill_runs` | Counted runs of any agent (linked, unlinked or deleted) whose recorded list contains the skill. |
+| `findings`, `by_category`, `accepted`, `dismissed`, `pending` | Findings of the `done` runs among `skill_runs`; categories count descending then A to Z. |
+| `accept_rate`, `accept_pct`, `small_sample` | Same rules as agent stats; `accept_pct` is the whole percent of `accept_rate`. |
+| `last_used_at` | Start of the latest counted run that used the skill, at any time; `null` if none. |
+| `period`, `as_of` | `{ from, to }` the figures cover (no previous period) and the read time. |
+| `findings_30d` | `@deprecated`: always equal to `findings`; removal is not scheduled. |
+
+A "recorded skill list" is `run_traces.trace.config.skills` when it is a JSON
+array whose elements are all strings. It is validated in JavaScript by
+`isRecordedSkillList` (`stats-rules.ts:59-61`); anything else (absent, null,
+an object, a non-string element) means the run has no skill data and never fails
+the read. Skill ids are compared as text, not cast.
+
+### Compatibility (skill stats)
+
+This is an intentional, recorded semantic change. Every old key keeps its name
+and type, but the values follow the agent-performance rules: counted runs, not
+reviews of the agents linked now; a period instead of the fixed review-date
+window; a pull base without runs lacking a skill list. New keys are additive,
+and the `from`/`to` pair is optional. Unlinking a skill no longer rewrites
+history for runs that recorded it. An external consumer would see new meanings
+under old keys. `server`, `client` and `mcp-server` are private `0.0.0`
+packages, so no version bump applies; the change belongs in the PR description.
+Unchanged: `/runs/estimates`, PR run history, run trace, multi-agent, CI runs,
+`POST /agents/:id/skills`.
+
+### Not verified
+
+`skill-stats.it.test.ts` and `skill-stats-perf.it.test.ts` need Docker and run
+in CI only. `statsFacts` reads every counted run of the workspace once per
+request (all time, for `last_used_at`), de-TOASTing each trace's skill list; the
+perf test measures this, and the plan names a narrower scan as the fallback if
+the budget fails (plan: *Risks*, REC16).

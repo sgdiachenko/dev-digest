@@ -27,7 +27,7 @@ const group: { data: MultiAgentRun | null | undefined; isPending: boolean; isErr
 vi.mock("@/lib/hooks/multi-agent", () => ({ useMultiAgentRun: () => group }));
 
 const drawer = vi.fn();
-vi.mock("@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer", () => ({
+vi.mock("@/components/run-trace-drawer", () => ({
   default: (props: Record<string, unknown>) => {
     drawer(props);
     return <div data-testid="drawer" />;

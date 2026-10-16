@@ -6,6 +6,8 @@ import type { Agent } from "@devdigest/shared";
 import messages from "../../../../../../messages/en/agents.json";
 import evalMessages from "../../../../../../messages/en/eval.json";
 import contextMessages from "../../../../../../messages/en/context.json";
+import statsMessages from "../../../../../../messages/en/agentPerformance.json";
+import { PERIOD, makeStats } from "./_components/StatsTab/testing";
 import { ToastProvider } from "../../../../../lib/toast";
 
 // Mock the data hooks so the editor renders without a network/query client.
@@ -36,7 +38,7 @@ const AGENT: Agent = {
 function renderWithIntl(ui: React.ReactElement) {
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <NextIntlClientProvider locale="en" messages={{ agents: messages, context: contextMessages, eval: evalMessages }}>
+      <NextIntlClientProvider locale="en" messages={{ agents: messages, context: contextMessages, eval: evalMessages, agentPerformance: statsMessages }}>
         <ToastProvider>{ui}</ToastProvider>
       </NextIntlClientProvider>
     </QueryClientProvider>,
@@ -56,6 +58,20 @@ describe("A2 Agent Editor (smoke)", () => {
     renderWithIntl(<AgentEditor agent={AGENT} tab="evals" onTab={() => {}} />);
     expect(screen.getByText("Evals")).toBeInTheDocument();
     expect(await screen.findByText("Eval cases")).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("lists the Stats tab between Evals and CI and renders its body when selected (AC-143)", async () => {
+    vi.stubGlobal("fetch", (url: string) => {
+      const body = new URL(url).pathname.endsWith("/stats") ? makeStats() : { items: [], page: 1, page_size: 20, total: 0 };
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+    });
+    const statsPeriod = { period: PERIOD, option: PERIOD.option, notice: false, select: vi.fn(), refresh: vi.fn(), refreshFrom: null };
+    renderWithIntl(<AgentEditor agent={AGENT} tab="stats" onTab={() => {}} statsPeriod={statsPeriod} />);
+    const labels = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(labels.indexOf("Stats")).toBe(labels.indexOf("Evals") + 1);
+    expect(labels.indexOf("CI")).toBe(labels.indexOf("Stats") + 1);
+    expect(await screen.findByRole("region", { name: "Total runs (30 days)" })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 });
